@@ -55,7 +55,14 @@ QtObject {
             case "tools": toggleSimpleModule("tools"); break;
             case "config": toggleSettings(); break;
             case "screenshot": Screenshot.initialize(); GlobalStates.screenshotToolVisible = true; break;
-            case "screenrecord": ScreenRecorder.initialize(); GlobalStates.screenRecordToolVisible = true; break;
+            case "screenrecord":
+                ScreenRecorder.initialize();
+                if (ScreenRecorder.isRecording) {
+                    ScreenRecorder.toggleRecording();
+                } else {
+                    GlobalStates.screenRecordToolVisible = true;
+                }
+                break;
             case "lens": 
                 Screenshot.initialize();
                 Screenshot.captureMode = "lens";
