@@ -1,3 +1,25 @@
+> **FORK OVERRIDE — READ THIS FIRST (all agents, any provider).**
+>
+> This is **Aspect Ambxst**, a personal fork of `Axenide/Ambxst`. The document
+> below is upstream's and remains authoritative for QML architecture and
+> conventions, but parts of it describe the *upstream maintainer's* machine and
+> are wrong here. Full fork rules: **`CLAUDE.md` in this repo — read it before
+> making changes.** The three that can destroy work:
+>
+> 1. **NEVER run `curl -L get.axeni.de/ambxst | sh`, `install.sh`,
+>    `ambxst update`, `./cli.sh update`, or `ambxst goodbye`.** The update path
+>    runs `git reset --hard origin/main` and will discard uncommitted work.
+>    Install dependencies explicitly with `pacman -S --needed`.
+> 2. **`/home/adriano/Repos/Axenide/axctl/` does not exist here.** `axctl` is a
+>    prebuilt release binary at `/usr/local/bin/axctl`. It cannot be rebuilt
+>    locally; ignore the build-and-install instruction below.
+> 3. **`/home/adriano/Repos/Axenide/web/` does not exist here.** We do not
+>    maintain upstream's changelog site. Ignore all changelog instructions.
+>
+> Testing happens on the Bostrom host under a sandboxed `HOME` via `lab/`
+> scripts — never against a real home directory. This repo is public: no
+> secrets, tokens, or personal paths in commits.
+
 # PROJECT KNOWLEDGE BASE
 
 **Generated:** 2026-03-01
