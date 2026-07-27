@@ -18,9 +18,14 @@ Public fork of `Axenide/Ambxst`, renamed **Aspect Ambxst**.
 | `origin` | `AspectHeat/aspect-ambxst` | yes |
 | `upstream` | `Axenide/Ambxst` | **disabled** (`DISABLED_read_only_upstream`) |
 
-Branches: `main` tracks upstream; `lab/bootstrap` holds lab tooling;
-`archive/zephyrus-local-2026-07-25` preserves pre-fork local customizations to
-cherry-pick from; `feature/<topic>` for one experiment each.
+**`main` is the fork's own trunk — not an upstream mirror.** Jay's customizations
+live on `main`. Upstream is merged *into* it periodically. Do not try to keep
+`main` byte-identical to upstream, and do not use `merge --ff-only` for syncing;
+that only worked while `main` was still pristine, and it no longer is.
+
+Branches: `main` is the trunk; `archive/zephyrus-local-2026-07-25` preserves
+pre-fork customizations to cherry-pick from; `feature/<topic>` for one experiment
+each, cut from `main`. (`lab/bootstrap` was merged into `main` and deleted.)
 
 The repo is **public**. Before committing, check for credentials, tokens, absolute
 home paths, and personal data. This has already bitten once — a helper script
@@ -53,16 +58,29 @@ Install dependencies explicitly with `pacman -S --needed` instead. When a tool i
 only distributed via a `curl | sh` installer, read the script first and replicate
 its steps by hand — that is how `axctl` was installed.
 
-## Where work happens
+## Where work happens — three checkouts, three distinct roles
 
-Development and testing happen on **Bostrom** (Acer Nitro AN515-54, CachyOS,
-Hyprland/UWSM), reachable as `ssh bostrom` (Tailnet) or `ssh bostrom-lan`, with
-passwordless sudo and a repo-scoped deploy key (`github-aspect-ambxst`).
+Confusing these is the main way two agents end up fighting each other. Respect the
+roles:
 
-Zephyrus keeps a separate production checkout at `~/.local/src/ambxst`. **Never
-touch it** — it has uncommitted customizations and its installer can hard-reset.
+| Checkout | Role | Rule |
+|---|---|---|
+| Zephyrus `~/Projects/aspect-ambxst` | **Authoring.** The T3 Code project. | Edit and commit here. |
+| Bostrom `~/Projects/aspect-ambxst` | **Test target.** Where the shell runs. | **Pull-only — never edit or commit here.** |
+| Zephyrus `~/.local/src/ambxst` | Unrelated upstream production install. | **Never touch.** Dirty tree, installer hard-resets. |
 
-Bostrom clone: `~/Projects/aspect-ambxst`. Ambxst runs under a sandboxed `HOME` at
+Normal loop: edit and commit on Zephyrus → `git push` → on Bostrom
+`git pull` → Quickshell hot-reloads (or `./cli.sh reload`) → observe over Moonlight.
+
+If Bostrom's tree is ever dirty, someone broke the rule. Reconcile deliberately —
+commit and push it from there, or discard it — rather than letting the two diverge.
+
+Bostrom is reachable as `ssh bostrom` (Tailnet) or `ssh bostrom-lan`, has
+passwordless sudo, and authenticates to `origin` with a repo-scoped deploy key
+(`github-aspect-ambxst`). An agent driven from T3 Code on Zephyrus can do the
+Bostrom half of the loop over SSH; nothing needs to be installed on Bostrom.
+
+Ambxst runs under a sandboxed `HOME` at
 `~/.local/share/ambxst-lab/home`, because Ambxst hard-codes several
 `$HOME/.cache/ambxst` and `$HOME/.local/share/ambxst` paths that `XDG_*` alone does
 not redirect. Live config therefore lives under the sandbox, not the real home.
@@ -113,13 +131,30 @@ G14** (AMD + NVIDIA). Upstream Ambxst contains **zero** references to `asusctl` 
 
 ## Upstream sync
 
+Run from the **Zephyrus authoring clone**, never from Bostrom.
+
 ```bash
 git fetch upstream
-git switch main && git merge --ff-only upstream/main && git push origin main
-git switch feature/<topic> && git rebase main
+git switch main
+git merge upstream/main        # a real merge — NOT --ff-only; main has diverged
+# resolve conflicts, then:
+./lab/check-prereqs.sh         # on Bostrom, after pulling
+git push origin main
 ```
 
-Never `git push upstream`. Never use Ambxst's own `update` command in this clone.
+Expect conflicts in exactly two places, both ours by design:
+
+- **`AGENTS.md`** — our fork-override header sits above upstream's content.
+  Upstream rewrites that file wholesale roughly twice a year. Resolution: keep our
+  header block, take theirs for everything below it.
+- Any upstream file we have customized.
+
+`CLAUDE.md`, `lab/`, `docs/LAB.md` and `learning/` are ours alone and will never
+conflict.
+
+Never `git push upstream` (its push URL is already disabled). Never use Ambxst's
+own `update` command in this clone. After any sync, re-run the shell under
+`lab/run-isolated.sh` before letting the change reach boot.
 
 ## Environment gotchas
 
