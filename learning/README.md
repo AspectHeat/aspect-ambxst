@@ -7,6 +7,9 @@ to forget.
 
 ## Index
 
+- [[quickshell-probe-baseline]] — verified QML runtime environment, the
+  `hello-shell.qml` probe, and SSH gotchas (stale layers, pkill self-match,
+  grim hangs)
 - [[shell-launcher-recovery-trap]] — a recovery trap must stop the child
   shell before restoring the fallback, or two shells fight the compositor
 - [[hyprland-uwsm-autologin]] — SDDM autologin must name the UWSM session
