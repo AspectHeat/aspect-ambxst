@@ -21,6 +21,16 @@ FloatingWindow {
 
     color: "transparent"
 
+    property bool _placing: false
+
+    onVisibleChanged: {
+        if (visible) {
+            preparePlacement();
+        } else if (!_placing && GlobalStates.settingsWindowVisible) {
+            GlobalStates.settingsWindowVisible = false;
+        }
+    }
+
     function screenByName(name) {
         if (!name) return null;
 
@@ -34,6 +44,7 @@ FloatingWindow {
     }
 
     function preparePlacement() {
+        _placing = true;
         const targetScreen = screenByName(GlobalStates.settingsTargetScreenName || AxctlService.focusedMonitor?.name || "");
         if (targetScreen) {
             settingsWindow.screen = targetScreen;
@@ -70,6 +81,7 @@ FloatingWindow {
         onTriggered: {
             attempts++;
             if (!settingsWindow.visible || settingsWindow.placeOnTargetWorkspace() || attempts >= 20) {
+                settingsWindow._placing = false;
                 stop();
             }
         }
@@ -85,17 +97,6 @@ FloatingWindow {
         SettingsTab {
             anchors.fill: parent
             anchors.margins: 16
-        }
-    }
-
-    // Close on visibility change from outside
-    onVisibleChanged: {
-        if (visible) {
-            preparePlacement();
-        }
-
-        if (!visible && GlobalStates.settingsWindowVisible) {
-            GlobalStates.settingsWindowVisible = false;
         }
     }
 

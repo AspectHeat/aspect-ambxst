@@ -121,7 +121,7 @@ Singleton {
 
     function executeDesktopFile(filePath) {
         var escapedPath = filePath.replace(/'/g, "'\\''");
-        runInActiveWorkspace("gio launch '" + escapedPath + "'");
+        runInActiveWorkspace("bash -lc 'desktop_file='" + "'\\''" + escapedPath + "'\\''" + "; exec_line=$(sed -n " + "'\\''" + "s/^Exec=//p" + "'\\''" + " \"$desktop_file\" | head -n1); if [ -z \"$exec_line\" ]; then gio launch \"$desktop_file\"; exit $?; fi; exec_line=$(printf %s\\\\n \"$exec_line\" | sed -E " + "'\\''" + "s/ ?%[fFuUdDnNickvm]//g" + "'\\''" + "); eval \"set -- $exec_line\"; \"$@\"'");
     }
 
     function openFile(filePath) {
