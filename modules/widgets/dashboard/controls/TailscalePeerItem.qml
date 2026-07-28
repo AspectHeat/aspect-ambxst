@@ -234,22 +234,13 @@ Item {
                             font.family: Config.theme.font
                             font.pixelSize: Styling.fontSize(-2)
                             color: Colors.overSurfaceVariant
-                        }
 
-                        ShaderEffectSource {
-                            id: ipTexture
-                            anchors.fill: ipText
-                            sourceItem: ipText
-                            hideSource: true
-                            live: true
-                        }
-
-                        MultiEffect {
-                            anchors.fill: parent
-                            source: ipTexture
-                            blurEnabled: !root.ipv4Revealed
-                            blur: root.ipv4Revealed ? 0 : 0.85
-                            blurMax: 16
+                            layer.enabled: !root.ipv4Revealed
+                            layer.effect: MultiEffect {
+                                blurEnabled: true
+                                blur: 1
+                                blurMax: 24
+                            }
                         }
 
                         MouseArea {
