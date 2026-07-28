@@ -16,6 +16,7 @@ RowLayout {
     property color statusColor: Styling.srItem("overprimary")
     property bool showToggle: false
     property bool toggleChecked: false
+    property bool toggleEnabled: true
 
     // Action buttons configuration
     // Each action: { icon: "...", tooltip: "...", onClicked: function, enabled: true, loading: false }
@@ -116,7 +117,8 @@ RowLayout {
         id: toggleSwitch
         visible: root.showToggle
         checked: root.toggleChecked
-        onCheckedChanged: root.toggleChanged(checked)
+        enabled: root.toggleEnabled
+        onToggled: root.toggleChanged(checked)
 
         indicator: Rectangle {
             implicitWidth: 40

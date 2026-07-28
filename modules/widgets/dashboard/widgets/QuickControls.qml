@@ -14,7 +14,7 @@ StyledRect {
     implicitHeight: columnLayout.implicitHeight + 8
     radius: Styling.radius(4)
     
-    property int expandedPanel: -1 // -1: none, 0: wifi, 1: bluetooth
+    property int expandedPanel: -1 // -1: none, 0: wifi, 1: bluetooth, 2: tailscale
     
     onVisibleChanged: {
         if (!visible) {
@@ -124,6 +124,22 @@ StyledRect {
                     tooltipText: GameModeService.toggled ? "Game Mode: On" : "Game Mode: Off"
                     onClicked: GameModeService.toggle()
                 }
+
+                ControlButton {
+                    Layout.preferredWidth: 48
+                    Layout.preferredHeight: 48
+                    visible: TailscaleService.available && Config.system.tailscale.enabled && Config.system.tailscale.showInQuickControls
+                    iconName: TailscaleService.connected ? Icons.shieldCheck : Icons.shield
+                    isActive: TailscaleService.connected || root.expandedPanel === 2
+                    tooltipText: TailscaleService.connected
+                        ? (TailscaleService.exitNodeName !== ""
+                            ? "Tailscale: via " + TailscaleService.exitNodeName
+                            : "Tailscale: Connected")
+                        : "Tailscale: Off"
+                    onClicked: TailscaleService.toggle()
+                    onRightClicked: root.togglePanel(2)
+                    onLongPressed: root.togglePanel(2)
+                }
             }
         }
         
@@ -164,7 +180,7 @@ StyledRect {
                         asynchronous: true
                         
                         opacity: root.expandedPanel === 0 ? 1 : 0
-                        x: root.expandedPanel === 0 ? 0 : (root.expandedPanel === 1 ? -width : width)
+                        x: (0 - root.expandedPanel) * width
                         
                         onLoaded: {
                             if (item) {
@@ -184,8 +200,28 @@ StyledRect {
                         asynchronous: true
                         
                         opacity: root.expandedPanel === 1 ? 1 : 0
-                        x: root.expandedPanel === 1 ? 0 : (root.expandedPanel === 0 ? width : -width)
+                        x: (1 - root.expandedPanel) * width
                         
+                        onLoaded: {
+                            if (item) {
+                                item.maxContentWidth = width;
+                            }
+                        }
+
+                        Behavior on opacity { enabled: Config.animDuration > 0; NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart } }
+                        Behavior on x { enabled: Config.animDuration > 0; NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart } }
+                    }
+
+                    Loader {
+                        id: tailscaleLoader
+                        anchors.fill: parent
+                        active: root.expandedPanel === 2
+                        source: "../controls/TailscalePanel.qml"
+                        asynchronous: true
+
+                        opacity: root.expandedPanel === 2 ? 1 : 0
+                        x: (2 - root.expandedPanel) * width
+
                         onLoaded: {
                             if (item) {
                                 item.maxContentWidth = width;

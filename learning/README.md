@@ -14,6 +14,8 @@ to forget.
   shell before restoring the fallback, or two shells fight the compositor
 - [[hyprland-uwsm-autologin]] — SDDM autologin must name the UWSM session
   desktop file, not the plain `hyprland` one
+- [[tailscale-operator-prerequisite]] — Tailscale mutations require a
+  one-time per-host operator assignment for unprivileged shell controls
 
 Conventions:
 

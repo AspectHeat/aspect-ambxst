@@ -1,6 +1,8 @@
 // this file is used to index all searchable items in the settings tab
 
 import QtQuick
+import qs.config
+import qs.modules.services
 import qs.modules.theme
 
 QtObject {
@@ -14,6 +16,12 @@ QtObject {
     // 0: Network, 1: Bluetooth, 2: Mixer, 3: Effects, 4: Theme, 5: Binds, 6: System, 7: Compositor, 8: Ambxst
     
     property var dynamicItems: []
+    readonly property var tailscaleItems: TailscaleService.available && Config.system.tailscale.enabled ? [
+        { label: "Tailscale", keywords: "vpn mesh tailnet wireguard remote", section: 10, subSection: "", subLabel: "", icon: Icons.vpn, isIcon: true },
+        { label: "Tailscale IP", keywords: "copy address ip magicdns dns", section: 10, subSection: "", subLabel: "Tailscale", icon: Icons.copy, isIcon: true },
+        { label: "Exit Node", keywords: "route traffic vpn egress exit", section: 10, subSection: "", subLabel: "Tailscale", icon: Icons.globe, isIcon: true },
+        { label: "Tailnet Profile", keywords: "account switch login profile", section: 10, subSection: "", subLabel: "Tailscale", icon: Icons.user, isIcon: true }
+    ] : []
 
     readonly property var staticItems: [
         // --- Network ---
@@ -210,7 +218,7 @@ QtObject {
         { label: "Shell System", keywords: "config settings ambxst", section: 8, subSection: "system", subLabel: "Ambxst > System", icon: Icons.circuitry, isIcon: true }
     ]
 
-    property var items: staticItems.concat(dynamicItems)
+    property var items: staticItems.concat(dynamicItems).concat(tailscaleItems)
 
     function addDynamicItems(newItems) {
         // Simple deduplication based on label + section

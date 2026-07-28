@@ -16,7 +16,7 @@ Rectangle {
     color: "transparent"
     implicitWidth: 400
     implicitHeight: 300
-    // 0: Network, 1: Bluetooth, 2: Mixer, 3: AI, 4: Effects, 5: Theme, 6: Binds, 7: System, 8: Compositor, 9: Shell
+    // 0: Network, 1: Bluetooth, 2: Mixer, 3: AI, 4: Effects, 5: Theme, 6: Binds, 7: System, 8: Compositor, 9: Shell, 10: Tailscale
 
     property int currentSection: 0
     property int selectedIndex: GlobalStates.settingsCurrentTab
@@ -260,7 +260,12 @@ Rectangle {
             section: 9,
             isIcon: false
         }
-    ]
+    ].concat(TailscaleService.available && Config.system.tailscale.enabled ? [{
+        icon: Icons.vpn,
+        label: "Tailscale",
+        section: 10,
+        isIcon: true
+    }] : [])
 
     // Filtered sections based on search query
     readonly property var filteredSections: {
@@ -595,6 +600,10 @@ Rectangle {
                 {
                     component: "ShellPanel.qml",
                     section: 9
+                },
+                {
+                    component: "TailscalePanel.qml",
+                    section: 10
                 }
             ]
 

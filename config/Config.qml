@@ -1007,6 +1007,13 @@ Singleton {
         adapter: JsonAdapter {
             property list<string> disks: ["/"]
             property bool updateServiceEnabled: true
+            property JsonObject tailscale: JsonObject {
+                property bool enabled: true
+                property bool showInQuickControls: true
+                property int pollInterval: 30
+                property string copyFormat: "ipv4"
+                property string adminConsoleUrl: "https://login.tailscale.com/admin/machines"
+            }
             property JsonObject idle: JsonObject {
                 property JsonObject general: JsonObject {
                     property string lock_cmd: "ambxst lock"

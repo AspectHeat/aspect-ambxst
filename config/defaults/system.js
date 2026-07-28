@@ -3,6 +3,13 @@
 var data = {
     "disks": ["/"],
     "updateServiceEnabled": true,
+    "tailscale": {
+        "enabled": true,
+        "showInQuickControls": true,
+        "pollInterval": 30,
+        "copyFormat": "ipv4",
+        "adminConsoleUrl": "https://login.tailscale.com/admin/machines"
+    },
     "idle": {
         "general": {
             "lock_cmd": "ambxst lock",
