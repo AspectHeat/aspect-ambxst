@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Effects
 import QtQuick.Layouts
 import qs.config
 import qs.modules.components
@@ -55,12 +56,19 @@ Item {
                     variant: TailscaleService.connected ? "primary" : "internalbg"
                     radius: Styling.radius(2)
 
-                    Text {
+                    Image {
                         anchors.centerIn: parent
-                        text: TailscaleService.connected ? Icons.shieldCheck : Icons.vpn
-                        font.family: Icons.font
-                        font.pixelSize: Styling.fontSize(3)
-                        color: TailscaleService.connected ? Styling.srItem("primary") : Colors.overBackground
+                        width: 24
+                        height: 24
+                        source: Qt.resolvedUrl("../../../../assets/tailscale/tailscale-icon-white.svg")
+                        sourceSize: Qt.size(48, 48)
+                        smooth: true
+
+                        layer.enabled: true
+                        layer.effect: MultiEffect {
+                            colorization: 1
+                            colorizationColor: TailscaleService.connected ? Styling.srItem("primary") : Colors.overBackground
+                        }
                     }
                 }
 

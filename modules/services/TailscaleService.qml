@@ -111,12 +111,12 @@ Singleton {
                 return a.online ? -1 : 1;
             if (a.exitNodeOption !== b.exitNodeOption)
                 return a.exitNodeOption ? -1 : 1;
-            return a.hostName.localeCompare(b.hostName);
+            return a.displayName.localeCompare(b.displayName);
         });
         exitNodeOptions = friendlyPeers.filter(peer => peer.exitNodeOption);
 
         const activePeer = peers.find(peer => peer.nodeId === exitNodeId || peer.isExitNode);
-        exitNodeName = activePeer ? activePeer.hostName : "";
+        exitNodeName = activePeer ? activePeer.displayName : "";
     }
 
     function syncPeers(peerData): void {

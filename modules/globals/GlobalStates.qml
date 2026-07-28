@@ -573,4 +573,5 @@ Singleton {
     }
 
     property int settingsCurrentTab: 0
+    property string settingsRequestedSubSection: ""
 }

@@ -18,5 +18,8 @@ QtObject {
 
     readonly property string ipv4: addresses.find(address => !address.includes(":")) ?? ""
     readonly property string ipv6: addresses.find(address => address.includes(":")) ?? ""
+    readonly property string magicDnsName: String(dnsName).replace(/\.$/, "").split(".")[0]
+    readonly property bool genericHostName: ["", "localhost", "iphone", "android", "unknown"].includes(hostName.trim().toLowerCase())
+    readonly property string displayName: genericHostName && magicDnsName !== "" ? magicDnsName : (hostName || magicDnsName || "Unknown device")
     readonly property bool isSelf: false
 }

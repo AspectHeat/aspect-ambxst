@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import QtQuick.Effects
 import QtQuick.Layouts
 import qs.config
 import qs.modules.components
@@ -30,12 +31,19 @@ MouseArea {
             Qt.callLater(() => tailscalePanel.positionAtBeginning());
     }
 
-    Text {
+    Image {
         anchors.centerIn: parent
-        text: TailscaleService.connected ? Icons.shieldCheck : Icons.vpn
-        font.family: Icons.font
-        font.pixelSize: 18
-        color: Styling.srItem("overprimary")
+        width: 18
+        height: 18
+        source: Qt.resolvedUrl("../../../assets/tailscale/tailscale-icon-white.svg")
+        sourceSize: Qt.size(36, 36)
+        smooth: true
+
+        layer.enabled: true
+        layer.effect: MultiEffect {
+            colorization: 1
+            colorizationColor: Styling.srItem("overprimary")
+        }
     }
 
     HoverHandler {
@@ -57,7 +65,7 @@ MouseArea {
         anchorItem: root
         bar: root.bar
         visualMargin: 16
-        contentWidth: 320
+        contentWidth: 380
         contentHeight: 340
 
         TailscalePanel {
@@ -65,6 +73,7 @@ MouseArea {
             anchors.fill: parent
             maxContentWidth: width
             compactMode: true
+            onSettingsRequested: tailscalePopup.close()
         }
     }
 }

@@ -51,6 +51,10 @@ Rectangle {
                 root.selectedIndex = GlobalStates.settingsCurrentTab;
             }
         }
+
+        function onSettingsRequestedSubSectionChanged() {
+            root.consumeRequestedSubSection();
+        }
     }
 
     // Focus the search input (called from parent Dashboard)
@@ -121,6 +125,18 @@ Rectangle {
     // Store pending subsection to apply when panel loads
     property string pendingSubSection: ""
 
+    function consumeRequestedSubSection() {
+        const subSection = GlobalStates.settingsRequestedSubSection;
+        if (!subSection)
+            return;
+
+        if (filteredSections && selectedIndex >= 0 && selectedIndex < filteredSections.length)
+            root.currentSection = filteredSections[selectedIndex].section;
+
+        root.dispatchSubSection(root.currentSection, subSection);
+        GlobalStates.settingsRequestedSubSection = "";
+    }
+
     function dispatchSubSection(sectionId, subSectionId) {
         if (!subSectionId || subSectionId === "")
             return;
@@ -134,6 +150,8 @@ Rectangle {
             }
         }
     }
+
+    Component.onCompleted: Qt.callLater(() => root.consumeRequestedSubSection())
 
     // Scroll sidebar to ensure visible selection
     function scrollSidebarToSelection() {

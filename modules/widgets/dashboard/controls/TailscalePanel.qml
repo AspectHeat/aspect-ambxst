@@ -5,6 +5,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import qs.config
 import qs.modules.components
+import qs.modules.globals
 import qs.modules.services
 import qs.modules.theme
 
@@ -15,6 +16,7 @@ Item {
     property bool compactMode: false
     property bool showBackButton: false
     signal backRequested
+    signal settingsRequested
 
     readonly property int contentWidth: Math.min(width, maxContentWidth)
     readonly property real sideMargin: (width - contentWidth) / 2
@@ -124,6 +126,14 @@ Item {
         peerList.positionViewAtBeginning();
     }
 
+    function openSettings(): void {
+        GlobalStates.settingsCurrentTab = 1;
+        GlobalStates.settingsRequestedSubSection = "tailscale";
+        if (!GlobalStates.settingsWindowVisible)
+            GlobalShortcuts.toggleSettings();
+        root.settingsRequested();
+    }
+
     Component.onCompleted: {
         initialRefreshTimer.start();
         Qt.callLater(() => root.positionAtBeginning());
@@ -182,6 +192,20 @@ Item {
                             root.backRequested();
                         }
                     }] : []).concat(root.compactMode ? [
+                        {
+                            icon: Icons.gear,
+                            tooltip: "Open Tailscale settings",
+                            onClicked: function () {
+                                root.openSettings();
+                            }
+                        },
+                        {
+                            icon: Icons.popOpen,
+                            tooltip: "Open Tailscale admin console",
+                            onClicked: function () {
+                                TailscaleService.openAdminConsole();
+                            }
+                        },
                         {
                             icon: Icons.sync,
                             tooltip: "Refresh Tailscale",
@@ -375,7 +399,7 @@ Item {
                                     TailscaleService.clearExitNode();
                                 }
                             }].concat(TailscaleService.exitNodeOptions.map(peer => ({
-                                text: peer.hostName,
+                                text: peer.displayName,
                                 icon: TailscaleService.peerIcon(peer),
                                 onTriggered: function () {
                                     TailscaleService.setExitNode(peer.nodeId);

@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Effects
 import QtQuick.Layouts
 import qs.config
 import qs.modules.components
@@ -15,6 +16,7 @@ Item {
 
     property bool expanded: false
     property bool compactMode: false
+    property bool ipv4Revealed: false
     readonly property bool activeExitNode: (peer?.isExitNode ?? false) || (peer?.nodeId ?? "") === TailscaleService.exitNodeId
     readonly property string primaryCopyValue: {
         const format = Config.system.tailscale.copyFormat;
@@ -40,6 +42,8 @@ Item {
     ].filter(row => row.value !== "")
 
     implicitHeight: contentColumn.implicitHeight + 16
+
+    onPeerChanged: ipv4Revealed = false
 
     Behavior on implicitHeight {
         enabled: Config.animDuration > 0
@@ -182,7 +186,7 @@ Item {
 
                 Text {
                     Layout.fillWidth: true
-                    text: root.peer?.hostName ?? "Unknown device"
+                    text: root.peer?.displayName ?? "Unknown device"
                     font.family: Config.theme.font
                     font.pixelSize: Config.theme.fontSize
                     font.weight: Font.Medium
@@ -190,25 +194,80 @@ Item {
                     elide: Text.ElideRight
                 }
 
-                Text {
+                RowLayout {
                     Layout.fillWidth: true
                     visible: (root.peer?.online ?? false) || root.expanded
-                    text: {
-                        if (root.activeExitNode)
-                            return "Exit node — in use";
-                        if (root.peer?.online)
-                            return "Online";
-                        return root.relativeLastSeen();
-                    }
-                    font.family: Config.theme.font
-                    font.pixelSize: Styling.fontSize(-2)
-                    color: Colors.overSurfaceVariant
-                    elide: Text.ElideRight
+                    spacing: 5
 
-                    Behavior on opacity {
-                        enabled: Config.animDuration > 0
-                        NumberAnimation {
-                            duration: Config.animDuration / 2
+                    Text {
+                        text: {
+                            if (root.activeExitNode)
+                                return "Exit node — in use";
+                            if (root.peer?.online)
+                                return "Online";
+                            return root.relativeLastSeen();
+                        }
+                        font.family: Config.theme.font
+                        font.pixelSize: Styling.fontSize(-2)
+                        color: Colors.overSurfaceVariant
+                        elide: Text.ElideRight
+                    }
+
+                    Text {
+                        visible: (root.peer?.ipv4 ?? "") !== ""
+                        text: "•"
+                        font.family: Config.theme.font
+                        font.pixelSize: Styling.fontSize(-2)
+                        color: Colors.overSurfaceVariant
+                    }
+
+                    Item {
+                        id: concealedIp
+
+                        visible: (root.peer?.ipv4 ?? "") !== ""
+                        Layout.preferredWidth: Math.min(ipText.implicitWidth, 88)
+                        Layout.preferredHeight: ipText.implicitHeight
+
+                        Text {
+                            id: ipText
+                            text: root.peer?.ipv4 ?? ""
+                            font.family: Config.theme.font
+                            font.pixelSize: Styling.fontSize(-2)
+                            color: Colors.overSurfaceVariant
+                        }
+
+                        ShaderEffectSource {
+                            id: ipTexture
+                            anchors.fill: ipText
+                            sourceItem: ipText
+                            hideSource: true
+                            live: true
+                        }
+
+                        MultiEffect {
+                            anchors.fill: parent
+                            source: ipTexture
+                            blurEnabled: !root.ipv4Revealed
+                            blur: root.ipv4Revealed ? 0 : 0.85
+                            blurMax: 16
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: mouse => {
+                                root.ipv4Revealed = !root.ipv4Revealed;
+                                mouse.accepted = true;
+                            }
+                        }
+
+                        StyledToolTip {
+                            show: ipRevealHover.hovered
+                            tooltipText: root.ipv4Revealed ? "Hide IPv4 address" : "Reveal IPv4 address"
+                        }
+
+                        HoverHandler {
+                            id: ipRevealHover
                         }
                     }
                 }
