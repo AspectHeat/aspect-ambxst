@@ -127,7 +127,6 @@ Item {
     }
 
     function openSettings(): void {
-        GlobalStates.settingsCurrentTab = 1;
         GlobalStates.settingsRequestedSubSection = "tailscale";
         if (!GlobalStates.settingsWindowVisible)
             GlobalShortcuts.toggleSettings();

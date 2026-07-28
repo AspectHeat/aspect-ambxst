@@ -22,13 +22,48 @@ Rectangle {
     property int selectedIndex: GlobalStates.settingsCurrentTab
     property string searchQuery: ""
 
-    onFilteredSectionsChanged: selectedIndex = 0
+    onFilteredSectionsChanged: {
+        if (GlobalStates.settingsRequestedSubSection !== "")
+            Qt.callLater(() => root.consumeRequestedSubSection());
+        else
+            selectedIndex = 0;
+    }
 
     // Timer to restore focus after panel transitions
     Timer {
         id: focusRestoreTimer
         interval: 50
         onTriggered: searchInput.focusInput()
+    }
+
+    Timer {
+        id: settingsRequestTimer
+
+        property int attempts: 0
+
+        interval: 100
+        repeat: true
+        onTriggered: {
+            const subSection = GlobalStates.settingsRequestedSubSection;
+            if (subSection === "") {
+                stop();
+                return;
+            }
+
+            root.consumeRequestedSubSection();
+            attempts++;
+
+            const targetSection = root.sectionForRequestedSubSection(subSection);
+            const applied = root.currentSection === targetSection
+                && panelLoader.status === Loader.Ready
+                && panelLoader.item
+                && panelLoader.item.currentSection === subSection;
+
+            if (applied || attempts >= 20) {
+                GlobalStates.settingsRequestedSubSection = "";
+                stop();
+            }
+        }
     }
 
     onSelectedIndexChanged: {
@@ -53,6 +88,11 @@ Rectangle {
         }
 
         function onSettingsRequestedSubSectionChanged() {
+            if (GlobalStates.settingsRequestedSubSection === "")
+                return;
+
+            settingsRequestTimer.attempts = 0;
+            settingsRequestTimer.restart();
             root.consumeRequestedSubSection();
         }
     }
@@ -125,16 +165,26 @@ Rectangle {
     // Store pending subsection to apply when panel loads
     property string pendingSubSection: ""
 
+    function sectionForRequestedSubSection(subSection) {
+        if (subSection === "tailscale")
+            return 10;
+        return root.currentSection;
+    }
+
     function consumeRequestedSubSection() {
         const subSection = GlobalStates.settingsRequestedSubSection;
         if (!subSection)
             return;
 
-        if (filteredSections && selectedIndex >= 0 && selectedIndex < filteredSections.length)
-            root.currentSection = filteredSections[selectedIndex].section;
+        if (root.searchQuery !== "")
+            searchInput.clear();
 
-        root.dispatchSubSection(root.currentSection, subSection);
-        GlobalStates.settingsRequestedSubSection = "";
+        const targetSection = root.sectionForRequestedSubSection(subSection);
+        const targetIndex = root.getFilteredIndex(targetSection);
+        if (targetIndex >= 0)
+            root.selectedIndex = targetIndex;
+        root.currentSection = targetSection;
+        root.dispatchSubSection(targetSection, subSection);
     }
 
     function dispatchSubSection(sectionId, subSectionId) {
@@ -151,7 +201,13 @@ Rectangle {
         }
     }
 
-    Component.onCompleted: Qt.callLater(() => root.consumeRequestedSubSection())
+    Component.onCompleted: Qt.callLater(() => {
+        if (GlobalStates.settingsRequestedSubSection !== "") {
+            settingsRequestTimer.attempts = 0;
+            settingsRequestTimer.start();
+            root.consumeRequestedSubSection();
+        }
+    })
 
     // Scroll sidebar to ensure visible selection
     function scrollSidebarToSelection() {
