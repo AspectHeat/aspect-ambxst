@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Effects
 import QtQuick.Layouts
 import qs.config
 import qs.modules.components
@@ -15,6 +16,7 @@ Item {
     property int maxContentWidth: 480
     property bool compactMode: false
     property bool showBackButton: false
+    property bool resetScrollAfterRefresh: false
     signal backRequested
     signal settingsRequested
 
@@ -124,6 +126,7 @@ Item {
 
     function positionAtBeginning(): void {
         peerList.positionViewAtBeginning();
+        peerList.contentY = peerList.originY;
     }
 
     function openSettings(): void {
@@ -143,8 +146,20 @@ Item {
         interval: 300
         repeat: false
         onTriggered: {
+            root.resetScrollAfterRefresh = true;
             TailscaleService.refresh();
             TailscaleService.refreshProfiles();
+        }
+    }
+
+    Connections {
+        target: TailscaleService
+
+        function onIsUpdatingChanged() {
+            if (root.resetScrollAfterRefresh && !TailscaleService.isUpdating) {
+                root.resetScrollAfterRefresh = false;
+                Qt.callLater(() => root.positionAtBeginning());
+            }
         }
     }
 
@@ -298,6 +313,7 @@ Item {
                                 id: selfAddressRow
 
                                 required property var modelData
+                                property bool valueRevealed: modelData.label !== "IPv4"
 
                                 Layout.fillWidth: true
                                 spacing: 8
@@ -310,13 +326,44 @@ Item {
                                     color: Colors.overSurfaceVariant
                                 }
 
-                                Text {
+                                Item {
                                     Layout.fillWidth: true
-                                    text: selfAddressRow.modelData.value
-                                    font.family: Config.theme.font
-                                    font.pixelSize: Styling.fontSize(-1)
-                                    color: Colors.overBackground
-                                    elide: Text.ElideMiddle
+                                    Layout.preferredHeight: selfAddressValue.implicitHeight
+
+                                    Text {
+                                        id: selfAddressValue
+
+                                        anchors.left: parent.left
+                                        anchors.right: parent.right
+                                        text: selfAddressRow.modelData.value
+                                        font.family: Config.theme.font
+                                        font.pixelSize: Styling.fontSize(-1)
+                                        color: Colors.overBackground
+                                        elide: Text.ElideMiddle
+
+                                        layer.enabled: !selfAddressRow.valueRevealed
+                                        layer.effect: MultiEffect {
+                                            blurEnabled: true
+                                            blur: 1
+                                            blurMax: 24
+                                        }
+                                    }
+
+                                    MouseArea {
+                                        id: selfAddressMouseArea
+
+                                        width: Math.min(selfAddressValue.implicitWidth, parent.width)
+                                        height: parent.height
+                                        enabled: selfAddressRow.modelData.label === "IPv4"
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: selfAddressRow.valueRevealed = !selfAddressRow.valueRevealed
+                                    }
+
+                                    StyledToolTip {
+                                        show: selfAddressMouseArea.containsMouse
+                                        tooltipText: selfAddressRow.valueRevealed ? "Hide IPv4 address" : "Reveal IPv4 address"
+                                    }
                                 }
 
                                 CopyButton {

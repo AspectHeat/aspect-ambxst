@@ -65,7 +65,7 @@ MouseArea {
         anchorItem: root
         bar: root.bar
         visualMargin: 16
-        contentWidth: 380
+        contentWidth: 320
         contentHeight: 340
 
         TailscalePanel {
