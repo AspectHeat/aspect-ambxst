@@ -17,6 +17,7 @@ Item {
     property bool expanded: false
     property bool compactMode: false
     property bool ipv4Revealed: false
+    property bool ipv6Revealed: false
     readonly property bool activeExitNode: (peer?.isExitNode ?? false) || (peer?.nodeId ?? "") === TailscaleService.exitNodeId
     readonly property string primaryCopyValue: {
         const format = Config.system.tailscale.copyFormat;
@@ -43,7 +44,10 @@ Item {
 
     implicitHeight: contentColumn.implicitHeight + 16
 
-    onPeerChanged: ipv4Revealed = false
+    onPeerChanged: {
+        ipv4Revealed = false;
+        ipv6Revealed = false;
+    }
 
     Behavior on implicitHeight {
         enabled: Config.animDuration > 0
@@ -239,7 +243,7 @@ Item {
                             layer.effect: MultiEffect {
                                 blurEnabled: true
                                 blur: 1
-                                blurMax: 24
+                                blurMax: 28
                             }
                         }
 
@@ -307,6 +311,8 @@ Item {
                     id: addressRow
 
                     required property var modelData
+                    readonly property bool sensitive: ["IPv4", "IPv6"].includes(modelData.label)
+                    readonly property bool valueRevealed: modelData.label === "IPv4" ? root.ipv4Revealed : (modelData.label === "IPv6" ? root.ipv6Revealed : true)
 
                     Layout.fillWidth: true
                     spacing: 8
@@ -319,13 +325,49 @@ Item {
                         color: Colors.overSurfaceVariant
                     }
 
-                    Text {
+                    Item {
                         Layout.fillWidth: true
-                        text: addressRow.modelData.value
-                        font.family: Config.theme.font
-                        font.pixelSize: Styling.fontSize(-1)
-                        color: Colors.overBackground
-                        elide: Text.ElideMiddle
+                        Layout.preferredHeight: addressValue.implicitHeight
+
+                        Text {
+                            id: addressValue
+
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            text: addressRow.modelData.value
+                            font.family: Config.theme.font
+                            font.pixelSize: Styling.fontSize(-1)
+                            color: Colors.overBackground
+                            elide: Text.ElideMiddle
+
+                            layer.enabled: addressRow.sensitive && !addressRow.valueRevealed
+                            layer.effect: MultiEffect {
+                                blurEnabled: true
+                                blur: 1
+                                blurMax: 28
+                            }
+                        }
+
+                        MouseArea {
+                            id: addressMouseArea
+
+                            width: Math.min(addressValue.implicitWidth, parent.width)
+                            height: parent.height
+                            enabled: addressRow.sensitive
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                if (addressRow.modelData.label === "IPv4")
+                                    root.ipv4Revealed = !root.ipv4Revealed;
+                                else if (addressRow.modelData.label === "IPv6")
+                                    root.ipv6Revealed = !root.ipv6Revealed;
+                            }
+                        }
+
+                        StyledToolTip {
+                            show: addressMouseArea.containsMouse
+                            tooltipText: (addressRow.valueRevealed ? "Hide " : "Reveal ") + addressRow.modelData.label + " address"
+                        }
                     }
 
                     CopyButton {

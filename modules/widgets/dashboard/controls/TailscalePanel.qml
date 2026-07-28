@@ -312,7 +312,8 @@ Item {
                                 id: selfAddressRow
 
                                 required property var modelData
-                                property bool valueRevealed: modelData.label !== "IPv4"
+                                readonly property bool sensitive: ["IPv4", "IPv6"].includes(modelData.label)
+                                property bool valueRevealed: !sensitive
 
                                 Layout.fillWidth: true
                                 spacing: 8
@@ -340,11 +341,11 @@ Item {
                                         color: Colors.overBackground
                                         elide: Text.ElideMiddle
 
-                                        layer.enabled: !selfAddressRow.valueRevealed
+                                        layer.enabled: selfAddressRow.sensitive && !selfAddressRow.valueRevealed
                                         layer.effect: MultiEffect {
                                             blurEnabled: true
                                             blur: 1
-                                            blurMax: 24
+                                            blurMax: 28
                                         }
                                     }
 
@@ -353,7 +354,7 @@ Item {
 
                                         width: Math.min(selfAddressValue.implicitWidth, parent.width)
                                         height: parent.height
-                                        enabled: selfAddressRow.modelData.label === "IPv4"
+                                        enabled: selfAddressRow.sensitive
                                         hoverEnabled: true
                                         cursorShape: Qt.PointingHandCursor
                                         onClicked: selfAddressRow.valueRevealed = !selfAddressRow.valueRevealed
@@ -361,7 +362,7 @@ Item {
 
                                     StyledToolTip {
                                         show: selfAddressMouseArea.containsMouse
-                                        tooltipText: selfAddressRow.valueRevealed ? "Hide IPv4 address" : "Reveal IPv4 address"
+                                        tooltipText: (selfAddressRow.valueRevealed ? "Hide " : "Reveal ") + selfAddressRow.modelData.label + " address"
                                     }
                                 }
 
