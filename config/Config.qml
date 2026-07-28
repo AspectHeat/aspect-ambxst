@@ -1009,7 +1009,7 @@ Singleton {
             property bool updateServiceEnabled: true
             property JsonObject tailscale: JsonObject {
                 property bool enabled: true
-                property bool showInQuickControls: true
+                property bool showInBar: true
                 property int pollInterval: 30
                 property string copyFormat: "ipv4"
                 property string adminConsoleUrl: "https://login.tailscale.com/admin/machines"

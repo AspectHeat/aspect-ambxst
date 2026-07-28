@@ -1,10 +1,12 @@
 import QtQuick
 import QtQuick.Layouts
 import Quickshell.Services.SystemTray
+import qs.config
 import qs.modules.theme
 import qs.modules.components
+import qs.modules.services
 
-    StyledRect {
+StyledRect {
     variant: "bg"
     id: root
 
@@ -26,7 +28,8 @@ import qs.modules.components
     property bool vertical: bar.orientation === "vertical"
 
     // Hide completely when empty - check both orientations
-    readonly property bool hasItems: rowRepeater.count > 0 || columnRepeater.count > 0
+    readonly property bool tailscaleVisible: TailscaleService.available && Config.system.tailscale.enabled && Config.system.tailscale.showInBar
+    readonly property bool hasItems: rowRepeater.count > 0 || columnRepeater.count > 0 || tailscaleVisible
 
     // Ajustes de tamaño dinámicos según orientación
     height: vertical ? implicitHeight : parent.height
@@ -51,6 +54,11 @@ import qs.modules.components
                 item: modelData
             }
         }
+
+        TailscaleTrayItem {
+            visible: root.tailscaleVisible
+            bar: root.bar
+        }
     }
 
     ColumnLayout {
@@ -69,6 +77,11 @@ import qs.modules.components
                 bar: root.bar
                 item: modelData
             }
+        }
+
+        TailscaleTrayItem {
+            visible: root.tailscaleVisible
+            bar: root.bar
         }
     }
 }

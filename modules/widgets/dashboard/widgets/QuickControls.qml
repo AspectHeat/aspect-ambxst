@@ -14,7 +14,7 @@ StyledRect {
     implicitHeight: columnLayout.implicitHeight + 8
     radius: Styling.radius(4)
     
-    property int expandedPanel: -1 // -1: none, 0: wifi, 1: bluetooth, 2: tailscale
+    property int expandedPanel: -1 // -1: none, 0: wifi, 1: bluetooth
     readonly property bool capturesScroll: root.expandedPanel !== -1 && panelHover.hovered
     
     onVisibleChanged: {
@@ -97,22 +97,6 @@ StyledRect {
                     onClicked: BluetoothService.toggle()
                     onRightClicked: root.togglePanel(1)
                     onLongPressed: root.togglePanel(1)
-                }
-
-                ControlButton {
-                    Layout.preferredWidth: 48
-                    Layout.preferredHeight: 48
-                    visible: TailscaleService.available && Config.system.tailscale.enabled && Config.system.tailscale.showInQuickControls
-                    iconName: TailscaleService.connected ? Icons.shieldCheck : Icons.vpn
-                    isActive: TailscaleService.connected || root.expandedPanel === 2
-                    tooltipText: TailscaleService.connected
-                        ? (TailscaleService.exitNodeName !== ""
-                            ? "Tailscale: via " + TailscaleService.exitNodeName
-                            : "Tailscale: Connected")
-                        : "Tailscale: Off"
-                    onClicked: TailscaleService.toggle()
-                    onRightClicked: root.togglePanel(2)
-                    onLongPressed: root.togglePanel(2)
                 }
 
                 ControlButton {
@@ -218,26 +202,6 @@ StyledRect {
                         Behavior on x { enabled: Config.animDuration > 0; NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart } }
                     }
 
-                    Loader {
-                        id: tailscaleLoader
-                        anchors.fill: parent
-                        active: root.expandedPanel === 2
-                        source: "../controls/TailscalePanel.qml"
-                        asynchronous: true
-
-                        opacity: root.expandedPanel === 2 ? 1 : 0
-                        x: (2 - root.expandedPanel) * width
-
-                        onLoaded: {
-                            if (item) {
-                                item.maxContentWidth = width;
-                                item.compactMode = true;
-                            }
-                        }
-
-                        Behavior on opacity { enabled: Config.animDuration > 0; NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart } }
-                        Behavior on x { enabled: Config.animDuration > 0; NumberAnimation { duration: Config.animDuration; easing.type: Easing.OutQuart } }
-                    }
                 }
             }
         }

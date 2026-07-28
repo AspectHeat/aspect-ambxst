@@ -24,7 +24,6 @@ Item {
         PanelTitlebar {
             Layout.fillWidth: true
             title: "VPN"
-            statusText: TailscaleService.available ? "1 provider available" : "No providers available"
         }
 
         Text {

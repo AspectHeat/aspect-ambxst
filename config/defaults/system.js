@@ -5,7 +5,7 @@ var data = {
     "updateServiceEnabled": true,
     "tailscale": {
         "enabled": true,
-        "showInQuickControls": true,
+        "showInBar": true,
         "pollInterval": 30,
         "copyFormat": "ipv4",
         "adminConsoleUrl": "https://login.tailscale.com/admin/machines"
