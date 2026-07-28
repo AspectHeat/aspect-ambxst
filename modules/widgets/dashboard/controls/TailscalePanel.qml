@@ -120,7 +120,14 @@ Item {
         ], 280, 36, "tailscale-profile");
     }
 
-    Component.onCompleted: initialRefreshTimer.start()
+    function positionAtBeginning(): void {
+        peerList.positionViewAtBeginning();
+    }
+
+    Component.onCompleted: {
+        initialRefreshTimer.start();
+        Qt.callLater(() => root.positionAtBeginning());
+    }
 
     Timer {
         id: initialRefreshTimer

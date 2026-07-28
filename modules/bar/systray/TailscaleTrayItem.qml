@@ -23,7 +23,12 @@ MouseArea {
     implicitWidth: trayItemSize
     implicitHeight: trayItemSize
 
-    onClicked: tailscalePopup.toggle()
+    onClicked: {
+        const opening = !tailscalePopup.isOpen;
+        tailscalePopup.toggle();
+        if (opening)
+            Qt.callLater(() => tailscalePanel.positionAtBeginning());
+    }
 
     Text {
         anchors.centerIn: parent
@@ -56,6 +61,7 @@ MouseArea {
         contentHeight: 340
 
         TailscalePanel {
+            id: tailscalePanel
             anchors.fill: parent
             maxContentWidth: width
             compactMode: true

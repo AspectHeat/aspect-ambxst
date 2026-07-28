@@ -138,6 +138,7 @@ Item {
             if (item) {
                 item.maxContentWidth = root.maxContentWidth;
                 item.showBackButton = true;
+                Qt.callLater(() => item.positionAtBeginning());
             }
         }
     }
