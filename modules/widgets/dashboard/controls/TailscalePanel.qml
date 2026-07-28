@@ -12,9 +12,13 @@ Item {
     id: root
 
     property int maxContentWidth: 480
+    property bool compactMode: false
+    property bool showBackButton: false
+    signal backRequested
+
     readonly property int contentWidth: Math.min(width, maxContentWidth)
     readonly property real sideMargin: (width - contentWidth) / 2
-    readonly property var selfRows: [
+    readonly property var allSelfRows: [
         {
             label: "IPv4",
             value: TailscaleService.selfIPv4
@@ -28,6 +32,7 @@ Item {
             value: TailscaleService.selfDNSName
         }
     ].filter(row => row.value !== "")
+    readonly property var selfRows: compactMode ? allSelfRows.filter(row => row.label === "IPv4").slice(0, 1) : allSelfRows
     readonly property string statusText: {
         if (TailscaleService.lastError !== "")
             return TailscaleService.lastError;
@@ -40,7 +45,7 @@ Item {
         if (TailscaleService.exitNodeName !== "")
             return "Exit node: " + TailscaleService.exitNodeName;
         if (TailscaleService.connected)
-            return TailscaleService.onlineCount + " of " + TailscaleService.peerCount + " online";
+            return compactMode ? TailscaleService.onlineCount + "/" + TailscaleService.peerCount + " online" : TailscaleService.onlineCount + " of " + TailscaleService.peerCount + " online";
         return "Disconnected";
     }
 
@@ -134,8 +139,14 @@ Item {
         spacing: 4
         cacheBuffer: 1000
         reuseItems: true
+        boundsBehavior: Flickable.StopAtBounds
+        flickableDirection: Flickable.VerticalFlick
 
         model: TailscaleService.friendlyPeers
+
+        ScrollBar.vertical: ScrollBar {
+            policy: ScrollBar.AsNeeded
+        }
 
         header: Item {
             width: peerList.width
@@ -157,7 +168,23 @@ Item {
                     toggleChecked: TailscaleService.connected
                     toggleEnabled: !TailscaleService.operatorMissing && !TailscaleService.isUpdating
 
-                    actions: [
+                    actions: (root.showBackButton ? [{
+                        icon: Icons.caretLeft,
+                        tooltip: "Back to VPN providers",
+                        onClicked: function () {
+                            root.backRequested();
+                        }
+                    }] : []).concat(root.compactMode ? [
+                        {
+                            icon: Icons.sync,
+                            tooltip: "Refresh Tailscale",
+                            loading: TailscaleService.isUpdating,
+                            onClicked: function () {
+                                TailscaleService.refresh();
+                                TailscaleService.refreshProfiles();
+                            }
+                        }
+                    ] : [
                         {
                             icon: Icons.globe,
                             tooltip: "Stop using exit node",
@@ -182,7 +209,7 @@ Item {
                                 TailscaleService.refreshProfiles();
                             }
                         }
-                    ]
+                    ])
 
                     onToggleChanged: TailscaleService.toggle()
                 }
@@ -226,7 +253,7 @@ Item {
 
                         Text {
                             Layout.fillWidth: true
-                            visible: TailscaleService.selfDNSName !== ""
+                            visible: !root.compactMode && TailscaleService.selfDNSName !== ""
                             text: TailscaleService.shortDnsName(TailscaleService.selfDNSName)
                             font.family: Config.theme.font
                             font.pixelSize: Styling.fontSize(-2)
@@ -546,6 +573,7 @@ Item {
                 width: root.contentWidth
                 anchors.horizontalCenter: parent.horizontalCenter
                 peer: parent.modelData
+                compactMode: root.compactMode
             }
         }
 

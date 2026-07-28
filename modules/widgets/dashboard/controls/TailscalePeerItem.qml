@@ -14,6 +14,7 @@ Item {
     required property TailscalePeer peer
 
     property bool expanded: false
+    property bool compactMode: false
     readonly property bool activeExitNode: (peer?.isExitNode ?? false) || (peer?.nodeId ?? "") === TailscaleService.exitNodeId
     readonly property string primaryCopyValue: {
         const format = Config.system.tailscale.copyFormat;
@@ -130,7 +131,10 @@ Item {
         id: mouseArea
         anchors.fill: parent
         hoverEnabled: true
-        onClicked: root.expanded = !root.expanded
+        onClicked: {
+            if (!root.compactMode)
+                root.expanded = !root.expanded;
+        }
     }
 
     ColumnLayout {

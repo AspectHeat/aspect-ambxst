@@ -17,10 +17,11 @@ QtObject {
     
     property var dynamicItems: []
     readonly property var tailscaleItems: TailscaleService.available && Config.system.tailscale.enabled ? [
-        { label: "Tailscale", keywords: "vpn mesh tailnet wireguard remote", section: 10, subSection: "", subLabel: "", icon: Icons.vpn, isIcon: true },
-        { label: "Tailscale IP", keywords: "copy address ip magicdns dns", section: 10, subSection: "", subLabel: "Tailscale", icon: Icons.copy, isIcon: true },
-        { label: "Exit Node", keywords: "route traffic vpn egress exit", section: 10, subSection: "", subLabel: "Tailscale", icon: Icons.globe, isIcon: true },
-        { label: "Tailnet Profile", keywords: "account switch login profile", section: 10, subSection: "", subLabel: "Tailscale", icon: Icons.user, isIcon: true }
+        { label: "VPN", keywords: "virtual private network providers", section: 10, subSection: "", subLabel: "", icon: Icons.vpn, isIcon: true },
+        { label: "Tailscale", keywords: "vpn mesh tailnet wireguard remote", section: 10, subSection: "tailscale", subLabel: "VPN", icon: Icons.vpn, isIcon: true },
+        { label: "Tailscale IP", keywords: "copy address ip magicdns dns", section: 10, subSection: "tailscale", subLabel: "VPN > Tailscale", icon: Icons.copy, isIcon: true },
+        { label: "Exit Node", keywords: "route traffic vpn egress exit", section: 10, subSection: "tailscale", subLabel: "VPN > Tailscale", icon: Icons.globe, isIcon: true },
+        { label: "Tailnet Profile", keywords: "account switch login profile", section: 10, subSection: "tailscale", subLabel: "VPN > Tailscale", icon: Icons.user, isIcon: true }
     ] : []
 
     readonly property var staticItems: [

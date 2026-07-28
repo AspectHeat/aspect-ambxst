@@ -44,7 +44,7 @@ Rectangle {
                 contentWidth: width
                 contentHeight: columnLayout.implicitHeight
                 clip: true
-                interactive: !widgetsContainer.circularControlDragging
+                interactive: !widgetsContainer.circularControlDragging && !controlButtonsContainer.capturesScroll
 
                 ColumnLayout {
                     id: columnLayout

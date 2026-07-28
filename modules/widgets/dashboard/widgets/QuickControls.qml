@@ -15,6 +15,7 @@ StyledRect {
     radius: Styling.radius(4)
     
     property int expandedPanel: -1 // -1: none, 0: wifi, 1: bluetooth, 2: tailscale
+    readonly property bool capturesScroll: root.expandedPanel !== -1 && panelHover.hovered
     
     onVisibleChanged: {
         if (!visible) {
@@ -101,6 +102,22 @@ StyledRect {
                 ControlButton {
                     Layout.preferredWidth: 48
                     Layout.preferredHeight: 48
+                    visible: TailscaleService.available && Config.system.tailscale.enabled && Config.system.tailscale.showInQuickControls
+                    iconName: TailscaleService.connected ? Icons.shieldCheck : Icons.vpn
+                    isActive: TailscaleService.connected || root.expandedPanel === 2
+                    tooltipText: TailscaleService.connected
+                        ? (TailscaleService.exitNodeName !== ""
+                            ? "Tailscale: via " + TailscaleService.exitNodeName
+                            : "Tailscale: Connected")
+                        : "Tailscale: Off"
+                    onClicked: TailscaleService.toggle()
+                    onRightClicked: root.togglePanel(2)
+                    onLongPressed: root.togglePanel(2)
+                }
+
+                ControlButton {
+                    Layout.preferredWidth: 48
+                    Layout.preferredHeight: 48
                     iconName: Icons.nightLight
                     isActive: NightLightService.active
                     tooltipText: NightLightService.active ? "Night Light: On" : "Night Light: Off"
@@ -125,21 +142,6 @@ StyledRect {
                     onClicked: GameModeService.toggle()
                 }
 
-                ControlButton {
-                    Layout.preferredWidth: 48
-                    Layout.preferredHeight: 48
-                    visible: TailscaleService.available && Config.system.tailscale.enabled && Config.system.tailscale.showInQuickControls
-                    iconName: TailscaleService.connected ? Icons.shieldCheck : Icons.shield
-                    isActive: TailscaleService.connected || root.expandedPanel === 2
-                    tooltipText: TailscaleService.connected
-                        ? (TailscaleService.exitNodeName !== ""
-                            ? "Tailscale: via " + TailscaleService.exitNodeName
-                            : "Tailscale: Connected")
-                        : "Tailscale: Off"
-                    onClicked: TailscaleService.toggle()
-                    onRightClicked: root.togglePanel(2)
-                    onLongPressed: root.togglePanel(2)
-                }
             }
         }
         
@@ -149,6 +151,10 @@ StyledRect {
             Layout.preferredHeight: root.expandedPanel !== -1 ? root.width - 8 : 0 
             clip: true
             opacity: root.expandedPanel !== -1 ? 1 : 0
+
+            HoverHandler {
+                id: panelHover
+            }
             
             Behavior on Layout.preferredHeight {
                 enabled: Config.animDuration > 0
@@ -225,6 +231,7 @@ StyledRect {
                         onLoaded: {
                             if (item) {
                                 item.maxContentWidth = width;
+                                item.compactMode = true;
                             }
                         }
 

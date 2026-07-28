@@ -16,7 +16,7 @@ Rectangle {
     color: "transparent"
     implicitWidth: 400
     implicitHeight: 300
-    // 0: Network, 1: Bluetooth, 2: Mixer, 3: AI, 4: Effects, 5: Theme, 6: Binds, 7: System, 8: Compositor, 9: Shell, 10: Tailscale
+    // 0: Network, 1: Bluetooth, 2: Mixer, 3: AI, 4: Effects, 5: Theme, 6: Binds, 7: System, 8: Compositor, 9: Shell, 10: VPN
 
     property int currentSection: 0
     property int selectedIndex: GlobalStates.settingsCurrentTab
@@ -125,8 +125,8 @@ Rectangle {
         if (!subSectionId || subSectionId === "")
             return;
 
-        // Panels that support subsections: Theme(5), System(7), Compositor(8), Shell(9)
-        if ([5, 7, 8, 9].includes(sectionId)) {
+        // Panels that support subsections: Theme(5), System(7), Compositor(8), Shell(9), VPN(10)
+        if ([5, 7, 8, 9, 10].includes(sectionId)) {
             if (panelLoader.item && panelLoader.status === Loader.Ready) {
                 panelLoader.item.currentSection = subSectionId;
             } else {
@@ -205,7 +205,13 @@ Rectangle {
             label: "Network",
             section: 0,
             isIcon: true
-        },
+        }
+    ].concat(TailscaleService.available && Config.system.tailscale.enabled ? [{
+        icon: Icons.vpn,
+        label: "VPN",
+        section: 10,
+        isIcon: true
+    }] : []).concat([
         {
             icon: Icons.bluetooth,
             label: "Bluetooth",
@@ -260,12 +266,7 @@ Rectangle {
             section: 9,
             isIcon: false
         }
-    ].concat(TailscaleService.available && Config.system.tailscale.enabled ? [{
-        icon: Icons.vpn,
-        label: "Tailscale",
-        section: 10,
-        isIcon: true
-    }] : [])
+    ])
 
     // Filtered sections based on search query
     readonly property var filteredSections: {
@@ -602,7 +603,7 @@ Rectangle {
                     section: 9
                 },
                 {
-                    component: "TailscalePanel.qml",
+                    component: "VpnPanel.qml",
                     section: 10
                 }
             ]
