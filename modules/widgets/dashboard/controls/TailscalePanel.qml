@@ -125,8 +125,7 @@ Item {
     }
 
     function positionAtBeginning(): void {
-        peerList.positionViewAtBeginning();
-        peerList.contentY = peerList.originY;
+        peerList.contentY = peerList.headerItem ? peerList.headerItem.y : peerList.originY;
     }
 
     function openSettings(): void {
