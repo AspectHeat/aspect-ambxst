@@ -1,0 +1,1179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Implementation Plan — Battery Popup Graphics Mode (supergfxctl)</title>
+<style>
+  :root {
+    --bg: #0e0a0a;
+    --bg-elev: #1a1111;
+    --surface: #231919;
+    --surface-hi: #322827;
+    --surface-highest: #3d3231;
+    --common: #271d1d;
+    --text: #f1dedd;
+    --text-dim: rgba(241, 222, 221, 0.72);
+    --outline: #534342;
+    --primary: #ffb3ae;
+    --primary-ink: #3a1412;
+    --accent-green: #8fd4a0;
+    --accent-warn: #ffb77a;
+    --error: #ffb4ab;
+    --bar: #140c0c;
+    --radius: 14px;
+    --radius-sm: 10px;
+    --font: "Segoe UI", "IBM Plex Sans", "Helvetica Neue", sans-serif;
+    --mono: "IBM Plex Mono", "SF Mono", ui-monospace, monospace;
+    --shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: var(--font);
+    color: var(--text);
+    background:
+      radial-gradient(1200px 600px at 10% -10%, #3a1c1a 0%, transparent 55%),
+      radial-gradient(900px 500px at 100% 0%, #1f2a24 0%, transparent 50%),
+      var(--bg);
+    line-height: 1.55;
+  }
+
+  a { color: var(--primary); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .wrap {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 48px 24px 96px;
+  }
+
+  header.hero {
+    margin-bottom: 40px;
+    padding-bottom: 28px;
+    border-bottom: 1px solid var(--outline);
+  }
+  .eyebrow {
+    display: inline-block;
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 10px;
+  }
+  h1 {
+    font-size: clamp(1.8rem, 3vw, 2.4rem);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin: 0 0 12px;
+    line-height: 1.15;
+  }
+  .lede {
+    max-width: 62ch;
+    color: var(--text-dim);
+    font-size: 1.05rem;
+    margin: 0;
+  }
+  .meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 18px;
+  }
+  .chip {
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--outline);
+    color: var(--text-dim);
+    background: rgba(255,255,255,0.03);
+  }
+  .chip strong { color: var(--text); font-weight: 600; }
+
+  nav.toc {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 8px;
+    margin: 28px 0 8px;
+  }
+  nav.toc a {
+    display: block;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: var(--surface);
+    border: 1px solid transparent;
+    color: var(--text);
+    font-size: 0.92rem;
+  }
+  nav.toc a:hover {
+    border-color: var(--outline);
+    text-decoration: none;
+    background: var(--surface-hi);
+  }
+  nav.toc span {
+    display: block;
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-bottom: 2px;
+  }
+
+  section {
+    margin-top: 48px;
+  }
+  h2 {
+    font-size: 1.45rem;
+    margin: 0 0 8px;
+    letter-spacing: -0.01em;
+  }
+  h3 {
+    font-size: 1.1rem;
+    margin: 28px 0 8px;
+  }
+  p { color: var(--text-dim); max-width: 72ch; }
+  ul, ol { color: var(--text-dim); max-width: 72ch; padding-left: 1.2em; }
+  li { margin: 0.35em 0; }
+  li strong, p strong, td strong { color: var(--text); font-weight: 600; }
+  code, .mono {
+    font-family: var(--mono);
+    font-size: 0.88em;
+    background: rgba(255,255,255,0.06);
+    padding: 1px 6px;
+    border-radius: 5px;
+  }
+  pre {
+    background: #140c0c;
+    border: 1px solid var(--outline);
+    border-radius: 12px;
+    padding: 14px 16px;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    color: var(--text);
+    line-height: 1.45;
+  }
+  .callout {
+    border-left: 3px solid var(--primary);
+    background: rgba(255, 179, 174, 0.07);
+    padding: 12px 16px;
+    border-radius: 0 10px 10px 0;
+    margin: 16px 0;
+    color: var(--text-dim);
+    max-width: 72ch;
+  }
+  .callout.warn {
+    border-left-color: var(--accent-warn);
+    background: rgba(255, 183, 122, 0.08);
+  }
+  .callout.ok {
+    border-left-color: var(--accent-green);
+    background: rgba(143, 212, 160, 0.08);
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 14px 0 8px;
+    font-size: 0.92rem;
+  }
+  th, td {
+    text-align: left;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--outline);
+    vertical-align: top;
+  }
+  th { color: var(--text-dim); font-weight: 600; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; }
+  td { color: var(--text-dim); }
+  td:first-child { color: var(--text); white-space: nowrap; }
+
+  /* ========== Shell mockup stage ========== */
+  .gallery {
+    display: grid;
+    gap: 28px;
+    margin-top: 18px;
+  }
+  @media (min-width: 900px) {
+    .gallery.two { grid-template-columns: 1fr 1fr; }
+  }
+
+  .stage {
+    background:
+      linear-gradient(180deg, #1c1414 0%, #121010 100%);
+    border: 1px solid var(--outline);
+    border-radius: 18px;
+    padding: 18px 18px 22px;
+    box-shadow: var(--shadow);
+    position: relative;
+    overflow: hidden;
+  }
+  .stage::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 80% 40% at 70% 20%, rgba(80, 40, 36, 0.35), transparent 60%),
+      repeating-linear-gradient(
+        -12deg,
+        transparent,
+        transparent 18px,
+        rgba(255,255,255,0.015) 18px,
+        rgba(255,255,255,0.015) 19px
+      );
+    pointer-events: none;
+  }
+  .stage-label {
+    position: relative;
+    z-index: 1;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .stage-label em {
+    font-style: normal;
+    color: var(--primary);
+    letter-spacing: 0;
+    text-transform: none;
+    font-size: 13px;
+  }
+
+  .desktop {
+    position: relative;
+    z-index: 1;
+    min-height: 280px;
+    border-radius: 12px;
+    background:
+      linear-gradient(145deg, #2a1816 0%, #1a2220 45%, #151018 100%);
+    border: 1px solid rgba(255,255,255,0.06);
+    padding-top: 10px;
+  }
+
+  /* Fake top bar */
+  .fake-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 36px;
+    margin: 0 12px;
+    padding: 0 8px;
+    background: rgba(20, 12, 12, 0.85);
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.06);
+    backdrop-filter: blur(8px);
+  }
+  .fake-bar .left, .fake-bar .right {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .pill {
+    width: 28px;
+    height: 22px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.06);
+  }
+  .pill.wide { width: 52px; }
+  .battery-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--primary);
+    color: var(--primary-ink);
+    display: grid;
+    place-items: center;
+    font-size: 11px;
+    font-weight: 700;
+    position: relative;
+    box-shadow: 0 0 0 2px rgba(255,179,174,0.25);
+  }
+  .battery-btn::after {
+    content: "";
+    position: absolute;
+    inset: -3px;
+    border-radius: 50%;
+    border: 2px solid var(--primary);
+    border-left-color: transparent;
+    border-bottom-color: transparent;
+    transform: rotate(40deg);
+    opacity: 0.9;
+  }
+  .clock { font-size: 12px; color: var(--text); opacity: 0.85; padding: 0 6px; }
+
+  /* Popup under battery */
+  .popup-anchor {
+    position: absolute;
+    top: 52px;
+    right: 28px;
+    width: 300px;
+  }
+  .popup-anchor.centerish {
+    right: 50%;
+    transform: translateX(40%);
+  }
+
+  .bar-popup {
+    background: linear-gradient(160deg, #2b2020 0%, #221818 100%);
+    border: 1px solid rgba(160, 140, 139, 0.35);
+    border-radius: 16px;
+    padding: 8px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.55), 0 0 0 1px rgba(0,0,0,0.3);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .batt-card {
+    background: var(--common);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 60px;
+  }
+  .batt-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    background: rgba(143, 212, 160, 0.15);
+    color: var(--accent-green);
+    display: grid;
+    place-items: center;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+  .batt-meta { flex: 1; min-width: 0; }
+  .batt-meta .title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .batt-meta .sub {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 2px;
+  }
+  .batt-pct {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--accent-green);
+    opacity: 0.9;
+  }
+
+  .seg-row {
+    display: flex;
+    gap: 4px;
+  }
+  .seg {
+    flex: 1;
+    height: 36px;
+    border-radius: var(--radius-sm);
+    background: var(--common);
+    color: var(--text);
+    display: grid;
+    place-items: center;
+    font-size: 15px;
+    cursor: default;
+    border: 1px solid transparent;
+    position: relative;
+  }
+  .seg.selected {
+    background: var(--primary);
+    color: var(--primary-ink);
+  }
+  .seg.pending {
+    outline: 1px dashed var(--accent-warn);
+    outline-offset: -2px;
+  }
+  .seg .glyph {
+    font-size: 15px;
+    line-height: 1;
+    font-weight: 600;
+  }
+  .seg .label {
+    position: absolute;
+    bottom: -18px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 9px;
+    color: var(--text-dim);
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+  }
+  /* Show tooltips as caption under mock when annotated */
+  .annotated .seg .label { opacity: 1; bottom: -16px; }
+
+  .row-caption {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 2px 2px;
+    margin-top: 2px;
+  }
+  .row-caption span {
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+
+  .confirm {
+    margin-top: 2px;
+    background: rgba(255, 183, 122, 0.1);
+    border: 1px solid rgba(255, 183, 122, 0.28);
+    border-radius: var(--radius-sm);
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .confirm .msg {
+    font-size: 12px;
+    color: var(--text);
+    line-height: 1.35;
+  }
+  .confirm .msg small {
+    display: block;
+    color: var(--text-dim);
+    margin-top: 3px;
+    font-size: 11px;
+  }
+  .confirm-actions {
+    display: flex;
+    gap: 4px;
+  }
+  .cbtn {
+    flex: 1;
+    height: 32px;
+    border-radius: 8px;
+    display: grid;
+    place-items: center;
+    font-size: 11px;
+    font-weight: 600;
+    background: var(--common);
+    color: var(--text);
+    border: 1px solid transparent;
+  }
+  .cbtn.primary {
+    background: var(--primary);
+    color: var(--primary-ink);
+  }
+  .cbtn.ghost {
+    background: transparent;
+    border-color: var(--outline);
+    color: var(--text-dim);
+  }
+
+  .annotation {
+    position: relative;
+    z-index: 1;
+    margin-top: 14px;
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+  .annotation strong { color: var(--text); }
+
+  .flow {
+    display: grid;
+    gap: 10px;
+    margin: 16px 0;
+  }
+  @media (min-width: 720px) {
+    .flow { grid-template-columns: repeat(4, 1fr); }
+  }
+  .flow-step {
+    background: var(--surface);
+    border-radius: 12px;
+    padding: 14px;
+    border: 1px solid rgba(255,255,255,0.04);
+  }
+  .flow-step .n {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--primary);
+    color: var(--primary-ink);
+    font-size: 12px;
+    font-weight: 700;
+    display: grid;
+    place-items: center;
+    margin-bottom: 8px;
+  }
+  .flow-step h4 {
+    margin: 0 0 4px;
+    font-size: 0.95rem;
+  }
+  .flow-step p {
+    margin: 0;
+    font-size: 0.85rem;
+  }
+
+  .file-tree {
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    background: #140c0c;
+    border: 1px solid var(--outline);
+    border-radius: 12px;
+    padding: 14px 18px;
+    color: var(--text-dim);
+  }
+  .file-tree .new { color: var(--accent-green); }
+  .file-tree .edit { color: var(--accent-warn); }
+
+  .phase {
+    border: 1px solid var(--outline);
+    border-radius: 14px;
+    padding: 16px 18px;
+    margin: 12px 0;
+    background: rgba(255,255,255,0.02);
+  }
+  .phase h4 {
+    margin: 0 0 6px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .badge {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgba(255,179,174,0.15);
+    color: var(--primary);
+    font-weight: 600;
+  }
+  .badge.alt { background: rgba(143,212,160,0.12); color: var(--accent-green); }
+
+  footer {
+    margin-top: 64px;
+    padding-top: 20px;
+    border-top: 1px solid var(--outline);
+    color: var(--text-dim);
+    font-size: 0.85rem;
+  }
+
+  /* Icon glyphs using simple unicode / CSS shapes for plan mockups */
+  .ico-leaf::before { content: "◇"; }
+  .ico-scale::before { content: "◎"; }
+  .ico-bolt::before { content: "⚡"; font-size: 13px; }
+  .ico-igpu::before { content: "▣"; }
+  .ico-hybrid::before { content: "◫"; }
+  .ico-mux::before { content: "▣▣"; letter-spacing: -2px; font-size: 11px; }
+  .ico-logout::before { content: "⇢"; }
+  .ico-reboot::before { content: "↻"; }
+  .ico-x::before { content: "✕"; font-size: 10px; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="hero">
+      <div class="eyebrow">Aspect Ambxst · Implementation Plan</div>
+      <h1>Graphics mode controls in the battery popup</h1>
+      <p class="lede">
+        Add a <code>supergfxctl</code>-backed GPU mode row directly under the existing
+        Power Save / Balanced / Performance buttons in the battery bar popup —
+        same segmented formatting — with a confirm strip that offers
+        <strong>Logout</strong>, <strong>Reboot</strong>, or <strong>Dismiss</strong>
+        after a mode change is requested.
+      </p>
+      <div class="meta">
+        <span class="chip"><strong>Host</strong> BatteryIndicator popup</span>
+        <span class="chip"><strong>Backend</strong> new SupergfxService</span>
+        <span class="chip"><strong>Pattern</strong> mirror PowerProfile.qml</span>
+        <span class="chip"><strong>Validate</strong> Bostrom I⇄H · Zephyrus + Mux</span>
+      </div>
+
+      <nav class="toc" aria-label="Contents">
+        <a href="#mockups"><span>01</span>Visual mockups</a>
+        <a href="#goal"><span>02</span>Goal &amp; non-goals</a>
+        <a href="#ux"><span>03</span>UX &amp; interaction</a>
+        <a href="#arch"><span>04</span>Architecture</a>
+        <a href="#files"><span>05</span>Files to touch</a>
+        <a href="#phases"><span>06</span>Implementation phases</a>
+        <a href="#test"><span>07</span>Test matrix</a>
+        <a href="#risks"><span>08</span>Risks &amp; open questions</a>
+      </nav>
+    </header>
+
+    <!-- ========== MOCKUPS ========== -->
+    <section id="mockups">
+      <h2>1. Visual mockups</h2>
+      <p>
+        Approximate Ambxst Material palette (<code>Colors.surface*</code> /
+        <code>primary</code>) and the current battery <code>BarPopup</code> layout.
+        Icons below are stand-ins; the real UI uses Phosphor-Bold via
+        <code>Icons.*</code> (reuse <code>powerSave</code> / <code>balanced</code> /
+        <code>performance</code>, and <code>gpu</code> / new mode glyphs).
+      </p>
+
+      <div class="gallery two">
+        <!-- State A -->
+        <div class="stage">
+          <div class="stage-label">
+            Current baseline
+            <em>power profiles only</em>
+          </div>
+          <div class="desktop">
+            <div class="fake-bar">
+              <div class="left">
+                <div class="pill"></div>
+                <div class="pill wide"></div>
+              </div>
+              <div class="clock">Tue 1:04</div>
+              <div class="right">
+                <div class="pill"></div>
+                <div class="battery-btn" title="Battery">⚡</div>
+              </div>
+            </div>
+            <div class="popup-anchor">
+              <div class="bar-popup">
+                <div class="batt-card">
+                  <div class="batt-icon">▣</div>
+                  <div class="batt-meta">
+                    <div class="title">On battery</div>
+                    <div class="sub">2:14 remaining</div>
+                  </div>
+                  <div class="batt-pct">72%</div>
+                </div>
+                <div class="seg-row annotated" style="margin-bottom: 14px;">
+                  <div class="seg"><span class="glyph ico-leaf"></span><span class="label">Power Save</span></div>
+                  <div class="seg selected"><span class="glyph ico-scale"></span><span class="label">Balanced</span></div>
+                  <div class="seg"><span class="glyph ico-bolt"></span><span class="label">Performance</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p class="annotation">
+            Today: battery details (if available) + one <code>RowLayout</code> of
+            profile buttons. Popup height is fixed around
+            <code>(Battery.available ? 64 : 0) + 36 + padding</code>.
+          </p>
+        </div>
+
+        <!-- State B -->
+        <div class="stage">
+          <div class="stage-label">
+            Proposed idle
+            <em>+ graphics mode row</em>
+          </div>
+          <div class="desktop">
+            <div class="fake-bar">
+              <div class="left">
+                <div class="pill"></div>
+                <div class="pill wide"></div>
+              </div>
+              <div class="clock">Tue 1:04</div>
+              <div class="right">
+                <div class="pill"></div>
+                <div class="battery-btn">⚡</div>
+              </div>
+            </div>
+            <div class="popup-anchor">
+              <div class="bar-popup">
+                <div class="batt-card">
+                  <div class="batt-icon">▣</div>
+                  <div class="batt-meta">
+                    <div class="title">On battery</div>
+                    <div class="sub">2:14 remaining</div>
+                  </div>
+                  <div class="batt-pct">72%</div>
+                </div>
+                <div class="row-caption"><span>Power profile</span></div>
+                <div class="seg-row">
+                  <div class="seg"><span class="glyph ico-leaf"></span></div>
+                  <div class="seg selected"><span class="glyph ico-scale"></span></div>
+                  <div class="seg"><span class="glyph ico-bolt"></span></div>
+                </div>
+                <div class="row-caption"><span>Graphics</span><span style="text-transform:none;letter-spacing:0;opacity:.85">Hybrid</span></div>
+                <div class="seg-row annotated" style="margin-bottom: 14px;">
+                  <div class="seg"><span class="glyph ico-igpu"></span><span class="label">Integrated</span></div>
+                  <div class="seg selected"><span class="glyph ico-hybrid"></span><span class="label">Hybrid</span></div>
+                  <div class="seg"><span class="glyph ico-mux"></span><span class="label">Mux dGPU</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p class="annotation">
+            Second segmented row mirrors the first: same height (36), gap (4),
+            <code>StyledRect</code> variants (<code>primary</code> selected /
+            <code>common</code> / <code>focus</code> hover), equal <code>fillWidth</code>.
+            Mux button only appears when <code>supergfxctl</code> enumerates it
+            (Zephyrus yes, Bostrom no → two buttons).
+          </p>
+        </div>
+      </div>
+
+      <div class="gallery" style="margin-top: 28px;">
+        <!-- State C — confirmation -->
+        <div class="stage">
+          <div class="stage-label">
+            After selecting a new mode
+            <em>confirm apply</em>
+          </div>
+          <div class="desktop" style="min-height: 340px;">
+            <div class="fake-bar">
+              <div class="left">
+                <div class="pill"></div>
+                <div class="pill wide"></div>
+              </div>
+              <div class="clock">Tue 1:04</div>
+              <div class="right">
+                <div class="pill"></div>
+                <div class="battery-btn">⚡</div>
+              </div>
+            </div>
+            <div class="popup-anchor" style="width: 312px;">
+              <div class="bar-popup">
+                <div class="batt-card">
+                  <div class="batt-icon">▣</div>
+                  <div class="batt-meta">
+                    <div class="title">On battery</div>
+                    <div class="sub">2:14 remaining</div>
+                  </div>
+                  <div class="batt-pct">72%</div>
+                </div>
+                <div class="row-caption"><span>Power profile</span></div>
+                <div class="seg-row">
+                  <div class="seg"><span class="glyph ico-leaf"></span></div>
+                  <div class="seg selected"><span class="glyph ico-scale"></span></div>
+                  <div class="seg"><span class="glyph ico-bolt"></span></div>
+                </div>
+                <div class="row-caption"><span>Graphics</span><span style="text-transform:none;letter-spacing:0;color:var(--accent-warn)">pending</span></div>
+                <div class="seg-row">
+                  <div class="seg pending selected" style="background:var(--accent-warn);color:#2a1608;"><span class="glyph ico-igpu"></span></div>
+                  <div class="seg"><span class="glyph ico-hybrid"></span></div>
+                  <div class="seg"><span class="glyph ico-mux"></span></div>
+                </div>
+                <div class="confirm">
+                  <div class="msg">
+                    Switch to <strong>Integrated</strong>?
+                    <small>supergfxctl needs a session restart for most mode changes. Logout is usually enough; Mux / always_reboot needs a full reboot.</small>
+                  </div>
+                  <div class="confirm-actions">
+                    <div class="cbtn primary"><span class="ico-logout"></span>&nbsp; Logout</div>
+                    <div class="cbtn"><span class="ico-reboot"></span>&nbsp; Reboot</div>
+                    <div class="cbtn ghost"><span class="ico-x"></span>&nbsp; Dismiss</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p class="annotation">
+            Selecting a non-current mode does <strong>not</strong> apply immediately.
+            It sets a pending target, expands the popup with a confirm strip, and
+            only runs <code>supergfxctl --mode …</code> when the user picks Logout or
+            Reboot. Dismiss clears pending and restores the selected highlight to
+            the live mode. Power-profile clicks remain instant (unchanged).
+          </p>
+        </div>
+      </div>
+
+      <div class="gallery two" style="margin-top: 28px;">
+        <div class="stage">
+          <div class="stage-label">Bostrom (Acer) · 2 modes</div>
+          <div class="bar-popup" style="position:relative;z-index:1;max-width:300px;">
+            <div class="batt-card">
+              <div class="batt-icon">▣</div>
+              <div class="batt-meta">
+                <div class="title">Charging</div>
+                <div class="sub">Full in 0:48</div>
+              </div>
+              <div class="batt-pct">88%</div>
+            </div>
+            <div class="seg-row" style="margin-top:4px;">
+              <div class="seg"><span class="glyph ico-leaf"></span></div>
+              <div class="seg selected"><span class="glyph ico-scale"></span></div>
+              <div class="seg"><span class="glyph ico-bolt"></span></div>
+            </div>
+            <div class="row-caption"><span>Graphics</span></div>
+            <div class="seg-row annotated" style="margin-bottom:14px;">
+              <div class="seg selected"><span class="glyph ico-igpu"></span><span class="label">Integrated</span></div>
+              <div class="seg"><span class="glyph ico-hybrid"></span><span class="label">Hybrid</span></div>
+            </div>
+          </div>
+          <p class="annotation">Row width still fills; two equal segments. No Mux.</p>
+        </div>
+        <div class="stage">
+          <div class="stage-label">No battery · profiles + GPU only</div>
+          <div class="bar-popup" style="position:relative;z-index:1;max-width:300px;">
+            <div class="seg-row">
+              <div class="seg"><span class="glyph ico-leaf"></span></div>
+              <div class="seg selected"><span class="glyph ico-scale"></span></div>
+              <div class="seg"><span class="glyph ico-bolt"></span></div>
+            </div>
+            <div class="row-caption"><span>Graphics</span></div>
+            <div class="seg-row annotated" style="margin-bottom:14px;">
+              <div class="seg"><span class="glyph ico-igpu"></span><span class="label">Integrated</span></div>
+              <div class="seg selected"><span class="glyph ico-hybrid"></span><span class="label">Hybrid</span></div>
+              <div class="seg"><span class="glyph ico-mux"></span><span class="label">Mux dGPU</span></div>
+            </div>
+          </div>
+          <p class="annotation">
+            Matches today’s behavior when <code>Battery.available</code> is false:
+            details card hidden; indicator already falls back to power-profile icon.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== GOAL ========== -->
+    <section id="goal">
+      <h2>2. Goal &amp; non-goals</h2>
+      <h3>Goal</h3>
+      <ul>
+        <li>Expose live <code>supergfxctl</code> modes in the battery bar popup, under power profiles, with identical segmented button chrome.</li>
+        <li>On mode selection, offer <strong>Logout</strong>, <strong>Reboot</strong>, and <strong>Dismiss</strong> so the user can complete (or abandon) the switch immediately.</li>
+        <li>Hide the graphics row entirely when <code>supergfxctl</code> / <code>supergfxd</code> is unavailable — no dead UI.</li>
+      </ul>
+
+      <h3>Non-goals (this pass)</h3>
+      <ul>
+        <li>No <code>asusctl</code> fan / Aura / battery-limit widgets (separate, Zephyrus-only work).</li>
+        <li>No dashboard / launcher / OSD surface for GPU mode yet.</li>
+        <li>No VFIO / AsusEgpu / NvidiaNoModeSet unless enumerated and explicitly opted into later — start with modes users actually switch: Integrated, Hybrid, AsusMuxDgpu.</li>
+        <li>No enabling <code>supergfxd</code> at boot on Bostrom from the shell; document only.</li>
+      </ul>
+    </section>
+
+    <!-- ========== UX ========== -->
+    <section id="ux">
+      <h2>3. UX &amp; interaction</h2>
+
+      <div class="flow">
+        <div class="flow-step">
+          <div class="n">1</div>
+          <h4>Open popup</h4>
+          <p>Battery button → existing <code>BarPopup</code>. Graphics row appears below profiles when service is available.</p>
+        </div>
+        <div class="flow-step">
+          <div class="n">2</div>
+          <h4>Pick mode</h4>
+          <p>Click a non-current mode → pending highlight. Same-mode click is a no-op. Tooltips: display names.</p>
+        </div>
+        <div class="flow-step">
+          <div class="n">3</div>
+          <h4>Confirm</h4>
+          <p>Strip appears: Logout (primary), Reboot, Dismiss. Copy mentions required action when known.</p>
+        </div>
+        <div class="flow-step">
+          <div class="n">4</div>
+          <h4>Apply</h4>
+          <p>Logout/Reboot runs <code>supergfxctl --mode X</code> then the session action. Dismiss cancels pending only.</p>
+        </div>
+      </div>
+
+      <h3>Confirm actions (commands)</h3>
+      <table>
+        <thead>
+          <tr><th>Action</th><th>Behavior</th><th>Command (align with PowerMenu)</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Logout</strong></td>
+            <td>Set mode, then end graphical session so Hybrid⇄Integrated can finish.</td>
+            <td><code>axctl system exit</code> (same as PowerMenu logout)</td>
+          </tr>
+          <tr>
+            <td><strong>Reboot</strong></td>
+            <td>Set mode, then reboot — required for AsusMuxDgpu / <code>always_reboot</code>.</td>
+            <td><code>systemctl reboot</code></td>
+          </tr>
+          <tr>
+            <td><strong>Dismiss</strong></td>
+            <td>Clear pending mode; do not call <code>supergfxctl</code>; collapse confirm strip; restore selection to <code>currentMode</code>.</td>
+            <td>—</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="callout">
+        <strong>supergfxctl semantics (upstream):</strong>
+        Switching to/from Hybrid generally requires logout; AsusMuxDgpu always needs reboot;
+        some Integrated⇄VFIO paths are instant. The UI always offers both Logout and Reboot
+        so the user can choose; prefer surfacing the recommended action via button emphasis
+        (Logout primary for Hybrid/Integrated, Reboot primary for Mux).
+      </div>
+
+      <h3>Popup sizing</h3>
+      <p>
+        Today’s fixed <code>contentHeight</code> must become dynamic:
+      </p>
+      <pre>batteryDetails   = Battery.available ? 64 : 0
+profilesRow      = 36
+graphicsGap      = SuperGfx.isAvailable ? (4 + optionalCaption + 36) : 0
+confirmStrip     = pendingMode ? (~72) : 0
+contentHeight    = sum + spacings + popupPadding * 2</pre>
+      <p>
+        Prefer binding <code>contentHeight</code> to <code>mainColumn.implicitHeight + padding</code>
+        rather than hardcoding, so confirm expand does not clip.
+      </p>
+
+      <h3>Vertical bar</h3>
+      <p>
+        Battery popup already works for vertical bars via <code>BarPopup</code> anchoring.
+        Keep the graphics row as a horizontal segmented row inside the popup (same as profiles) —
+        do not mirror <code>PowerProfileSelector</code>’s bar-inline vertical layout for this pass.
+      </p>
+    </section>
+
+    <!-- ========== ARCH ========== -->
+    <section id="arch">
+      <h2>4. Architecture</h2>
+      <p>
+        Follow the reactive singleton + <code>Process</code> pattern used by
+        <code>modules/services/PowerProfile.qml</code>. Keep CLI parsing in the service;
+        UI only binds to properties/methods.
+      </p>
+
+      <h3>SupergfxService API (proposed)</h3>
+<pre>pragma Singleton
+Singleton {
+    property bool isAvailable: false
+    property var availableModes: []          // e.g. ["Integrated","Hybrid","AsusMuxDgpu"]
+    property string currentMode: ""
+    property string pendingMode: ""          // UI-owned or service-owned; prefer UI
+    property string requiredAction: ""       // "logout" | "reboot" | "none" | ""
+
+    signal modeChanged(string mode)
+    signal modeSetFailed(string reason)
+
+    function initialize()
+    function refresh()
+    function setMode(modeName)               // Process: ["supergfxctl","--mode", modeName]
+    function getModeIcon(modeName)
+    function getModeDisplayName(modeName)
+    function getRecommendedAction(fromMode, toMode)  // logout | reboot
+}</pre>
+
+      <h3>CLI surface</h3>
+      <table>
+        <thead><tr><th>Intent</th><th>Command</th></tr></thead>
+        <tbody>
+          <tr><td>Presence</td><td><code>supergfxctl --version</code> (or <code>which</code> + daemon check)</td></tr>
+          <tr><td>Current mode</td><td><code>supergfxctl --get</code> / <code>-g</code></td></tr>
+          <tr><td>Supported modes</td><td><code>supergfxctl --supported</code> (prefer) or parse status</td></tr>
+          <tr><td>Set mode</td><td><code>supergfxctl --mode Integrated</code> (capitalization matters)</td></tr>
+        </tbody>
+      </table>
+
+      <div class="callout warn">
+        Do <strong>not</strong> prefix with <code>sudo</code> — <code>supergfxd</code> is a user-facing
+        daemon; sudo is a common footgun. Surface stderr via <code>modeSetFailed</code> / console.warn.
+      </div>
+
+      <h3>UI integration point</h3>
+      <p>
+        Primary edit: <code>modules/bar/BatteryIndicator.qml</code> inside the existing
+        <code>batteryPopup</code> <code>ColumnLayout</code>, after <code>profilesRow</code>.
+      </p>
+<pre>ColumnLayout {
+    // battery details (existing)
+    // profilesRow (existing) — PowerProfile.availableProfiles
+    // NEW: graphicsRow — visible: SuperGfx.isAvailable
+    // NEW: confirmStrip — visible: pendingMode.length > 0
+}</pre>
+
+      <h3>Apply sequence (Logout example)</h3>
+<pre>1. pendingMode = "Integrated"
+2. on Logout click:
+     SuperGfx.setMode(pendingMode)
+     wait for setProc success (or fire-and-forget then action)
+     Process: axctl system exit
+3. On next login, SuperGfx.currentMode reflects new mode
+4. If setMode fails: keep popup open, show error tint / tooltip, do not logout</pre>
+
+      <h3>Icons</h3>
+      <ul>
+        <li>Reuse <code>Icons.gpu</code> for captions / tooltips if needed.</li>
+        <li>Add Phosphor mappings for Integrated / Hybrid / Mux (or map Hybrid→<code>Icons.circuitry</code>, Integrated→<code>Icons.cpu</code>, Mux→<code>Icons.gpu</code> initially to ship faster).</li>
+        <li>Confirm strip: <code>Icons.logout</code>, <code>Icons.reboot</code>, and a close/dismiss glyph (<code>Icons.minusCircle</code> or caret — pick one existing rather than inventing).</li>
+      </ul>
+
+      <h3>Config</h3>
+      <p>
+        Optional later: <code>Config.bar.showGraphicsModes</code> default <code>true</code>.
+        Not required for v1 if visibility is purely capability-gated via
+        <code>SuperGfx.isAvailable</code>. If a config key is added, update
+        <strong>both</strong> <code>config/defaults/*.js</code> and <code>config/Config.qml</code>.
+      </p>
+
+      <h3>Init</h3>
+      <p>
+        Defer like PowerProfile (≈2s) or piggyback the non-critical timer in
+        <code>shell.qml</code>. Force-touch the singleton once so detection runs:
+        <code>_ = SuperGfx.isAvailable</code>.
+      </p>
+    </section>
+
+    <!-- ========== FILES ========== -->
+    <section id="files">
+      <h2>5. Files to touch</h2>
+      <div class="file-tree">
+<span class="new">+ modules/services/SuperGfx.qml</span>          singleton: detect, list, get, set<br>
+<span class="edit">~ modules/bar/BatteryIndicator.qml</span>     graphics row + confirm strip + height<br>
+<span class="edit">~ modules/theme/Icons.qml</span>              optional mode-specific glyphs<br>
+<span class="edit">~ shell.qml</span>                            optional deferred init touch<br>
+<span class="edit">~ lab/check-prereqs.sh</span>                 note supergfxctl / supergfxd presence<br>
+<span class="new">+ docs/supergfxctl-widget-plan.html</span>     this plan (already added)
+      </div>
+      <div class="callout ok">
+        Do not edit upstream <code>AGENTS.md</code> / <code>modules/**/AGENTS.md</code>.
+        Fork notes for this feature belong in <code>CLAUDE.md</code> or <code>docs/</code> only if needed.
+      </div>
+    </section>
+
+    <!-- ========== PHASES ========== -->
+    <section id="phases">
+      <h2>6. Implementation phases</h2>
+
+      <div class="phase">
+        <h4><span class="badge">Phase A</span> Service skeleton</h4>
+        <ul>
+          <li>Create <code>SuperGfx.qml</code> with availability probe + get/list/set Processes.</li>
+          <li>Normalize mode names; sort Integrated → Hybrid → AsusMuxDgpu.</li>
+          <li>Filter out Vfio / AsusEgpu unless a future flag enables them.</li>
+          <li>Unit-ish check: run CLI manually on Bostrom; parse the same strings the service will.</li>
+        </ul>
+      </div>
+
+      <div class="phase">
+        <h4><span class="badge">Phase B</span> Idle UI (read-only then click-pending)</h4>
+        <ul>
+          <li>Add graphics <code>RowLayout</code> under profiles; bind to <code>availableModes</code> / <code>currentMode</code>.</li>
+          <li>Match profile button styling exactly (radius selected/first/last rules, hover, tooltip).</li>
+          <li>Dynamic popup height; hide row when unavailable.</li>
+        </ul>
+      </div>
+
+      <div class="phase">
+        <h4><span class="badge">Phase C</span> Confirm strip</h4>
+        <ul>
+          <li>Pending state, recommended primary button, Dismiss restore.</li>
+          <li>Wire Logout / Reboot through a small Process (copy PowerMenu pattern).</li>
+          <li>Only invoke session action after successful <code>setMode</code> (or document intentional race if daemon queues on logout).</li>
+        </ul>
+      </div>
+
+      <div class="phase">
+        <h4><span class="badge alt">Phase D</span> Hardening</h4>
+        <ul>
+          <li>Error path when daemon down / mode rejected.</li>
+          <li>Optional: poll current mode on popup open.</li>
+          <li>Document Bostrom: start <code>supergfxd</code> for lab tests if not enabled at boot.</li>
+          <li>Validate AsusMuxDgpu path on Zephyrus only.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ========== TEST ========== -->
+    <section id="test">
+      <h2>7. Test matrix</h2>
+      <table>
+        <thead>
+          <tr><th>Case</th><th>Bostrom</th><th>Zephyrus</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Service detects modes</td>
+            <td>Integrated, Hybrid</td>
+            <td>Integrated, Hybrid, AsusMuxDgpu</td>
+          </tr>
+          <tr>
+            <td>Row hidden if no daemon</td>
+            <td>Stop <code>supergfxd</code> → row gone</td>
+            <td>same</td>
+          </tr>
+          <tr>
+            <td>Integrated ⇄ Hybrid</td>
+            <td>Logout path; verify after re-login</td>
+            <td>same</td>
+          </tr>
+          <tr>
+            <td>AsusMuxDgpu</td>
+            <td>N/A (button absent)</td>
+            <td>Reboot emphasized; verify after reboot</td>
+          </tr>
+          <tr>
+            <td>Dismiss</td>
+            <td>No mode change; UI restores</td>
+            <td>same</td>
+          </tr>
+          <tr>
+            <td>Power profiles still work</td>
+            <td>Unchanged instant apply</td>
+            <td>same</td>
+          </tr>
+          <tr>
+            <td>Desktop safety</td>
+            <td>Use <code>./lab/run-isolated.sh</code> first — mode switch ends session</td>
+            <td>same caution</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="callout warn">
+        Graphics mode changes can tear down the display session. Test deliberately,
+        preferably from SSH with the isolated lab runner — not mid-Moonlight demo.
+      </div>
+    </section>
+
+    <!-- ========== RISKS ========== -->
+    <section id="risks">
+      <h2>8. Risks &amp; open questions</h2>
+      <table>
+        <thead><tr><th>Item</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><strong>Set-then-logout ordering</strong></td>
+            <td>
+              Does <code>supergfxctl --mode</code> return before logout is safe, or does it
+              wait for sessions to end? Confirm against live daemon; may need
+              “set mode → immediately logout” without waiting on exit code 0 if the
+              CLI blocks on logind.
+            </td>
+          </tr>
+          <tr>
+            <td><strong>Caption labels</strong></td>
+            <td>
+              Profiles today are icon-only + tooltip. Proposal adds a quiet “Graphics”
+              caption for discoverability. Keep profiles icon-only unless we want
+              matching “Power” captions — decide in Phase B for visual density.
+            </td>
+          </tr>
+          <tr>
+            <td><strong>Pending in service vs UI</strong></td>
+            <td>Prefer UI-local <code>pendingMode</code> so dismissing does not need service state.</td>
+          </tr>
+          <tr>
+            <td><strong>iGPU vendor differences</strong></td>
+            <td>Intel (Bostrom) vs AMD (Zephyrus) — service must not hardcode driver names.</td>
+          </tr>
+          <tr>
+            <td><strong>Public repo</strong></td>
+            <td>No personal paths, tokens, or machine-specific absolute homes in the feature.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>Success criteria</h3>
+      <ul>
+        <li>Battery popup shows a graphics segmented control styled like power profiles when <code>supergfxctl</code> works.</li>
+        <li>Choosing a mode presents Logout / Reboot / Dismiss; Dismiss is safe; Logout/Reboot complete the switch.</li>
+        <li>No UI regressions for machines without hybrid graphics tooling.</li>
+      </ul>
+    </section>
+
+    <footer>
+      Aspect Ambxst · plan derived from <code>modules/bar/BatteryIndicator.qml</code>,
+      <code>modules/services/PowerProfile.qml</code>, <code>modules/widgets/powermenu/PowerMenu.qml</code>,
+      and fork hardware notes in <code>CLAUDE.md</code> / <code>docs/LAB.md</code>.
+      Open this file in a browser to review the mockups.
+    </footer>
+  </div>
+</body>
+</html>
