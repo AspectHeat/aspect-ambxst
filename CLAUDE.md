@@ -200,6 +200,12 @@ own `update` command in this clone. After any sync, re-run the shell under
 5. **`axctl` socket race at boot** — Ambxst may log
    `dial unix /tmp/axctl-1000.sock: no such file or directory` once during startup,
    before the daemon creates the socket. Transient; self-resolves.
+   A *stale* socket is the dangerous variant: Ambxst spawns `axctl daemon` but the
+   daemon does not unlink its socket when it dies with the shell, so the next
+   daemon refuses to bind and `axctl subscribe` fails in a loop — the bar comes up
+   with no workspace or window data and only `JSON.parse: Parse error` in the log.
+   `run-isolated.sh` now clears an unanswered socket on both entry and exit; if you
+   kill the shell some other way, `rm -f /tmp/axctl-1000.sock` before restarting.
 6. **`mpvpaper` is not installed** — it needs a `luajit` build no longer on any
    mirror, so it requires a full `pacman -Syu` plus reboot. Only affects video
    wallpapers; Ambxst logs a killed-mpvpaper line and continues.

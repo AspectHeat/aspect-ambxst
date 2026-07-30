@@ -25,6 +25,7 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LAB_HOME="$REAL_XDG_DATA_HOME/ambxst-lab/home"
 LOG_DIR="$REAL_XDG_STATE_HOME/ambxst-lab"
 LOG_FILE="$LOG_DIR/latest.log"
+AXCTL_SOCKET="/tmp/axctl-$(id -u).sock"
 
 # --- take Ambxst down with us on every exit path ---------------------------
 stop_ambxst() {
@@ -41,6 +42,16 @@ stop_ambxst() {
             sleep 0.2
         done
         kill -0 "$AMBXST_PID" 2>/dev/null && kill -KILL "$AMBXST_PID" 2>/dev/null || true
+    fi
+
+    # Ambxst spawns `axctl daemon`, which does not remove its socket when it
+    # dies with the shell. The next daemon then refuses to bind, `axctl
+    # subscribe` fails in a tight loop, and the bar comes up with no workspace
+    # or window data -- with only a JSON parse error to show for it. Clear the
+    # socket here so the next start is clean.
+    if [[ -S "$AXCTL_SOCKET" ]] && ! axctl monitor list >/dev/null 2>&1; then
+        printf '[lab] removing stale axctl socket %s\n' "$AXCTL_SOCKET"
+        rm -f "$AXCTL_SOCKET"
     fi
 
     printf '[lab] no shell running; SUPER+Return for a terminal\n'
@@ -67,6 +78,13 @@ mkdir -p "$LAB_HOME"/{.config,.cache} \
 printf '[lab] repo:      %s\n' "$REPO_DIR"
 printf '[lab] sandbox:   %s\n' "$LAB_HOME"
 printf '[lab] log:       %s\n' "$LOG_FILE"
+
+# A previous shell killed without its trap (SIGKILL, crash) leaves an axctl
+# socket that no daemon is listening on. Clear it before Ambxst spawns its own.
+if [[ -S "$AXCTL_SOCKET" ]] && ! axctl monitor list >/dev/null 2>&1; then
+    printf '[lab] clearing stale axctl socket %s\n' "$AXCTL_SOCKET"
+    rm -f "$AXCTL_SOCKET"
+fi
 
 # --- redirect HOME into the sandbox ----------------------------------------
 # XDG_RUNTIME_DIR, WAYLAND_DISPLAY, DBUS_SESSION_BUS_ADDRESS, HYPRLAND_* and
