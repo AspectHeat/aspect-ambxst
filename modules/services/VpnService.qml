@@ -12,16 +12,45 @@ Singleton {
     property string targetProvider: ""
     property string pendingCountry: ""
     property bool pendingP2p: false
+    property string pendingServerKey: ""
     property int attempts: 0
     property string lastError: ""
 
     readonly property string activeProvider: NordVpnService.connected ? "nordvpn" : (TailscaleService.connected ? "tailscale" : "")
 
     function switchToNord(country = "", p2p = false): void {
-        if (isSwitching || NordVpnService.connected)
+        if (isSwitching)
             return;
         pendingCountry = country;
         pendingP2p = p2p;
+        pendingServerKey = "";
+        if (NordVpnService.connected) {
+            NordVpnService.connectTo(country, p2p);
+            return;
+        }
+        targetProvider = "nordvpn";
+        lastError = "";
+        attempts = 0;
+        isSwitching = true;
+        if (TailscaleService.connected) {
+            phase = "Disconnecting Tailscale…";
+            TailscaleService.down();
+            handoffTimer.restart();
+        } else {
+            connectTarget();
+        }
+    }
+
+    function switchToNordServer(serverKey): void {
+        if (isSwitching || !serverKey)
+            return;
+        pendingCountry = "";
+        pendingP2p = false;
+        pendingServerKey = serverKey;
+        if (NordVpnService.connected) {
+            NordVpnService.connectToServer(serverKey);
+            return;
+        }
         targetProvider = "nordvpn";
         lastError = "";
         attempts = 0;
@@ -55,7 +84,10 @@ Singleton {
         attempts = 0;
         if (targetProvider === "nordvpn") {
             phase = "Connecting NordVPN…";
-            NordVpnService.connectTo(pendingCountry, pendingP2p);
+            if (pendingServerKey !== "")
+                NordVpnService.connectToServer(pendingServerKey);
+            else
+                NordVpnService.connectTo(pendingCountry, pendingP2p);
         } else {
             phase = "Connecting Tailscale…";
             TailscaleService.up();
@@ -68,6 +100,7 @@ Singleton {
         lastError = message;
         phase = "";
         targetProvider = "";
+        pendingServerKey = "";
         isSwitching = false;
     }
 
@@ -101,6 +134,7 @@ Singleton {
                 if (connected) {
                     root.phase = "";
                     root.targetProvider = "";
+                    root.pendingServerKey = "";
                     root.isSwitching = false;
                     return;
                 }

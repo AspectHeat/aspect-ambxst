@@ -15,8 +15,7 @@ var data = {
         "showInBar": false,
         "pollInterval": 20,
         "preferredMode": "fastest",
-        "preferredCountry": "",
-        "handoffPolicy": "confirm"
+        "preferredCountry": ""
     },
     "idle": {
         "general": {

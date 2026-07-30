@@ -181,7 +181,7 @@ Item {
 
                     Text {
                         Layout.fillWidth: true
-                        text: "Countries, fast servers, and P2P routing"
+                        text: "Live servers, locations, and P2P routing"
                         font.family: Config.theme.font
                         font.pixelSize: Styling.fontSize(-2)
                         color: Colors.overSurfaceVariant

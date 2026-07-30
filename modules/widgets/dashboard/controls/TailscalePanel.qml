@@ -129,26 +129,7 @@ Item {
             TailscaleService.down();
             return;
         }
-        if (!NordVpnService.connected || Config.system.nordvpn.handoffPolicy !== "confirm") {
-            VpnService.switchToTailscale();
-            return;
-        }
-        if (!Visibilities.contextMenu)
-            return;
-        Visibilities.contextMenu.openCustomMenu([
-            {
-                text: "Switch from NordVPN to Tailscale",
-                icon: Icons.vpn,
-                onTriggered: function () {
-                    VpnService.switchToTailscale();
-                }
-            },
-            {
-                text: "Cancel",
-                icon: Icons.cancel,
-                onTriggered: function () {}
-            }
-        ], 320, 36, "vpn-provider-handoff");
+        VpnService.switchToTailscale();
     }
 
     function positionAtBeginning(): void {

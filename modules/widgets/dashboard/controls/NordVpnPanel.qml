@@ -15,13 +15,23 @@ Item {
     property bool showBackButton: false
     property string searchText: ""
     property bool p2pMode: Config.system.nordvpn.preferredMode === "p2p"
+    property bool showLocations: false
     signal backRequested
 
     readonly property int contentWidth: Math.min(width, maxContentWidth)
+    readonly property var filteredServers: NordVpnService.recommendedServers.filter(item => {
+        const query = root.searchText.trim().toLowerCase();
+        const matchesMode = root.p2pMode ? item.supportsP2p : item.supportsStandard;
+        const searchValue = [item.name, item.hostname, item.country, item.city, item.subdivision]
+            .join(" ").toLowerCase();
+        return matchesMode && (query === "" || searchValue.includes(query));
+    }).map(item => Object.assign({ kind: "server" }, item))
     readonly property var filteredCountries: NordVpnService.countries.filter(item => {
         const query = root.searchText.trim().toLowerCase();
-        return query === "" || item.name.toLowerCase().includes(query) || item.code.toLowerCase().includes(query);
-    })
+        return query === "" || item.name.toLowerCase().includes(query)
+            || item.code.toLowerCase().includes(query);
+    }).map(item => Object.assign({ kind: "country" }, item))
+    readonly property var visibleItems: showLocations ? filteredCountries : filteredServers
     readonly property string statusText: {
         if (VpnService.isSwitching)
             return VpnService.phase;
@@ -39,55 +49,50 @@ Item {
     }
 
     function positionAtBeginning(): void {
-        countryList.positionViewAtBeginning();
+        serverList.positionViewAtBeginning();
     }
 
-    function requestConnect(countryName = ""): void {
-        const connect = function () {
-            VpnService.switchToNord(countryName, root.p2pMode);
-        };
-        if (!TailscaleService.connected || Config.system.nordvpn.handoffPolicy !== "confirm") {
-            connect();
-            return;
-        }
-        if (!Visibilities.contextMenu)
-            return;
-        Visibilities.contextMenu.openCustomMenu([
-            {
-                text: "Switch from Tailscale to NordVPN",
-                icon: Icons.vpn,
-                onTriggered: connect
-            },
-            {
-                text: "Cancel",
-                icon: Icons.cancel,
-                onTriggered: function () {}
-            }
-        ], 320, 36, "vpn-provider-handoff");
-    }
-
-    Component.onCompleted: {
-        NordVpnService.refresh();
-        NordVpnService.refreshCountries();
+    function setLocationsVisible(value): void {
+        showLocations = value;
+        searchText = "";
+        browserSearch.clear();
         Qt.callLater(() => root.positionAtBeginning());
     }
 
+    function requestConnect(countryName = ""): void {
+        VpnService.switchToNord(countryName, root.p2pMode);
+    }
+
+    function requestServer(serverKey): void {
+        VpnService.switchToNordServer(serverKey);
+    }
+
+    function loadColor(load): color {
+        if (load <= 35)
+            return Colors.success;
+        if (load <= 70)
+            return Colors.warning;
+        return Colors.error;
+    }
+
+    Component.onCompleted: NordVpnService.refresh()
+
     ListView {
-        id: countryList
+        id: serverList
 
         anchors.fill: parent
         clip: true
-        spacing: 4
+        spacing: 6
         cacheBuffer: 800
         boundsBehavior: Flickable.StopAtBounds
-        model: root.filteredCountries
+        model: root.visibleItems
 
         ScrollBar.vertical: ScrollBar {
             policy: ScrollBar.AsNeeded
         }
 
         header: Item {
-            width: countryList.width
+            width: serverList.width
             height: headerColumn.implicitHeight + 10
 
             ColumnLayout {
@@ -103,7 +108,8 @@ Item {
                     statusText: root.statusText
                     statusColor: NordVpnService.lastError !== "" || VpnService.lastError !== ""
                         ? Colors.error
-                        : (!NordVpnService.available || NordVpnService.needsLogin ? Colors.warning : Styling.srItem("overprimary"))
+                        : (!NordVpnService.available || NordVpnService.needsLogin
+                            ? Colors.warning : Styling.srItem("overprimary"))
                     showToggle: NordVpnService.available && !NordVpnService.needsLogin
                     toggleChecked: NordVpnService.connected
                     toggleEnabled: !NordVpnService.isUpdating && !VpnService.isSwitching
@@ -115,12 +121,11 @@ Item {
                         }
                     }] : []).concat([{
                         icon: Icons.sync,
-                        tooltip: "Refresh NordVPN",
-                        loading: NordVpnService.isUpdating,
+                        tooltip: "Refresh live NordVPN servers",
+                        loading: NordVpnService.isUpdating || NordVpnService.recommendationsUpdating,
                         enabled: NordVpnService.available,
                         onClicked: function () {
                             NordVpnService.refresh();
-                            NordVpnService.refreshCountries();
                         }
                     }])
 
@@ -128,7 +133,7 @@ Item {
                         if (NordVpnService.connected)
                             NordVpnService.disconnect();
                         else
-                            root.requestConnect(Config.system.nordvpn.preferredCountry);
+                            root.requestConnect();
                     }
                 }
 
@@ -143,7 +148,7 @@ Item {
 
                         anchors.fill: parent
                         anchors.margins: 12
-                        spacing: 7
+                        spacing: 8
 
                         RowLayout {
                             Layout.fillWidth: true
@@ -158,11 +163,14 @@ Item {
                                 Text {
                                     anchors.centerIn: parent
                                     text: NordVpnService.connected
-                                        ? NordVpnService.flagForCode(NordVpnService.countryCodes[NordVpnService.country] ?? "")
+                                        ? NordVpnService.flagForCode(
+                                            NordVpnService.countryCodeForName(NordVpnService.country))
                                         : Icons.vpn
                                     font.family: NordVpnService.connected ? Config.theme.font : Icons.font
-                                    font.pixelSize: NordVpnService.connected ? Styling.fontSize(6) : Styling.fontSize(3)
-                                    color: NordVpnService.connected ? Styling.srItem("primary") : Colors.overBackground
+                                    font.pixelSize: NordVpnService.connected
+                                        ? Styling.fontSize(6) : Styling.fontSize(3)
+                                    color: NordVpnService.connected
+                                        ? Styling.srItem("primary") : Colors.overBackground
                                 }
                             }
 
@@ -174,11 +182,12 @@ Item {
                                     Layout.fillWidth: true
                                     text: NordVpnService.connected
                                         ? (NordVpnService.country || "NordVPN")
-                                        : "Quick Connect"
+                                        : (root.p2pMode ? "Quick Connect · P2P" : "Quick Connect")
                                     font.family: Config.theme.font
                                     font.pixelSize: Styling.fontSize(1)
                                     font.weight: Font.Medium
-                                    color: NordVpnService.connected ? Styling.srItem("primary") : Colors.overBackground
+                                    color: NordVpnService.connected
+                                        ? Styling.srItem("primary") : Colors.overBackground
                                     elide: Text.ElideRight
                                 }
 
@@ -190,12 +199,17 @@ Item {
                                         if (NordVpnService.needsLogin)
                                             return "Sign in to your Nord Account";
                                         if (NordVpnService.connected)
-                                            return [NordVpnService.city, NordVpnService.server, NordVpnService.technology].filter(value => value !== "").join(" · ");
-                                        return root.p2pMode ? "Fastest P2P-optimized server" : "Fastest recommended server";
+                                            return [NordVpnService.city, NordVpnService.server,
+                                                NordVpnService.technology]
+                                                .filter(value => value !== "").join(" · ");
+                                        return root.p2pMode
+                                            ? "Best live P2P route for this network"
+                                            : "Best live route for this network";
                                     }
                                     font.family: Config.theme.font
                                     font.pixelSize: Styling.fontSize(-2)
-                                    color: NordVpnService.connected ? Styling.srItem("primary") : Colors.overSurfaceVariant
+                                    color: NordVpnService.connected
+                                        ? Styling.srItem("primary") : Colors.overSurfaceVariant
                                     elide: Text.ElideRight
                                 }
                             }
@@ -208,7 +222,7 @@ Item {
                             visible: NordVpnService.available
                             enabled: !NordVpnService.isUpdating && !VpnService.isSwitching
                             text: NordVpnService.needsLogin ? "Log in"
-                                : (NordVpnService.connected ? "Disconnect" : "Connect")
+                                : (NordVpnService.connected ? "Disconnect" : "Quick Connect")
 
                             background: StyledRect {
                                 variant: connectButton.hovered ? "focus" : "common"
@@ -239,81 +253,65 @@ Item {
 
                 StyledRect {
                     Layout.fillWidth: true
-                    implicitHeight: 42
+                    implicitHeight: browserColumn.implicitHeight + 24
                     visible: NordVpnService.available
                     variant: "internalbg"
                     radius: Styling.radius(4)
 
-                    RowLayout {
+                    ColumnLayout {
+                        id: browserColumn
+
                         anchors.fill: parent
-                        anchors.margins: 4
-                        spacing: 4
+                        anchors.margins: 12
+                        spacing: 9
 
-                        Repeater {
-                            model: [
-                                { label: "Fastest", p2p: false },
-                                { label: "P2P optimized", p2p: true }
-                            ]
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
 
-                            delegate: Button {
-                                id: modeButton
-
-                                required property var modelData
+                            ColumnLayout {
                                 Layout.fillWidth: true
-                                Layout.fillHeight: true
-                                flat: true
+                                spacing: 1
 
-                                background: StyledRect {
-                                    variant: root.p2pMode === modeButton.modelData.p2p
-                                        ? "focus" : (modeButton.hovered ? "common" : "internalbg")
-                                    radius: Styling.radius(-4)
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: "Connection profile"
+                                    font.family: Config.theme.font
+                                    font.pixelSize: Config.theme.fontSize
+                                    font.weight: Font.Medium
+                                    color: Colors.overBackground
                                 }
 
-                                contentItem: Text {
-                                    text: modeButton.modelData.label
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: root.p2pMode
+                                        ? "Prioritizes servers optimized for peer-to-peer traffic"
+                                        : "Balances distance, capacity, and current server load"
                                     font.family: Config.theme.font
                                     font.pixelSize: Styling.fontSize(-2)
-                                    font.weight: root.p2pMode === modeButton.modelData.p2p ? Font.Medium : Font.Normal
-                                    color: Colors.overBackground
-                                    horizontalAlignment: Text.AlignHCenter
-                                    verticalAlignment: Text.AlignVCenter
-                                }
-
-                                onClicked: {
-                                    root.p2pMode = modelData.p2p;
-                                    Config.system.nordvpn.preferredMode = modelData.p2p ? "p2p" : "fastest";
+                                    color: Colors.overSurfaceVariant
+                                    wrapMode: Text.Wrap
                                 }
                             }
                         }
+
+                        SegmentedSwitch {
+                            Layout.fillWidth: true
+                            buttonSize: 34
+                            options: [
+                                { label: "Standard", icon: Icons.globe },
+                                { label: "P2P", icon: Icons.lightning }
+                            ]
+                            currentIndex: root.p2pMode ? 1 : 0
+
+                            onIndexChanged: index => {
+                                root.p2pMode = index === 1;
+                                Config.system.nordvpn.preferredMode = root.p2pMode ? "p2p" : "fastest";
+                                if (root.showLocations)
+                                    root.setLocationsVisible(false);
+                            }
+                        }
                     }
-                }
-
-                Text {
-                    Layout.fillWidth: true
-                    visible: root.p2pMode && NordVpnService.available
-                    text: "P2P optimized requests NordVPN's P2P server group. Standard servers also support peer-to-peer traffic."
-                    wrapMode: Text.Wrap
-                    font.family: Config.theme.font
-                    font.pixelSize: Styling.fontSize(-2)
-                    color: Colors.overSurfaceVariant
-                }
-
-                SearchInput {
-                    Layout.fillWidth: true
-                    visible: NordVpnService.available && NordVpnService.countries.length > 0
-                    placeholderText: "Search countries"
-                    iconText: Icons.globe
-                    onSearchTextChanged: text => root.searchText = text
-                }
-
-                Text {
-                    Layout.fillWidth: true
-                    visible: NordVpnService.available && NordVpnService.countries.length > 0
-                    text: "Countries"
-                    font.family: Config.theme.font
-                    font.pixelSize: Styling.fontSize(-2)
-                    font.weight: Font.Medium
-                    color: Colors.overSurfaceVariant
                 }
 
                 StyledRect {
@@ -325,6 +323,7 @@ Item {
 
                     Text {
                         id: setupText
+
                         anchors.fill: parent
                         anchors.margins: 12
                         text: "NordVPN is not installed. Install the official Linux client, add this user to the nordvpn group if required, then restart the session."
@@ -333,6 +332,89 @@ Item {
                         font.pixelSize: Styling.fontSize(-2)
                         color: Colors.warning
                     }
+                }
+
+                SearchInput {
+                    id: browserSearch
+
+                    Layout.fillWidth: true
+                    visible: NordVpnService.available
+                    placeholderText: root.showLocations
+                        ? "Search all locations" : "Search live servers"
+                    iconText: root.showLocations ? Icons.globe : Icons.vpn
+                    onSearchTextChanged: text => root.searchText = text
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    visible: NordVpnService.available
+                    spacing: 8
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 0
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: root.showLocations ? "All locations" : "Recommended now"
+                            font.family: Config.theme.font
+                            font.pixelSize: Config.theme.fontSize
+                            font.weight: Font.Medium
+                            color: Colors.overBackground
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: root.showLocations
+                                ? NordVpnService.countries.length + " live NordVPN locations"
+                                : (NordVpnService.recommendationsUpdating
+                                    && NordVpnService.recommendedServers.length === 0
+                                    ? "Loading NordVPN's live feed…"
+                                    : "Live load · updated "
+                                        + (NordVpnService.recommendationsUpdatedAt || "just now"))
+                            font.family: Config.theme.font
+                            font.pixelSize: Styling.fontSize(-2)
+                            color: Colors.overSurfaceVariant
+                            elide: Text.ElideRight
+                        }
+                    }
+
+                    Button {
+                        id: locationButton
+
+                        implicitHeight: 32
+                        text: root.showLocations ? "Live picks" : "All locations"
+                        flat: true
+
+                        background: StyledRect {
+                            variant: locationButton.hovered ? "focus" : "common"
+                            radius: Styling.radius(-4)
+                        }
+
+                        contentItem: Text {
+                            text: locationButton.text
+                            leftPadding: 10
+                            rightPadding: 10
+                            font.family: Config.theme.font
+                            font.pixelSize: Styling.fontSize(-2)
+                            font.weight: Font.Medium
+                            color: Colors.overBackground
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+
+                        onClicked: root.setLocationsVisible(!root.showLocations)
+                    }
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    visible: !root.showLocations && NordVpnService.recommendationsError !== ""
+                    text: NordVpnService.recommendationsError
+                    wrapMode: Text.Wrap
+                    font.family: Config.theme.font
+                    font.pixelSize: Styling.fontSize(-2)
+                    color: Colors.warning
                 }
 
                 Text {
@@ -348,19 +430,23 @@ Item {
         }
 
         delegate: Item {
-            id: countryDelegate
+            id: serverDelegate
 
             required property var modelData
-            width: countryList.width
-            height: countryCard.height + 4
+            width: serverList.width
+            height: serverCard.height + 2
+
+            readonly property bool isServer: modelData.kind === "server"
+            readonly property bool isCurrentServer: isServer && NordVpnService.connected
+                && NordVpnService.server.startsWith(modelData.serverKey)
 
             StyledRect {
-                id: countryCard
+                id: serverCard
 
                 width: root.contentWidth
                 anchors.horizontalCenter: parent.horizontalCenter
-                implicitHeight: 54
-                variant: countryMouseArea.containsMouse ? "focus" : "common"
+                implicitHeight: serverDelegate.isServer ? 68 : 58
+                variant: serverMouseArea.containsMouse ? "focus" : "common"
                 radius: Styling.radius(4)
 
                 RowLayout {
@@ -370,20 +456,23 @@ Item {
                     spacing: 10
 
                     Text {
-                        Layout.preferredWidth: 30
-                        text: countryDelegate.modelData.flag
+                        Layout.preferredWidth: 32
+                        text: serverDelegate.modelData.flag
                         font.family: Config.theme.font
-                        font.pixelSize: Styling.fontSize(4)
+                        font.pixelSize: Styling.fontSize(5)
                         horizontalAlignment: Text.AlignHCenter
                     }
 
                     ColumnLayout {
                         Layout.fillWidth: true
-                        spacing: 0
+                        spacing: 1
 
                         Text {
                             Layout.fillWidth: true
-                            text: countryDelegate.modelData.name
+                            text: serverDelegate.isServer
+                                ? [serverDelegate.modelData.country, serverDelegate.modelData.city]
+                                    .filter(value => value !== "").join(" · ")
+                                : serverDelegate.modelData.name
                             font.family: Config.theme.font
                             font.pixelSize: Config.theme.fontSize
                             font.weight: Font.Medium
@@ -391,46 +480,134 @@ Item {
                             elide: Text.ElideRight
                         }
 
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 6
+
+                            Text {
+                                Layout.fillWidth: true
+                                text: serverDelegate.isServer
+                                    ? serverDelegate.modelData.hostname
+                                    : (serverDelegate.modelData.serverCount
+                                        + (serverDelegate.modelData.serverCount === 1
+                                            ? " server · " : " servers · ")
+                                        + serverDelegate.modelData.cityCount
+                                        + (serverDelegate.modelData.cityCount === 1
+                                            ? " city" : " cities"))
+                                font.family: Config.theme.font
+                                font.pixelSize: Styling.fontSize(-2)
+                                color: Colors.overSurfaceVariant
+                                elide: Text.ElideRight
+                            }
+
+                            StyledRect {
+                                implicitWidth: p2pLabel.implicitWidth + 10
+                                implicitHeight: 20
+                                visible: serverDelegate.isServer
+                                    && serverDelegate.modelData.supportsP2p
+                                variant: "internalbg"
+                                radius: Styling.radius(-6)
+
+                                Text {
+                                    id: p2pLabel
+
+                                    anchors.centerIn: parent
+                                    text: "P2P"
+                                    font.family: Config.theme.font
+                                    font.pixelSize: Styling.fontSize(-3)
+                                    font.weight: Font.Medium
+                                    color: Colors.overSurfaceVariant
+                                }
+                            }
+                        }
+                    }
+
+                    ColumnLayout {
+                        visible: serverDelegate.isServer
+                        Layout.preferredWidth: 48
+                        spacing: 3
+
                         Text {
-                            text: root.p2pMode ? "P2P optimized" : "Fastest available"
+                            Layout.alignment: Qt.AlignRight
+                            text: serverDelegate.modelData.load + "%"
                             font.family: Config.theme.font
                             font.pixelSize: Styling.fontSize(-2)
-                            color: Colors.overSurfaceVariant
+                            font.weight: Font.Medium
+                            color: root.loadColor(serverDelegate.modelData.load)
+                        }
+
+                        StyledRect {
+                            Layout.preferredWidth: 48
+                            Layout.preferredHeight: 4
+                            variant: "internalbg"
+                            radius: 2
+
+                            StyledRect {
+                                anchors.left: parent.left
+                                anchors.top: parent.top
+                                anchors.bottom: parent.bottom
+                                width: parent.width * serverDelegate.modelData.load / 100
+                                variant: "focus"
+                                color: root.loadColor(serverDelegate.modelData.load)
+                                radius: 2
+                            }
                         }
                     }
 
                     Text {
-                        text: NordVpnService.connected && NordVpnService.country === countryDelegate.modelData.name
+                        text: serverDelegate.isCurrentServer
+                            || (!serverDelegate.isServer && NordVpnService.connected
+                                && NordVpnService.country === serverDelegate.modelData.name)
                             ? Icons.shieldCheck : Icons.caretRight
                         font.family: Icons.font
                         font.pixelSize: Styling.fontSize(0)
-                        color: NordVpnService.connected && NordVpnService.country === countryDelegate.modelData.name
+                        color: serverDelegate.isCurrentServer
                             ? Styling.srItem("overprimary") : Colors.overSurfaceVariant
                     }
                 }
 
                 MouseArea {
-                    id: countryMouseArea
+                    id: serverMouseArea
+
                     anchors.fill: parent
                     hoverEnabled: true
                     enabled: !NordVpnService.isUpdating && !VpnService.isSwitching
                     cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
                     onClicked: {
-                        Config.system.nordvpn.preferredCountry = countryDelegate.modelData.name;
-                        root.requestConnect(countryDelegate.modelData.name);
+                        if (serverDelegate.isServer) {
+                            root.requestServer(serverDelegate.modelData.serverKey);
+                        } else {
+                            Config.system.nordvpn.preferredCountry = serverDelegate.modelData.name;
+                            root.requestConnect(serverDelegate.modelData.name);
+                        }
                     }
                 }
             }
         }
 
-        Text {
-            anchors.centerIn: parent
-            visible: NordVpnService.available && NordVpnService.countries.length > 0
-                && countryList.count === 0
-            text: "No matching countries"
-            font.family: Config.theme.font
-            font.pixelSize: Config.theme.fontSize
-            color: Colors.overSurfaceVariant
+        footer: Item {
+            width: serverList.width
+            height: emptyState.visible ? emptyState.implicitHeight + 36 : 18
+
+            Text {
+                id: emptyState
+
+                width: root.contentWidth
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.top: parent.top
+                anchors.topMargin: 14
+                visible: NordVpnService.available && serverList.count === 0
+                    && !NordVpnService.recommendationsUpdating
+                text: root.searchText !== ""
+                    ? "No matching " + (root.showLocations ? "locations" : "live servers")
+                    : (root.showLocations ? "No locations available"
+                        : "No live recommendations available")
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.Wrap
+                font.family: Config.theme.font
+                font.pixelSize: Config.theme.fontSize
+                color: Colors.overSurfaceVariant
+            }
         }
     }
 }

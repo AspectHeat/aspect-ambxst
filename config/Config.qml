@@ -1020,7 +1020,6 @@ Singleton {
                 property int pollInterval: 20
                 property string preferredMode: "fastest"
                 property string preferredCountry: ""
-                property string handoffPolicy: "confirm"
             }
             property JsonObject idle: JsonObject {
                 property JsonObject general: JsonObject {

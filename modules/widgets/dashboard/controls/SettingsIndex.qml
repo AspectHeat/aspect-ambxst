@@ -25,7 +25,7 @@ QtObject {
         { label: "Tailnet Profile", keywords: "account switch login profile", section: 10, subSection: "tailscale", subLabel: "VPN > Tailscale", icon: Icons.user, isIcon: true }
     ] : []).concat(Config.system.nordvpn.enabled ? [
         { label: "NordVPN", keywords: "vpn privacy commercial nordlynx wireguard", section: 10, subSection: "nordvpn", subLabel: "VPN", icon: Icons.vpn, isIcon: true },
-        { label: "VPN Countries", keywords: "location flag server country region", section: 10, subSection: "nordvpn", subLabel: "VPN > NordVPN", icon: Icons.globe, isIcon: true },
+        { label: "Live VPN Servers", keywords: "location load flag server country region", section: 10, subSection: "nordvpn", subLabel: "VPN > NordVPN", icon: Icons.globe, isIcon: true },
         { label: "P2P VPN", keywords: "peer torrent speed optimized server", section: 10, subSection: "nordvpn", subLabel: "VPN > NordVPN", icon: Icons.lightning, isIcon: true },
         { label: "Quick Connect", keywords: "fastest recommended nordvpn server", section: 10, subSection: "nordvpn", subLabel: "VPN > NordVPN", icon: Icons.lightning, isIcon: true }
     ] : []) : []

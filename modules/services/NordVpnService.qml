@@ -24,6 +24,10 @@ Singleton {
     property string protocol: ""
     property string transfer: ""
     property list<var> countries: []
+    property list<var> recommendedServers: []
+    property bool recommendationsUpdating: false
+    property string recommendationsError: ""
+    property string recommendationsUpdatedAt: ""
 
     readonly property var countryCodes: ({
         "Albania": "AL", "Argentina": "AR", "Australia": "AU", "Austria": "AT",
@@ -126,21 +130,64 @@ Singleton {
     }
 
     function parseCountries(output): void {
-        const raw = String(output ?? "").replace(/^countries\s*:\s*/i, "");
-        let names = raw.split(/[,\n]/).map(value => normalizedCountry(value)).filter(value => value !== "");
-        if (names.length <= 1)
-            names = raw.split(/\s{2,}/).map(value => normalizedCountry(value)).filter(value => value !== "");
+        try {
+            const data = JSON.parse(String(output ?? ""));
+            if (!Array.isArray(data))
+                throw new Error("Unexpected response");
+            countries = data.map(countryData => ({
+                name: countryData.name ?? "",
+                code: countryData.code ?? "",
+                flag: flagForCode(countryData.code ?? ""),
+                cliValue: String(countryData.name ?? "").replace(/ /g, "_"),
+                serverCount: Number(countryData.serverCount ?? 0),
+                cityCount: (countryData.cities ?? []).length
+            })).filter(countryData => countryData.name !== "")
+                .sort((a, b) => a.name.localeCompare(b.name));
+        } catch (error) {
+            countries = [];
+        }
+    }
 
-        const unique = [...new Set(names)];
-        countries = unique.map(name => {
-            const code = countryCodes[name] ?? "";
-            return {
-                name: name,
-                code: code,
-                flag: flagForCode(code),
-                cliValue: name.replace(/ /g, "_")
-            };
-        }).sort((a, b) => a.name.localeCompare(b.name));
+    function countryCodeForName(countryName): string {
+        const liveCountry = countries.find(countryData => countryData.name === countryName);
+        return liveCountry?.code ?? countryCodes[countryName] ?? "";
+    }
+
+    function parseRecommendations(output): void {
+        try {
+            const data = JSON.parse(String(output ?? ""));
+            if (!Array.isArray(data))
+                throw new Error("Unexpected response");
+
+            recommendedServers = data.map(serverData => {
+                const location = serverData.locations?.[0] ?? {};
+                const countryData = location.country ?? {};
+                const groupIds = (serverData.groups ?? []).map(group => group.identifier ?? "");
+                const technologyIds = (serverData.technologies ?? [])
+                    .filter(technology => technology.pivot?.status === "online")
+                    .map(technology => technology.identifier ?? "");
+                return {
+                    id: serverData.id ?? 0,
+                    name: serverData.name ?? serverData.hostname ?? "NordVPN server",
+                    hostname: serverData.hostname ?? "",
+                    serverKey: String(serverData.hostname ?? "").split(".")[0],
+                    load: Math.max(0, Math.min(100, Number(serverData.load ?? 0))),
+                    status: serverData.status ?? "",
+                    country: countryData.name ?? "",
+                    countryCode: countryData.code ?? "",
+                    city: countryData.city?.name ?? "",
+                    subdivision: countryData.subdivision?.name ?? "",
+                    flag: flagForCode(countryData.code ?? ""),
+                    supportsP2p: groupIds.includes("legacy_p2p"),
+                    supportsStandard: groupIds.includes("legacy_standard"),
+                    supportsNordLynx: technologyIds.includes("wireguard_udp")
+                };
+            }).filter(server => server.hostname !== "" && server.status === "online");
+            recommendationsError = "";
+            recommendationsUpdatedAt = Qt.formatTime(new Date(), "h:mm AP");
+        } catch (error) {
+            recommendationsError = "Could not read NordVPN's live server feed";
+        }
     }
 
     function refresh(): void {
@@ -149,11 +196,17 @@ Singleton {
         statusProc.run();
         if (countries.length === 0 && !countriesProc.running)
             countriesProc.run();
+        refreshRecommendations();
     }
 
     function refreshCountries(): void {
         if (available && enabled && !countriesProc.running)
             countriesProc.run();
+    }
+
+    function refreshRecommendations(): void {
+        if (available && enabled && !recommendationsProc.running)
+            recommendationsProc.run();
     }
 
     function runMutation(command): void {
@@ -184,6 +237,12 @@ Singleton {
         runMutation(["nordvpn", "disconnect"]);
     }
 
+    function connectToServer(serverKey): void {
+        if (!serverKey)
+            return;
+        runMutation(["nordvpn", "connect", serverKey]);
+    }
+
     function toggle(): void {
         if (connected)
             disconnect();
@@ -208,6 +267,14 @@ Singleton {
         repeat: true
         running: root.available && root.enabled
         onTriggered: root.refresh()
+    }
+
+    Timer {
+        id: recommendationsTimer
+        interval: 60000
+        repeat: true
+        running: root.available && root.enabled
+        onTriggered: root.refreshRecommendations()
     }
 
     Timer {
@@ -285,11 +352,15 @@ Singleton {
         property string buffer: ""
         property string errorBuffer: ""
 
-        command: ["nordvpn", "countries"]
-        environment: ({
-            LANG: "C.UTF-8",
-            LC_ALL: "C.UTF-8"
-        })
+        command: [
+            "curl",
+            "-fsS",
+            "--max-time",
+            "10",
+            "--header",
+            "Accept: application/json",
+            "https://api.nordvpn.com/v1/servers/countries"
+        ]
 
         function run(): void {
             buffer = "";
@@ -311,6 +382,52 @@ Singleton {
             errorBuffer = "";
             if (exitCode === 0)
                 Qt.callLater(() => root.parseCountries(output));
+        }
+    }
+
+    Process {
+        id: recommendationsProc
+
+        property string buffer: ""
+        property string errorBuffer: ""
+
+        command: [
+            "curl",
+            "-fsS",
+            "--max-time",
+            "10",
+            "--header",
+            "Accept: application/json",
+            "https://api.nordvpn.com/v1/servers/recommendations?limit=32"
+        ]
+
+        function run(): void {
+            buffer = "";
+            errorBuffer = "";
+            root.recommendationsUpdating = true;
+            running = true;
+        }
+
+        stdout: SplitParser {
+            onRead: data => recommendationsProc.buffer += data + "\n"
+        }
+
+        stderr: SplitParser {
+            onRead: data => recommendationsProc.errorBuffer += data + "\n"
+        }
+
+        onExited: exitCode => {
+            const output = buffer.trim();
+            const error = errorBuffer.trim();
+            buffer = "";
+            errorBuffer = "";
+            Qt.callLater(() => {
+                root.recommendationsUpdating = false;
+                if (exitCode === 0)
+                    root.parseRecommendations(output);
+                else
+                    root.recommendationsError = error || "NordVPN's live server feed is unavailable";
+            });
         }
     }
 
