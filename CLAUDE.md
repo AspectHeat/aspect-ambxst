@@ -87,7 +87,7 @@ not redirect. Live config therefore lives under the sandbox, not the real home.
 
 ```bash
 ./lab/check-prereqs.sh   # read-only; lists what is missing, installs nothing
-./lab/run-isolated.sh    # sandboxed run; restores the fallback shell on exit
+./lab/run-isolated.sh    # sandboxed run; leaves bare Hyprland on exit
 ```
 
 Logs: `~/.local/state/ambxst-lab/latest.log` (runs) and `boot.log` (boot).
@@ -97,16 +97,41 @@ Logs: `~/.local/state/ambxst-lab/latest.log` (runs) and `boot.log` (boot).
 Set via `~/.config/hypr/config/autostart.lua` → `lab/autostart-shell.sh`. **A bad
 change costs the desktop on next boot.** Layers of protection, in order:
 
-1. `autostart-shell.sh` falls back to native Noctalia if Ambxst fails to start.
-2. `run-isolated.sh`'s trap restores Noctalia if Ambxst exits mid-session.
-3. SSH over Tailscale, independent of the graphical session.
-4. Sunshine/Moonlight for visual access.
-5. Revert: `cp ~/Backups/autostart.lua.before-ambxst ~/.config/hypr/config/autostart.lua`
+1. `SUPER+Return` opens a terminal from bare Hyprland, with no shell running at
+   all — the compositor's own bind, independent of Ambxst.
+2. SSH over Tailscale, independent of the graphical session.
+3. Sunshine/Moonlight for visual access.
+4. Revert: `cp ~/Backups/autostart.lua.before-ambxst ~/.config/hypr/config/autostart.lua`
+   (that file predates the Noctalia removal — it execs `noctalia`, which is gone.
+   Edit it to exec `lab/autostart-shell.sh`, or just fix the shell by hand.)
 
-Noctalia is not wanted as a daily shell, but it is currently the only *automatic*
-recovery path. Keep it installed unless a replacement failsafe exists.
+**There is no longer a fallback shell.** Noctalia was removed on 2026-07-29 —
+package and all — because it caused more breakage than it prevented: a second
+shell drew behind Ambxst, and a resurrection race in `autostart-shell.sh`
+restarted it on every compositor restart. Do not reintroduce an automatic
+fallback that launches a *competing* shell into the same session; if a failsafe
+is wanted again, it has to be one that cannot run concurrently with Ambxst.
 
 Test risky changes with `./lab/run-isolated.sh` before they can affect boot.
+
+### Keybinds go through `lab/ambxst-shim.sh`
+
+Upstream expects an `ambxst` command on PATH, supplied by the installer we never
+run. Both `~/.config/hypr/config/binds.lua` and the keybind table Ambxst writes
+to `axctl.toml` call bare `ambxst`, so without it **every hotkey is a silent
+no-op** — which is why Noctalia was quietly servicing them all.
+
+```bash
+sudo ln -sfn ~/Projects/aspect-ambxst/lab/ambxst-shim.sh /usr/local/bin/ambxst
+```
+
+`/usr/local/bin` is used because the graphical session's PATH does not include
+`~/.local/bin`. The shim refuses `update`/`install`/`remove`/`goodbye`/`refresh`,
+which are exactly the "Never run" commands above.
+
+Note that axctl's own keybind table never reaches Hyprland here — `hyprctl binds`
+shows only `__lua` binds from the CachyOS Lua config. `binds.lua` is the single
+source of truth for hotkeys on Bostrom.
 
 ## Hardware: what Bostrom can and cannot validate
 

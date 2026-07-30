@@ -85,16 +85,32 @@ else
 fi
 
 say
-say '=== recovery shell ==='
-if pgrep -x noctalia >/dev/null 2>&1; then
-    ok "native noctalia running (pid $(pgrep -x noctalia | head -1))"
+say '=== keybind plumbing ==='
+# Every hotkey in ~/.config/hypr/config/binds.lua and in the keybind table
+# Ambxst writes to axctl.toml calls bare `ambxst`. Upstream's installer provides
+# it; we never run the installer, so lab/ambxst-shim.sh stands in.
+if command -v ambxst >/dev/null 2>&1; then
+    ok "ambxst on PATH -> $(command -v ambxst)"
+    if [[ "$(readlink -f "$(command -v ambxst)")" == "$(readlink -f "$REPO_DIR/lab/ambxst-shim.sh")" ]]; then
+        ok 'ambxst resolves to this checkout'
+    else
+        warn "ambxst does NOT point at $REPO_DIR/lab/ambxst-shim.sh; hotkeys may drive another install"
+    fi
 else
-    warn 'native noctalia is NOT running; recovery target is absent'
+    bad 'ambxst on PATH (every hotkey is a silent no-op without it; see lab/ambxst-shim.sh)'
 fi
-if command -v noctalia >/dev/null 2>&1; then
-    ok "noctalia binary -> $(command -v noctalia)"
+
+say
+say '=== recovery path ==='
+# There is no fallback shell by design. Bare Hyprland must still get a terminal.
+BINDS_LUA="${XDG_CONFIG_HOME:-$HOME/.config}/hypr/config/binds.lua"
+if grep -qE '^\s*hl\.bind\(mainMod \.\. " \+ Return"' "$BINDS_LUA" 2>/dev/null; then
+    ok 'SUPER+Return terminal bind present (recovery with no shell running)'
 else
-    bad 'noctalia (needed to restore the desktop after a lab run)'
+    warn "no SUPER+Return terminal bind found in $BINDS_LUA; recovery would need SSH"
+fi
+if grep -qi noctalia "$BINDS_LUA" 2>/dev/null; then
+    warn "$BINDS_LUA still references noctalia; those hotkeys are dead"
 fi
 
 say
