@@ -1,0 +1,929 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aspect Ambxst — Tailscale Control Panel: Implementation Plan</title>
+<style>
+  :root {
+    --bg:        #12131a;
+    --surface:   #1a1c25;
+    --surface-2: #21242f;
+    --line:      #2e3240;
+    --fg:        #dde1ea;
+    --fg-dim:    #939aab;
+    --accent:    #7aa2f7;
+    --ok:        #9ece6a;
+    --warn:      #e0af68;
+    --err:       #f7768e;
+    --mono: ui-monospace, "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace;
+    --sans: ui-sans-serif, "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg:#f7f8fa; --surface:#fff; --surface-2:#eef0f4; --line:#d8dce4;
+      --fg:#1b1e26; --fg-dim:#5d6472; --accent:#2f5fd0;
+      --ok:#3f7d20; --warn:#8a5a00; --err:#b3243b;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin:0; background:var(--bg); color:var(--fg);
+    font-family:var(--sans); font-size:15px; line-height:1.65;
+  }
+  .wrap { display:grid; grid-template-columns: 250px minmax(0,1fr); gap:0; max-width:1500px; margin:0 auto; }
+  nav {
+    position:sticky; top:0; align-self:start; height:100vh; overflow-y:auto;
+    padding:28px 18px; border-right:1px solid var(--line); background:var(--surface);
+  }
+  nav .brand { font-weight:700; font-size:13px; letter-spacing:.09em; text-transform:uppercase; color:var(--accent); margin-bottom:4px; }
+  nav .sub { font-size:12px; color:var(--fg-dim); margin-bottom:20px; }
+  nav a { display:block; padding:5px 9px; margin:1px 0; border-radius:6px; color:var(--fg-dim); text-decoration:none; font-size:13.5px; }
+  nav a:hover { background:var(--surface-2); color:var(--fg); }
+  nav a.indent { padding-left:22px; font-size:12.5px; }
+  main { padding:44px 52px 120px; min-width:0; }
+  h1 { font-size:31px; line-height:1.25; margin:0 0 6px; letter-spacing:-.02em; }
+  .lede { color:var(--fg-dim); font-size:15.5px; margin:0 0 8px; max-width:74ch; }
+  h2 {
+    font-size:21px; margin:52px 0 14px; padding-bottom:8px;
+    border-bottom:1px solid var(--line); letter-spacing:-.01em; scroll-margin-top:20px;
+  }
+  h3 { font-size:16.5px; margin:30px 0 8px; color:var(--fg); scroll-margin-top:20px; }
+  h4 { font-size:14px; margin:20px 0 6px; color:var(--fg-dim); text-transform:uppercase; letter-spacing:.06em; }
+  p, li { max-width:88ch; }
+  code {
+    font-family:var(--mono); font-size:.875em; background:var(--surface-2);
+    padding:1.5px 5px; border-radius:4px; border:1px solid var(--line);
+  }
+  pre {
+    background:var(--surface); border:1px solid var(--line); border-radius:9px;
+    padding:15px 17px; overflow-x:auto; font-family:var(--mono); font-size:12.9px; line-height:1.62;
+  }
+  pre code { background:none; border:none; padding:0; font-size:inherit; }
+  .cmt { color:var(--fg-dim); }
+  table { border-collapse:collapse; width:100%; margin:14px 0; font-size:13.8px; }
+  th, td { border:1px solid var(--line); padding:8px 11px; text-align:left; vertical-align:top; }
+  th { background:var(--surface-2); font-weight:600; font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; color:var(--fg-dim); }
+  td code { font-size:12.4px; }
+  .box { border-radius:9px; padding:13px 17px; margin:16px 0; border:1px solid var(--line); background:var(--surface); }
+  .box .hd { font-weight:700; font-size:12px; text-transform:uppercase; letter-spacing:.08em; margin-bottom:5px; }
+  .box p:last-child, .box ul:last-child { margin-bottom:0; }
+  .box.stop  { border-left:4px solid var(--err);   } .box.stop .hd  { color:var(--err); }
+  .box.warn  { border-left:4px solid var(--warn);  } .box.warn .hd  { color:var(--warn); }
+  .box.ok    { border-left:4px solid var(--ok);    } .box.ok .hd    { color:var(--ok); }
+  .box.info  { border-left:4px solid var(--accent);} .box.info .hd  { color:var(--accent); }
+  .pill { display:inline-block; font-size:10.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+          padding:2px 8px; border-radius:99px; border:1px solid var(--line); background:var(--surface-2); color:var(--fg-dim); }
+  .pill.new { color:var(--ok); border-color:var(--ok); }
+  .pill.edit{ color:var(--warn); border-color:var(--warn); }
+  .pill.pre { color:var(--err); border-color:var(--err); }
+  .grid2 { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:14px; }
+  .phase { border:1px solid var(--line); border-radius:10px; background:var(--surface); padding:16px 19px; margin:14px 0; }
+  .phase h3 { margin-top:0; display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
+  .phase .tag { font-size:11px; font-weight:700; letter-spacing:.07em; color:var(--accent);
+                border:1px solid var(--accent); border-radius:5px; padding:1px 7px; text-transform:uppercase; }
+  .phase .est { font-size:12px; color:var(--fg-dim); font-weight:400; letter-spacing:0; text-transform:none; }
+  ul.tight li { margin:2px 0; }
+  .ascii { font-family:var(--mono); font-size:12.4px; line-height:1.5; white-space:pre; }
+  hr { border:none; border-top:1px solid var(--line); margin:40px 0; }
+  .footer { color:var(--fg-dim); font-size:12.5px; margin-top:60px; padding-top:16px; border-top:1px solid var(--line); }
+  @media (max-width:1000px) {
+    .wrap { grid-template-columns:1fr; }
+    nav { position:static; height:auto; border-right:none; border-bottom:1px solid var(--line); }
+    main { padding:28px 20px 80px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<nav>
+  <div class="brand">Aspect Ambxst</div>
+  <div class="sub">Tailscale Control Panel<br>Implementation Plan</div>
+  <a href="#scope">1 · Scope &amp; interpretation</a>
+  <a href="#recon">2 · Environment recon</a>
+  <a href="#blocker">3 · Blocking prerequisite</a>
+  <a href="#arch">4 · Architecture</a>
+  <a href="#design">5 · Design conformance</a>
+  <a href="#files">6 · File-by-file spec</a>
+  <a href="#files-service" class="indent">6.1 TailscaleService</a>
+  <a href="#files-peer" class="indent">6.2 TailscalePeer</a>
+  <a href="#files-panel" class="indent">6.3 TailscalePanel</a>
+  <a href="#files-item" class="indent">6.4 TailscalePeerItem</a>
+  <a href="#files-wiring" class="indent">6.5 Wiring &amp; config</a>
+  <a href="#copy">7 · Copy-to-clipboard UX</a>
+  <a href="#switching">8 · Connection switching</a>
+  <a href="#phases">9 · Phased delivery</a>
+  <a href="#testing">10 · Test protocol</a>
+  <a href="#risks">11 · Risks &amp; caveats</a>
+  <a href="#oos">12 · Out of scope</a>
+  <a href="#accept">13 · Acceptance criteria</a>
+</nav>
+
+<main>
+
+<h1>Tailscale Control Panel</h1>
+<p class="lede">
+  A built-in Tailscale panel for Aspect Ambxst: connection switching, one-click IP copy,
+  and a peer browser — built entirely on the existing <code>NetworkService</code> /
+  <code>WifiPanel</code> pattern so it is visually and architecturally indistinguishable
+  from the Wi-Fi and Bluetooth panels already shipping.
+</p>
+<p class="lede" style="font-size:13.5px">
+  Target: <code>modules/services/TailscaleService.qml</code> + <code>modules/widgets/dashboard/controls/TailscalePanel.qml</code>.
+  Written against the repo state of <strong>2026-07-27</strong>, Tailscale <strong>1.98.9</strong>.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2 id="scope">1 · Scope &amp; interpretation</h2>
+
+<p>The request has three named deliverables. One of them — “connection switching” — is
+ambiguous in Tailscale’s vocabulary, so it is resolved into three concrete axes below.
+All three are in scope; they share one service and one panel.</p>
+
+<table>
+<thead><tr><th style="width:20%">Requested</th><th style="width:34%">Resolved to</th><th>Mechanism</th></tr></thead>
+<tbody>
+<tr>
+  <td rowspan="3"><strong>Connection switching</strong></td>
+  <td><strong>A.</strong> Tailnet on/off — connect &amp; disconnect the node</td>
+  <td><code>tailscale up</code> / <code>tailscale down</code>; state from <code>BackendState</code> + <code>WantRunning</code></td>
+</tr>
+<tr>
+  <td><strong>B.</strong> Exit-node selection — route all traffic via a chosen peer</td>
+  <td><code>tailscale set --exit-node=&lt;id&gt;</code>, cleared with <code>--exit-node=</code>; candidates from peers where <code>ExitNodeOption == true</code></td>
+</tr>
+<tr>
+  <td><strong>C.</strong> Profile / account switching — move between tailnets</td>
+  <td><code>tailscale switch --list</code> to enumerate, <code>tailscale switch &lt;name&gt;</code> to activate</td>
+</tr>
+<tr>
+  <td><strong>Copy IP address</strong></td>
+  <td>Copy this node’s IPv4/IPv6/MagicDNS name, and any peer’s, from a per-row button</td>
+  <td><code>wl-copy</code> via <code>Process</code>, argv form (no shell)</td>
+</tr>
+<tr>
+  <td><strong>Same design specification</strong></td>
+  <td>Byte-for-byte reuse of the existing control-panel idiom</td>
+  <td><code>PanelTitlebar</code>, <code>StyledRect</code> variants, <code>Styling.*</code>, <code>Colors.*</code>, <code>Config.theme.*</code>, <code>Icons.*</code> — see §5</td>
+</tr>
+</tbody>
+</table>
+
+<div class="box info">
+  <div class="hd">Design anchor</div>
+  <p>Every UI decision in this plan defers to a concrete precedent already in the tree.
+  <code>TailscalePanel.qml</code> mirrors <code>WifiPanel.qml</code>;
+  <code>TailscalePeerItem.qml</code> mirrors <code>WifiNetworkItem.qml</code>;
+  <code>TailscaleService.qml</code> mirrors <code>NetworkService.qml</code>;
+  <code>TailscalePeer.qml</code> mirrors <code>WifiAccessPoint.qml</code>.
+  Where this plan is silent on a styling detail, <em>copy the Wi-Fi equivalent verbatim</em>.</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2 id="recon">2 · Environment recon <span class="pill">verified 2026-07-27</span></h2>
+
+<p>Probed on the Bostrom test target before planning. These findings drive several
+design decisions, so they are recorded rather than assumed.</p>
+
+<table>
+<thead><tr><th style="width:32%">Probe</th><th style="width:20%">Result</th><th>Consequence for the design</th></tr></thead>
+<tbody>
+<tr><td><code>tailscale version</code></td><td class="pill ok">1.98.9</td><td>Both Zephyrus and Bostrom. <code>tailscale set</code>, <code>exit-node list</code>, <code>switch</code> and <code>debug watch-ipn</code> all exist.</td></tr>
+<tr><td><code>tailscale status --json</code> as user</td><td><span style="color:var(--ok)">works, ~11 ms</span></td><td>Read path needs no privilege and is cheap enough to call freely on panel open.</td></tr>
+<tr><td><code>tailscale debug prefs</code> as user</td><td><span style="color:var(--ok)">works</span></td><td>Only source for <code>ExitNodeAllowLANAccess</code>, <code>RouteAll</code>, <code>CorpDNS</code>, <code>ShieldsUp</code>, <code>WantRunning</code>. Use it — do not shell out to <code>tailscale status</code> and guess.</td></tr>
+<tr><td><code>tailscale debug watch-ipn</code> as user</td><td><span style="color:var(--ok)">connects</span></td><td><strong>Event-driven updates are available.</strong> This is the <code>nmcli monitor</code> analogue — a long-lived <code>Process</code> whose stdout pokes <code>update()</code>. No unconditional polling needed.</td></tr>
+<tr><td><code>tailscale switch --list</code> as user</td><td class="pill pre">DENIED</td><td>“profiles access denied.” Blocked until the operator is set — see §3.</td></tr>
+<tr><td><code>tailscale set …</code> as user</td><td class="pill pre">DENIED</td><td>“checkprefs access denied.” <em>All</em> mutations are blocked until the operator is set.</td></tr>
+<tr><td><code>tailscale exit-node list</code></td><td class="pill warn">empty</td><td>This tailnet currently advertises <strong>no</strong> exit nodes. Axis B is buildable but not end-to-end testable here until one is advertised — see §11.</td></tr>
+<tr><td>Peer count / shape</td><td>13 peers</td><td>Each peer carries <code>HostName</code>, <code>DNSName</code>, <code>OS</code>, <code>Online</code>, <code>LastSeen</code>, <code>TailscaleIPs[]</code>, <code>ExitNode</code>, <code>ExitNodeOption</code>, <code>RxBytes</code>/<code>TxBytes</code>, <code>Relay</code>. Everything the UI needs is in one call.</td></tr>
+<tr><td>Peer hostname charset</td><td class="pill warn">unicode</td><td>At least one real peer name contains a typographic apostrophe (<code>’</code>). <strong>Never interpolate a peer name into a shell string.</strong> Use argv-form <code>Process.command</code> throughout.</td></tr>
+</tbody>
+</table>
+
+<h3>Shape of the data (redacted)</h3>
+<pre><code>{
+  "BackendState": "Running",
+  "TailscaleIPs": ["100.x.y.z", "fd7a:115c:a1e0::…"],
+  "MagicDNSSuffix": "&lt;tailnet&gt;.ts.net",
+  "ExitNodeStatus": null,
+  "Self":  { "ID": "…", "HostName": "&lt;host&gt;", "DNSName": "&lt;host&gt;.&lt;tailnet&gt;.ts.net.", "OS": "linux", "Online": true },
+  "Peer":  {
+    "nodekey:…": {
+      "ID": "…", "HostName": "&lt;peer&gt;", "DNSName": "&lt;peer&gt;.&lt;tailnet&gt;.ts.net.",
+      "OS": "macOS", "Online": false, "LastSeen": "2026-…",
+      "TailscaleIPs": ["100.a.b.c", "fd7a:…"],
+      "ExitNode": false, "ExitNodeOption": false,
+      "Relay": "&lt;derp&gt;", "RxBytes": 0, "TxBytes": 0
+    }
+  }
+}</code></pre>
+
+<div class="box warn">
+  <div class="hd">Public repo</div>
+  <p>This repo is public and <code>CLAUDE.md</code> flags that a personal path leaked once already.
+  Tailnet names, MagicDNS suffixes, <code>100.64.0.0/10</code> addresses, node IDs, peer hostnames and login
+  emails are all personal data. They must not appear in committed source, fixtures, comments,
+  test files, or log lines. Every example in this document is redacted for that reason.
+  Any mock fixture added for Zephyrus-side development must use synthetic values.</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2 id="blocker">3 · Blocking prerequisite <span class="pill pre">do first</span></h2>
+
+<p>Everything read-only works as the session user. <strong>Everything that changes state does not.</strong>
+Tailscale gates mutations behind root unless an operator is nominated. Without this, axes A, B and C
+are all dead on arrival, and the panel degrades to a read-only viewer.</p>
+
+<pre><code><span class="cmt"># Run once per machine. Idempotent. Persists across reboots and tailscaled restarts.</span>
+sudo tailscale set --operator=$USER
+
+<span class="cmt"># Verify — these must both succeed as the unprivileged user afterwards:</span>
+tailscale switch --list
+tailscale set --webclient=false</code></pre>
+
+<div class="box stop">
+  <div class="hd">Handle explicitly, do not assume</div>
+  <ul class="tight">
+    <li>Run it on <strong>Bostrom</strong> (the test target) and on <strong>Zephyrus</strong> if the panel is to be usable there too. It is a host-level setting, not a repo change — it will not travel with a <code>git pull</code>.</li>
+    <li>The shell must <strong>never</strong> invoke <code>sudo</code> itself. There is no polkit agent guarantee in a Quickshell process and a hung password prompt would freeze the panel.</li>
+    <li>Instead the service must <em>detect</em> the denial. Every mutating <code>Process</code> parses stderr for <code>access denied</code> and sets <code>TailscaleService.operatorMissing = true</code>.</li>
+    <li>When <code>operatorMissing</code> is true, the panel shows a single non-modal inline notice — <em>“Tailscale controls need one-time setup: <code>sudo tailscale set --operator=$USER</code>”</em> — with a copy-command button, and disables toggles rather than letting them fail silently. This is the same shape as the Wi-Fi panel’s captive-portal affordance.</li>
+  </ul>
+</div>
+
+<p>Secondary prerequisite, non-blocking: confirm <code>wl-copy</code> (wl-clipboard) is present. It already
+is — <code>ClipboardService</code>, <code>Screenshot</code> and <code>ClipboardTab</code> all depend on it — so no new
+dependency is introduced by the copy feature.</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2 id="arch">4 · Architecture</h2>
+
+<p>Four new files, four edited files. The split follows the reactive-singleton convention in
+<code>modules/services/AGENTS.md</code>: a singleton owns all process I/O and exposes plain QML
+properties; the UI imports the singleton directly and never prop-drills.</p>
+
+<pre class="ascii">  ┌─────────────────────────────────────────────────────────────────────┐
+  │  tailscaled  (system daemon, unix socket)                           │
+  └───────────────┬──────────────────────────────────┬──────────────────┘
+       read (user)│                                  │write (needs operator)
+  ┌───────────────▼──────────────┐    ┌──────────────▼───────────────────┐
+  │ status --json                │    │ up / down                        │
+  │ debug prefs                  │    │ set --exit-node=…                │
+  │ debug watch-ipn   (stream)   │    │ switch &lt;profile&gt;                 │
+  │ switch --list     (operator) │    │ set --exit-node-allow-lan-access │
+  └───────────────┬──────────────┘    └──────────────▲───────────────────┘
+                  │                                  │
+  ┌───────────────▼──────────────────────────────────┴───────────────────┐
+  │  TailscaleService.qml            pragma Singleton                    │
+  │  ───────────────────────────────────────────────────────────────     │
+  │  state: backendState connected selfIPv4 selfIPv6 selfDNSName         │
+  │         exitNodeId exitNodeName profiles[] operatorMissing lastError │
+  │  model: peers: list&lt;TailscalePeer&gt;   friendlyPeers  exitNodeOptions  │
+  │  verbs: refresh() toggle() up() down() setExitNode() clearExitNode() │
+  │         switchProfile() copyText() openAdminConsole()                │
+  └───────────────┬───────────────────────────────┬──────────────────────┘
+                  │ (QObject-backed, signalling)  │
+  ┌───────────────▼──────────────┐  ┌─────────────▼────────────────────┐
+  │ TailscalePeer.qml            │  │ consumers                        │
+  │ QtObject, lastIpcObject      │  │  • TailscalePanel.qml   (settings│
+  │ mirrors WifiAccessPoint      │  │      section 10 + quick controls)│
+  └──────────────────────────────┘  │  • TailscalePeerItem.qml (rows)  │
+                                    │  • QuickControls.qml    (button) │
+                                    └──────────────────────────────────┘</pre>
+
+<h3>New files</h3>
+<table>
+<thead><tr><th style="width:44%">Path</th><th style="width:12%"></th><th>Mirrors</th></tr></thead>
+<tbody>
+<tr><td><code>modules/services/TailscaleService.qml</code></td><td><span class="pill new">new</span></td><td><code>NetworkService.qml</code></td></tr>
+<tr><td><code>modules/services/TailscalePeer.qml</code></td><td><span class="pill new">new</span></td><td><code>WifiAccessPoint.qml</code></td></tr>
+<tr><td><code>modules/widgets/dashboard/controls/TailscalePanel.qml</code></td><td><span class="pill new">new</span></td><td><code>WifiPanel.qml</code></td></tr>
+<tr><td><code>modules/widgets/dashboard/controls/TailscalePeerItem.qml</code></td><td><span class="pill new">new</span></td><td><code>WifiNetworkItem.qml</code></td></tr>
+</tbody>
+</table>
+
+<h3>Edited files</h3>
+<table>
+<thead><tr><th style="width:44%">Path</th><th style="width:12%"></th><th>Change</th></tr></thead>
+<tbody>
+<tr><td><code>modules/widgets/dashboard/controls/SettingsTab.qml</code></td><td><span class="pill edit">edit</span></td><td>Append <code>sectionModel</code> entry and <code>panelComponents</code> entry, both <code>section: 10</code>.</td></tr>
+<tr><td><code>modules/widgets/dashboard/controls/SettingsIndex.qml</code></td><td><span class="pill edit">edit</span></td><td>Add searchable index rows for the new panel (<code>section: 10</code>).</td></tr>
+<tr><td><code>modules/widgets/dashboard/widgets/QuickControls.qml</code></td><td><span class="pill edit">edit</span></td><td>Add a <code>ControlButton</code> and extend <code>expandedPanel</code> to accept <code>2</code>.</td></tr>
+<tr><td><code>config/defaults/system.js</code> <em>and</em> <code>config/Config.qml</code></td><td><span class="pill edit">edit</span></td><td>New <code>system.tailscale</code> block. <strong>Both</strong> files, always — hard rule from the root <code>AGENTS.md</code>.</td></tr>
+</tbody>
+</table>
+
+<div class="box info">
+  <div class="hd">No shell.qml change required</div>
+  <p><code>shell.qml</code>’s init block only force-instantiates services with side effects that must
+  run before the UI exists (idle inhibit, global shortcuts). <code>TailscaleService</code> is instantiated
+  lazily on first property access from the panel or the quick-control button, which is correct:
+  it should not spawn a <code>watch-ipn</code> process at boot on machines that do not use Tailscale.
+  Instantiation is guarded by an <code>available</code> check (see §6.1).</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2 id="design">5 · Design conformance</h2>
+
+<p>“Same design specification” is enforced by a checklist, not by taste. Each row is a rule
+already in force in the codebase, with the precedent that proves it.</p>
+
+<table>
+<thead><tr><th style="width:26%">Rule</th><th style="width:37%">Applied here</th><th>Precedent</th></tr></thead>
+<tbody>
+<tr><td>No raw <code>Rectangle</code> containers</td><td>Every surface is <code>StyledRect</code> with a <code>variant</code>. Row background is <code>mouseArea.containsMouse ? "focus" : "common"</code>.</td><td><code>WifiNetworkItem.qml:28-32</code></td></tr>
+<tr><td>No hardcoded colors</td><td><code>Colors.overBackground</code>, <code>Colors.overSurfaceVariant</code>, <code>Colors.outline</code>, <code>Colors.warning</code>, <code>Styling.srItem("overprimary")</code> for the connected accent.</td><td><code>WifiPanel.qml:51-52</code></td></tr>
+<tr><td>No hardcoded radii</td><td><code>Styling.radius(4)</code> for rows, <code>Styling.radius(-4)</code> for badges and small buttons.</td><td><code>WifiNetworkItem.qml:31,137</code></td></tr>
+<tr><td>No hardcoded font sizes</td><td><code>Config.theme.font</code> family; <code>Config.theme.fontSize</code> for primary, <code>Styling.fontSize(-1)</code> for buttons, <code>Styling.fontSize(-2)</code> for secondary lines.</td><td><code>WifiNetworkItem.qml:99-119</code></td></tr>
+<tr><td>Panel header</td><td>Reuse <code>PanelTitlebar</code> unchanged: <code>title: "Tailscale"</code>, <code>statusText</code>, <code>showToggle: true</code>, <code>actions: [...]</code>.</td><td><code>WifiPanel.qml:46-89</code></td></tr>
+<tr><td>Panel body</td><td><code>ListView</code> filling parent, <code>clip: true</code>, <code>spacing: 4</code>, <code>reuseItems: true</code>, <code>cacheBuffer: 1000</code>, titlebar in <code>header</code>, centered empty-state <code>Text</code>.</td><td><code>WifiPanel.qml:32-113</code></td></tr>
+<tr><td>Content width</td><td><code>property int maxContentWidth: 480</code>; <code>contentWidth = Math.min(width, maxContentWidth)</code>; rows centered. Required — the <code>Loader</code> host assigns <code>maxContentWidth</code> on load.</td><td><code>WifiPanel.qml:15-17</code>, <code>QuickControls.qml:169-173</code></td></tr>
+<tr><td>Animations</td><td>Every <code>Behavior</code> guarded by <code>enabled: Config.animDuration &gt; 0</code>, <code>duration: Config.animDuration</code>, <code>Easing.OutCubic</code> (or <code>/2</code> for opacity).</td><td><code>WifiNetworkItem.qml:20-26</code></td></tr>
+<tr><td>Icon font</td><td><code>font.family: Icons.font</code> with existing glyphs only. No new glyphs are needed — see the mapping below.</td><td><code>WifiNetworkItem.qml:74-75</code></td></tr>
+<tr><td>Indentation</td><td>4 spaces, QML.</td><td>root <code>AGENTS.md</code></td></tr>
+<tr><td>Null safety</td><td><code>root.peer?.online ?? false</code> style throughout; the peer object can be destroyed mid-animation during a list resync.</td><td><code>WifiNetworkItem.qml:65,84,111</code></td></tr>
+<tr><td>Async list safety</td><td>All list mutation inside <code>Process.onExited</code> wrapped in <code>Qt.callLater()</code>.</td><td><code>NetworkService.qml:331</code></td></tr>
+<tr><td>No raw JSON in bindings</td><td><code>JSON.parse</code> output is assigned to <code>TailscalePeer.lastIpcObject</code>; the UI binds to the QObject’s properties, never to the parsed object.</td><td><code>WifiAccessPoint.qml</code>, root <code>AGENTS.md</code> anti-patterns</td></tr>
+</tbody>
+</table>
+
+<h4>Icon mapping — all glyphs already exist in <code>modules/theme/Icons.qml</code></h4>
+<table>
+<thead><tr><th style="width:26%">Use</th><th style="width:24%">Glyph</th><th>Note</th></tr></thead>
+<tbody>
+<tr><td>Section / quick-control icon</td><td><code>Icons.vpn</code></td><td>Semantically exact; unused elsewhere, so no collision in the settings sidebar.</td></tr>
+<tr><td>Connected state</td><td><code>Icons.shieldCheck</code></td><td>Paired with <code>Icons.shield</code> for the disconnected state.</td></tr>
+<tr><td>Exit node active</td><td><code>Icons.globe</code></td><td>Same glyph the Wi-Fi panel uses for the captive portal — consistent “traffic leaves here” meaning.</td></tr>
+<tr><td>Copy button</td><td><code>Icons.copy</code> → <code>Icons.accept</code></td><td>Swap on success for ~1.2 s. See §7.</td></tr>
+<tr><td>Refresh action</td><td><code>Icons.sync</code></td><td>Inherits <code>PanelTitlebar</code>’s built-in spin animation via <code>loading: true</code>.</td></tr>
+<tr><td>Admin console action</td><td><code>Icons.popOpen</code></td><td>Matches the Wi-Fi panel’s “open external settings” action exactly.</td></tr>
+<tr><td>Peer OS</td><td><code>Icons.windowsLogo</code>, <code>Icons.phone</code>, <code>Icons.cube</code></td><td>Windows / iOS+Android / everything else. Deliberately coarse — do not add glyphs for this.</td></tr>
+<tr><td>Offline peer</td><td><code>Icons.circle</code> tinted <code>Colors.outline</code></td><td>Online uses <code>Styling.srItem("overprimary")</code>.</td></tr>
+</tbody>
+</table>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2 id="files">6 · File-by-file specification</h2>
+
+<h3 id="files-service">6.1 · <code>modules/services/TailscaleService.qml</code> <span class="pill new">new</span></h3>
+
+<p><code>pragma Singleton</code> + <code>pragma ComponentBehavior: Bound</code>, exactly as <code>NetworkService.qml</code>.
+Reuse that file’s <code>asyncProcessComp</code> / <code>runAsync()</code> promise helper verbatim — it is the
+established idiom for one-shot commands and already handles stderr capture and self-destruction.</p>
+
+<h4>Public property surface</h4>
+<table>
+<thead><tr><th style="width:30%">Property</th><th style="width:14%">Type</th><th>Source / meaning</th></tr></thead>
+<tbody>
+<tr><td><code>available</code></td><td>bool</td><td>Binary present. Probed once via <code>which tailscale</code> at init; when false the panel and quick-control button hide entirely and no processes start.</td></tr>
+<tr><td><code>backendState</code></td><td>string</td><td><code>status --json → BackendState</code>: <code>Running</code>, <code>Stopped</code>, <code>NeedsLogin</code>, <code>NoState</code>, <code>Starting</code>.</td></tr>
+<tr><td><code>connected</code></td><td>bool</td><td><code>backendState === "Running"</code>. Drives the titlebar toggle and the quick-control <code>isActive</code>.</td></tr>
+<tr><td><code>needsLogin</code></td><td>bool</td><td><code>backendState === "NeedsLogin"</code> — panel shows a “Log in” affordance that runs <code>tailscale login</code> detached instead of the normal toggle.</td></tr>
+<tr><td><code>isUpdating</code></td><td>bool</td><td>Guard flag; identical role to <code>NetworkService.isUpdating</code>. Suppresses re-entrant refresh and drives spinners.</td></tr>
+<tr><td><code>operatorMissing</code></td><td>bool</td><td>Set when any command’s stderr matches <code>/access denied/i</code>. Gates all mutating UI. See §3.</td></tr>
+<tr><td><code>lastError</code></td><td>string</td><td>Trimmed stderr of the most recent failed command; rendered in the titlebar status slot in <code>Colors.error</code>.</td></tr>
+<tr><td><code>selfIPv4</code>, <code>selfIPv6</code></td><td>string</td><td><code>Self.TailscaleIPs[0]</code> / <code>[1]</code>.</td></tr>
+<tr><td><code>selfHostName</code>, <code>selfDNSName</code></td><td>string</td><td><code>Self.HostName</code>; <code>Self.DNSName</code> with the trailing dot stripped.</td></tr>
+<tr><td><code>magicDNSSuffix</code></td><td>string</td><td>Top-level <code>MagicDNSSuffix</code>. Used to shorten peer DNS names for display.</td></tr>
+<tr><td><code>exitNodeId</code>, <code>exitNodeName</code></td><td>string</td><td>From <code>debug prefs → ExitNodeID</code>, resolved against the peer list for a display name. Empty ⇒ direct.</td></tr>
+<tr><td><code>allowLanAccess</code></td><td>bool</td><td><code>debug prefs → ExitNodeAllowLANAccess</code>. Exposed as a switch, only meaningful while an exit node is set.</td></tr>
+<tr><td><code>acceptRoutes</code>, <code>acceptDNS</code>, <code>shieldsUp</code></td><td>bool</td><td><code>debug prefs → RouteAll</code>, <code>CorpDNS</code>, <code>ShieldsUp</code>. Read-only in P1–P4; togglable in P5 if wanted.</td></tr>
+<tr><td><code>peers</code></td><td><code>list&lt;TailscalePeer&gt;</code></td><td>QObject-backed, resynced in place — never rebuilt wholesale. Same add/update/remove diff loop as <code>NetworkService:368-392</code>.</td></tr>
+<tr><td><code>friendlyPeers</code></td><td><code>list&lt;var&gt;</code></td><td>Sorted view: online before offline, exit nodes first within each group, then hostname A→Z. Mirrors <code>updateFriendlyList()</code>.</td></tr>
+<tr><td><code>exitNodeOptions</code></td><td><code>list&lt;var&gt;</code></td><td>Subset of <code>peers</code> where <code>exitNodeOption === true</code>. Derived, not separately fetched.</td></tr>
+<tr><td><code>profiles</code></td><td><code>list&lt;var&gt;</code></td><td><code>[{ id, name, tailnet, account, active }]</code> from <code>switch --list</code>. Empty while <code>operatorMissing</code>.</td></tr>
+<tr><td><code>onlineCount</code>, <code>peerCount</code></td><td>int</td><td>Convenience for the titlebar status line (<em>“7 of 13 online”</em>).</td></tr>
+</tbody>
+</table>
+
+<h4>Verbs</h4>
+<pre><code>function refresh()                        <span class="cmt">// debounced 200 ms → performRefresh()</span>
+function up()                             <span class="cmt">// tailscale up</span>
+function down()                           <span class="cmt">// tailscale down</span>
+function toggle()                         <span class="cmt">// connected ? down() : up()</span>
+function login()                          <span class="cmt">// Quickshell.execDetached — opens a browser, never blocks</span>
+function setExitNode(nodeIdOrIp)          <span class="cmt">// tailscale set --exit-node=&lt;v&gt;</span>
+function clearExitNode()                  <span class="cmt">// tailscale set --exit-node=</span>
+function setAllowLanAccess(bool)          <span class="cmt">// tailscale set --exit-node-allow-lan-access=…</span>
+function switchProfile(idOrName)          <span class="cmt">// tailscale switch &lt;v&gt;</span>
+function copyText(text)                   <span class="cmt">// ["wl-copy", "--", text] — argv, no shell</span>
+function openAdminConsole()               <span class="cmt">// xdg-open Config.system.tailscale.adminConsoleUrl</span>
+function peerIcon(peer) : string          <span class="cmt">// OS → Icons.* mapping</span>
+function shortDnsName(dnsName) : string   <span class="cmt">// strip trailing '.' and magicDNSSuffix</span></code></pre>
+
+<h4>Process topology</h4>
+<table>
+<thead><tr><th style="width:22%"><code>Process</code> id</th><th style="width:34%">Command (argv)</th><th>Lifecycle</th></tr></thead>
+<tbody>
+<tr><td><code>availabilityProbe</code></td><td><code>["which", "tailscale"]</code></td><td>Once, on <code>Component.onCompleted</code>. Gates everything else.</td></tr>
+<tr><td><code>watcher</code></td><td><code>["tailscale", "debug", "watch-ipn"]</code></td><td>Long-lived, <code>running: root.available</code>. <code>SplitParser.onRead → root.refresh()</code>. The <code>nmcli monitor</code> analogue — verified working unprivileged.</td></tr>
+<tr><td><code>statusProc</code></td><td><code>["tailscale", "status", "--json"]</code></td><td>Buffer stdout across reads; parse once in <code>onExited</code>; diff into <code>peers</code> inside <code>Qt.callLater</code>.</td></tr>
+<tr><td><code>prefsProc</code></td><td><code>["tailscale", "debug", "prefs"]</code></td><td>Same buffer-then-parse shape. Only source of exit-node and DNS/route prefs.</td></tr>
+<tr><td><code>profilesProc</code></td><td><code>["tailscale", "switch", "--list"]</code></td><td>Text output, not JSON — parse defensively, tolerate the denial message. Refreshed on panel open, not on every event.</td></tr>
+<tr><td><code>fallbackTimer</code></td><td>—</td><td><code>Timer</code>, <code>interval: Config.system.tailscale.pollInterval * 1000</code>, <code>running: available &amp;&amp; watcher.running === false</code>. Safety net only, for the case where <code>watch-ipn</code> dies. Default 30 s.</td></tr>
+</tbody>
+</table>
+
+<div class="box warn">
+  <div class="hd">Two implementation traps</div>
+  <ul class="tight">
+    <li><strong><code>SplitParser</code> splits on newlines.</strong> <code>status --json</code> is pretty-printed multi-line JSON, so it arrives in fragments. Accumulate into a <code>property string buffer</code> and only <code>JSON.parse</code> in <code>onExited</code> — exactly what <code>NetworkService</code>’s <code>getNetworks</code> does. Parsing per-read will throw on every line.</li>
+    <li><strong>Wrap <code>JSON.parse</code> in try/catch.</strong> A transient partial read or a daemon restart mid-command yields invalid JSON. On failure, keep the previous model rather than clearing the list — a flickering empty peer list is worse than one stale second.</li>
+  </ul>
+</div>
+
+<h3 id="files-peer">6.2 · <code>modules/services/TailscalePeer.qml</code> <span class="pill new">new</span></h3>
+
+<p>A plain <code>QtObject</code> wrapper giving each peer real QML property signals, so
+<code>Behavior</code>s and bindings in the delegate actually fire on change. Direct analogue of
+<code>WifiAccessPoint.qml</code> (19 lines) — keep it equally small.</p>
+
+<pre><code>import QtQuick
+
+QtObject {
+    id: root
+
+    property var lastIpcObject: ({})
+
+    property string nodeId: lastIpcObject.ID ?? ""
+    property string hostName: lastIpcObject.HostName ?? ""
+    property string dnsName: lastIpcObject.DNSName ?? ""
+    property string os: lastIpcObject.OS ?? ""
+    property bool online: lastIpcObject.Online ?? false
+    property string lastSeen: lastIpcObject.LastSeen ?? ""
+    property var addresses: lastIpcObject.TailscaleIPs ?? []
+    property bool isExitNode: lastIpcObject.ExitNode ?? false
+    property bool exitNodeOption: lastIpcObject.ExitNodeOption ?? false
+    property string relay: lastIpcObject.Relay ?? ""
+
+    readonly property string ipv4: addresses.length &gt; 0 ? addresses[0] : ""
+    readonly property string ipv6: addresses.length &gt; 1 ? addresses[1] : ""
+    readonly property bool isSelf: false
+}</code></pre>
+
+<p>Identity for the resync diff is <code>nodeId</code> — stable across renames and IP changes, unlike the
+<code>ssid/bssid/frequency</code> triple Wi-Fi has to use. This makes the diff loop simpler than
+<code>NetworkService</code>’s: one <code>Map</code> keyed by node ID.</p>
+
+<h3 id="files-panel">6.3 · <code>modules/widgets/dashboard/controls/TailscalePanel.qml</code> <span class="pill new">new</span></h3>
+
+<p>Structurally a clone of <code>WifiPanel.qml</code>: root <code>Item</code>, <code>maxContentWidth</code> /
+<code>contentWidth</code> / <code>sideMargin</code>, a full-bleed <code>ListView</code> with the titlebar in its
+<code>header</code>, a centered empty state.</p>
+
+<h4>Header composition (top to bottom, inside <code>ListView.header</code>)</h4>
+<ol>
+  <li><strong><code>PanelTitlebar</code></strong>
+    <ul class="tight">
+      <li><code>title: "Tailscale"</code></li>
+      <li><code>statusText</code> — precedence: <code>lastError</code> → <code>"Setup required"</code> (operatorMissing) → <code>"Log in required"</code> → <code>"Connecting…"</code> → <code>"Exit node: &lt;name&gt;"</code> → <code>"&lt;n&gt; of &lt;m&gt; online"</code></li>
+      <li><code>statusColor</code> — <code>Colors.error</code> for errors, <code>Colors.warning</code> for setup/login, otherwise <code>Styling.srItem("overprimary")</code>. Same conditional shape as <code>WifiPanel.qml:52</code>.</li>
+      <li><code>showToggle: true</code>, <code>toggleChecked: TailscaleService.connected</code>, <code>onToggleChanged: TailscaleService.toggle()</code></li>
+      <li><code>actions</code>: <code>Icons.globe</code> (clear exit node — <code>enabled: exitNodeId !== ""</code>), <code>Icons.popOpen</code> (admin console), <code>Icons.sync</code> (refresh, <code>loading: isUpdating</code>)</li>
+    </ul>
+  </li>
+  <li><strong>Self card</strong> — a <code>StyledRect variant: "internalbg"</code>, <code>Styling.radius(4)</code>, holding this
+  node’s hostname, MagicDNS short name, IPv4 and IPv6, each row with a trailing copy button (§7).
+  This is the primary “copy my IP” surface and belongs above the fold.</li>
+  <li><strong>Exit-node row</strong> — an <code>OptionsMenu</code> (<code>modules/components/OptionsMenu.qml</code>, already
+  used by other panels) listing <em>None (direct)</em> plus <code>exitNodeOptions</code>. Visible only when
+  <code>exitNodeOptions.length &gt; 0</code>, so it self-hides on tailnets with no exit nodes — which is the
+  current state of this tailnet (§11).</li>
+  <li><strong>Profile row</strong> — a second <code>OptionsMenu</code> over <code>profiles</code>, visible only when
+  <code>profiles.length &gt; 1</code>. Switching profiles is disruptive, so the selection triggers an inline
+  confirm (reuse <code>ContextMenu</code>) rather than firing immediately.</li>
+  <li><strong>Setup notice</strong> — visible only when <code>operatorMissing</code>. <code>StyledRect variant: "common"</code>,
+  <code>Colors.warning</code> text, plus a copy button that puts <code>sudo tailscale set --operator=$USER</code>
+  on the clipboard.</li>
+  <li><strong>Peer list header</strong> — a small <code>"Devices"</code> label, matching the type scale of the
+  secondary line in <code>WifiNetworkItem</code> (<code>Styling.fontSize(-2)</code>, <code>Colors.overSurfaceVariant</code>).</li>
+</ol>
+
+<h4>Body</h4>
+<p><code>model: TailscaleService.friendlyPeers</code>; delegate is a width-matching <code>Item</code> wrapping a
+centered <code>TailscalePeerItem</code> — the identical delegate wrapper from <code>WifiPanel.qml:92-103</code>.
+Empty state text: <em>“Not connected”</em> when disconnected, <em>“No devices”</em> when connected but
+peerless.</p>
+
+<p>On <code>Component.onCompleted</code>, start a 300 ms <code>Timer</code> that calls
+<code>TailscaleService.refresh()</code> — the same deferred-initial-load trick <code>WifiPanel</code> uses to
+avoid blocking panel construction.</p>
+
+<h3 id="files-item">6.4 · <code>modules/widgets/dashboard/controls/TailscalePeerItem.qml</code> <span class="pill new">new</span></h3>
+
+<p>A clone of <code>WifiNetworkItem.qml</code>’s skeleton: <code>implicitHeight</code> bound to
+<code>contentColumn.implicitHeight + 16</code> with an animated <code>Behavior</code>, a <code>StyledRect</code>
+background that flips <code>"common"</code> ↔ <code>"focus"</code> on hover, a full-fill <code>MouseArea</code> that
+toggles <code>expanded</code>, and a <code>ColumnLayout</code> with 12 px side / 8 px top margins.</p>
+
+<h4>Collapsed row</h4>
+<table>
+<thead><tr><th style="width:22%">Slot</th><th>Content</th></tr></thead>
+<tbody>
+<tr><td>Icon (24×24)</td><td><code>TailscaleService.peerIcon(peer)</code>, 20 px, tinted <code>Styling.srItem("overprimary")</code> when online else <code>Colors.overBackground</code>. A small <code>Icons.globe</code> badge bottom-right when <code>isExitNode</code> — occupying the same corner slot the Wi-Fi item uses for its lock glyph.</td></tr>
+<tr><td>Name column</td><td>Primary: <code>hostName</code>, <code>Config.theme.fontSize</code>, <code>Font.Medium</code>, <code>elide: Text.ElideRight</code>. Secondary (visible when online or expanded): <code>"Online"</code> / <code>"Last seen &lt;relative&gt;"</code> / <code>"Exit node — in use"</code>, at <code>Styling.fontSize(-2)</code> in <code>Colors.overSurfaceVariant</code>.</td></tr>
+<tr><td>Badge</td><td><code>StyledRect variant: "common"</code>, <code>Styling.radius(-4)</code>, 32×18, text <code>"EXIT"</code> at 10 px <code>Font.Bold</code> — the structural twin of the <code>"5G"</code> badge at <code>WifiNetworkItem.qml:132-147</code>. Visible when <code>exitNodeOption</code>.</td></tr>
+</tbody>
+</table>
+
+<h4>Expanded content</h4>
+<ul class="tight">
+  <li>One address row per entry in <code>addresses</code> (IPv4, IPv6) plus one for the short MagicDNS
+  name. Each is monospaced-ish (<code>Config.theme.font</code> at <code>Styling.fontSize(-1)</code>,
+  <code>elide: Text.ElideMiddle</code>) with a trailing 28×28 copy button.</li>
+  <li>Action row, right-aligned, matching <code>WifiNetworkItem.qml:183-218</code> exactly: a flat
+  <code>Button</code>, 100×32, <code>background: StyledRect</code> with <code>variant: "primary"</code> for the
+  affirmative action and <code>"internalbg"</code> for the negative one.
+  <ul class="tight">
+    <li><code>exitNodeOption &amp;&amp; !isExitNode</code> → <em>“Use exit node”</em> → <code>setExitNode(peer.nodeId)</code></li>
+    <li><code>isExitNode</code> → <em>“Stop using”</em> → <code>clearExitNode()</code></li>
+    <li>otherwise → no action row (address rows only)</li>
+  </ul></li>
+  <li>Every action button carries <code>enabled: !TailscaleService.operatorMissing &amp;&amp; !TailscaleService.isUpdating</code>.</li>
+</ul>
+
+<h3 id="files-wiring">6.5 · Wiring &amp; configuration <span class="pill edit">edits</span></h3>
+
+<h4>Settings section — <code>SettingsTab.qml</code></h4>
+<p>Two appends, both using <strong><code>section: 10</code></strong> (the next free index after Ambxst at 9):</p>
+<pre><code><span class="cmt">// sectionModel, after the Ambxst entry (~line 262)</span>
+{
+    icon: Icons.vpn,
+    label: "Tailscale",
+    section: 10,
+    isIcon: true
+}
+
+<span class="cmt">// contentArea.panelComponents, after the ShellPanel entry (~line 598)</span>
+{
+    component: "TailscalePanel.qml",
+    section: 10
+}</code></pre>
+<p>Also update the index comment at <code>SettingsTab.qml:19</code>. Do <strong>not</strong> insert in the middle —
+<code>GlobalStates.settingsCurrentTab</code> persists the selected index across sessions, so renumbering
+would silently move users to a different panel on first launch.</p>
+
+<div class="box warn">
+  <div class="hd">Pre-existing inconsistency — do not try to fix it here</div>
+  <p><code>SettingsIndex.qml</code>’s static rows are numbered on a <em>different</em> scheme from
+  <code>SettingsTab.qml</code>’s <code>sectionModel</code>: the index file has Audio Effects at 3 and Theme at 4,
+  whereas the tab has AI at 3 and Theme at 5. Search results for some existing entries therefore
+  land on the wrong panel today. That is an upstream bug, out of scope here, and fixing it would
+  broaden the diff and the merge surface against upstream. Just append the Tailscale rows at
+  <code>section: 10</code>, which is unambiguous under both schemes, and note the discrepancy in the PR
+  description.</p>
+</div>
+
+<h4>Search index — <code>SettingsIndex.qml</code></h4>
+<pre><code>{ label: "Tailscale",    keywords: "vpn mesh tailnet wireguard remote",  section: 10, subSection: "", subLabel: "", icon: Icons.vpn,        isIcon: true },
+{ label: "Tailscale IP", keywords: "copy address ip 100 magicdns dns",   section: 10, subSection: "", subLabel: "Tailscale", icon: Icons.copy,  isIcon: true },
+{ label: "Exit Node",    keywords: "route traffic vpn egress exit",      section: 10, subSection: "", subLabel: "Tailscale", icon: Icons.globe, isIcon: true },
+{ label: "Tailnet Profile", keywords: "account switch login profile",    section: 10, subSection: "", subLabel: "Tailscale", icon: Icons.user,  isIcon: true }</code></pre>
+
+<h4>Quick controls — <code>QuickControls.qml</code></h4>
+<p>Extend <code>expandedPanel</code> to accept <code>2</code> (currently documented as <code>-1: none, 0: wifi,
+1: bluetooth</code>), add a sixth <code>ControlButton</code> to <code>buttonRow</code>, and add a third
+<code>Loader</code> alongside the Wi-Fi and Bluetooth ones with the same opacity/x slide behaviours:</p>
+<pre><code>ControlButton {
+    Layout.preferredWidth: 48
+    Layout.preferredHeight: 48
+    visible: TailscaleService.available &amp;&amp; Config.system.tailscale.showInQuickControls
+    iconName: TailscaleService.connected ? Icons.shieldCheck : Icons.shield
+    isActive: TailscaleService.connected || root.expandedPanel === 2
+    tooltipText: TailscaleService.connected
+        ? (TailscaleService.exitNodeName !== ""
+            ? "Tailscale: via " + TailscaleService.exitNodeName
+            : "Tailscale: Connected")
+        : "Tailscale: Off"
+    onClicked: TailscaleService.toggle()
+    onRightClicked: root.togglePanel(2)
+    onLongPressed: root.togglePanel(2)
+}</code></pre>
+<p>The <code>x</code> slide expressions in the existing two loaders are written as explicit
+three-way comparisons against <code>expandedPanel</code>; with a third panel they should become
+index-relative (<code>(2 - root.expandedPanel) * width</code> and equivalents) so all three slide
+coherently instead of the third one jumping.</p>
+
+<h4>Config keys — <code>config/defaults/system.js</code> <em>and</em> <code>config/Config.qml</code></h4>
+<p>Nest under the existing <code>system</code> domain rather than creating a new config module. A new
+module would mean a new <code>FileView</code>, a new <code>*Ready</code> flag, a new validator registration and a
+new JSON file on disk — disproportionate for five keys, and a larger upstream merge surface.</p>
+
+<pre><code><span class="cmt">// config/defaults/system.js — add to `var data`</span>
+"tailscale": {
+    "enabled": true,
+    "showInQuickControls": true,
+    "pollInterval": 30,
+    "copyFormat": "ipv4",
+    "adminConsoleUrl": "https://login.tailscale.com/admin/machines"
+}</code></pre>
+<pre><code><span class="cmt">// config/Config.qml — inside systemLoader's JsonAdapter (~line 1007, beside `idle`)</span>
+property JsonObject tailscale: JsonObject {
+    property bool enabled: true
+    property bool showInQuickControls: true
+    property int pollInterval: 30
+    property string copyFormat: "ipv4"
+    property string adminConsoleUrl: "https://login.tailscale.com/admin/machines"
+}</code></pre>
+
+<div class="box stop">
+  <div class="hd">Both files, every time</div>
+  <p>The root <code>AGENTS.md</code> lists “adding a config key without updating <code>config/defaults/*.js</code>”
+  as an explicit anti-pattern. A key present in only one of the two will fail validation on a
+  clean profile and silently reset. Reachable as <code>Config.system.tailscale.*</code> via the
+  existing <code>property QtObject system: systemLoader.adapter</code> at <code>Config.qml:3499</code>;
+  no new top-level accessor is needed.</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2 id="copy">7 · Copy-to-clipboard UX</h2>
+
+<p>Copy targets: this node’s IPv4, IPv6 and MagicDNS name (from the self card); every peer’s
+IPv4, IPv6 and MagicDNS name (from an expanded row); and the operator setup command (from the
+setup notice).</p>
+
+<h3>Mechanism</h3>
+<p>All existing call sites shell out and string-interpolate — e.g.
+<code>ClipboardTab.qml:596</code> and <code>CodeBlock.qml:71</code>, the latter building QML source at runtime
+via <code>Qt.createQmlObject</code>. Do <strong>not</strong> copy that pattern here. Peer hostnames on this tailnet
+already contain a typographic apostrophe, and a shell-quoted path through <code>bash -c</code> is an
+unnecessary injection surface for data that arrives from the network.</p>
+
+<pre><code>Process {
+    id: copyProc
+    <span class="cmt">// argv form: no shell, no quoting, no escaping bugs</span>
+    command: ["wl-copy", "--", ""]
+}
+
+function copyText(text) {
+    if (!text || text.length === 0)
+        return;
+    copyProc.command = ["wl-copy", "--", text];
+    copyProc.running = true;
+    root.copied(text);
+}</code></pre>
+
+<h3>Feedback</h3>
+<p>There is no toast or snackbar primitive in this codebase — <code>modules/shell/osd/</code> is bound to
+volume/brightness and <code>Notifications.qml</code> is a D-Bus <em>server</em> (it receives notifications, it
+does not send them). Introducing a toast system for one button is out of proportion.</p>
+<p><strong>Use a transient in-button state instead:</strong> the copy button’s glyph swaps
+<code>Icons.copy</code> → <code>Icons.accept</code> and its color to <code>Styling.srItem("overprimary")</code> for
+1200 ms, driven by a per-button <code>Timer</code>. Colour and opacity transitions go through the standard
+<code>Behavior … enabled: Config.animDuration &gt; 0</code> guard. Each button additionally carries a
+<code>StyledToolTip</code> reading <em>“Copy IPv4 address”</em> etc., matching <code>PanelTitlebar</code>’s action
+buttons.</p>
+
+<div class="box info">
+  <div class="hd">Optional, deferred</div>
+  <p>If a system-wide confirmation is ever wanted, <code>notify-send</code> via
+  <code>Quickshell.execDetached</code> reaches the shell’s own notification server and needs no new
+  infrastructure. Left out of the initial build: it is noisy for an action the user just
+  performed deliberately, and it adds a runtime dependency on <code>libnotify</code>.</p>
+</div>
+
+<p>The <code>copyFormat</code> config key selects which value the <em>primary</em> click copies when a row is
+collapsed (<code>ipv4</code> | <code>ipv6</code> | <code>dnsname</code>), so a user who lives in MagicDNS names is not
+forced through the expand step. Expanded rows always offer all three explicitly.</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2 id="switching">8 · Connection switching — command reference</h2>
+
+<table>
+<thead><tr><th style="width:22%">Action</th><th style="width:42%">Command (argv)</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td>Connect</td><td><code>["tailscale", "up"]</code></td><td>Blocks until the daemon settles or the login URL is needed. Run through <code>runAsync</code>; on <code>NeedsLogin</code> fall through to <code>login()</code>.</td></tr>
+<tr><td>Disconnect</td><td><code>["tailscale", "down"]</code></td><td>Fast. Keeps the node logged in — this is a connection toggle, not a logout.</td></tr>
+<tr><td>Log in</td><td><code>["tailscale", "login"]</code> detached</td><td><code>Quickshell.execDetached</code>, never <code>runAsync</code> — it opens a browser and can hang indefinitely.</td></tr>
+<tr><td>Set exit node</td><td><code>["tailscale", "set", "--exit-node=" + id]</code></td><td>Accepts a node ID, IP or MagicDNS name. Prefer the node ID: stable across renames.</td></tr>
+<tr><td>Clear exit node</td><td><code>["tailscale", "set", "--exit-node="]</code></td><td>Empty value is the documented clear form.</td></tr>
+<tr><td>Exit-node LAN access</td><td><code>["tailscale", "set", "--exit-node-allow-lan-access=true"]</code></td><td>Only meaningful with an exit node set; disable the switch otherwise.</td></tr>
+<tr><td>List profiles</td><td><code>["tailscale", "switch", "--list"]</code></td><td>Human-readable table, not JSON. Parse tolerantly; treat any parse failure as “no profiles”.</td></tr>
+<tr><td>Switch profile</td><td><code>["tailscale", "switch", name]</code></td><td>Tears down and re-establishes the tunnel. Confirm before firing; expect several seconds of churn and a burst of <code>watch-ipn</code> events.</td></tr>
+</tbody>
+</table>
+
+<p>Every mutating call follows one shape: set <code>isUpdating = true</code>, <code>runAsync(...)</code>, then
+<code>refresh()</code> and clear the flag in both <code>.then</code> and <code>.catch</code> — the structure of
+<code>NetworkService.enableWifi()</code> at lines 103-112. In <code>.catch</code>, test the message against
+<code>/access denied/i</code> to set <code>operatorMissing</code>, else store it in <code>lastError</code>.</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2 id="phases">9 · Phased delivery</h2>
+
+<p>Each phase ends at a commit that leaves the shell bootable. Sequenced so the risky part
+(mutations, which can drop the SSH path to the test machine) lands after the read-only surface
+is proven.</p>
+
+<div class="phase">
+  <h3><span class="tag">P0</span> Prerequisites <span class="est">~10 min · no code</span></h3>
+  <ul class="tight">
+    <li><code>sudo tailscale set --operator=$USER</code> on Bostrom; verify <code>switch --list</code> and <code>set</code> now work unprivileged.</li>
+    <li>Same on Zephyrus if the panel is to be exercised there.</li>
+    <li>Record the outcome in <code>learning/</code> — it is a host-level fact that will not be obvious from the repo later.</li>
+  </ul>
+</div>
+
+<div class="phase">
+  <h3><span class="tag">P1</span> Service, read-only <span class="est">~3 h · no UI</span></h3>
+  <ul class="tight">
+    <li><code>TailscalePeer.qml</code> in full.</li>
+    <li><code>TailscaleService.qml</code>: availability probe, <code>statusProc</code>, <code>prefsProc</code>, <code>watcher</code>, debounce timer, peer diff/resync, <code>friendlyPeers</code>, <code>exitNodeOptions</code>.</li>
+    <li>No mutating verbs yet. No panel yet.</li>
+    <li><strong>Verify</strong> by touching <code>TailscaleService.peerCount</code> from a throwaway <code>Component.onCompleted</code> <code>console.log</code> in <code>shell.qml</code>, run under <code>lab/run-isolated.sh</code>, then remove the probe before committing. (Log the <em>count</em>, never the peer data — public repo, and logs get pasted.)</li>
+  </ul>
+</div>
+
+<div class="phase">
+  <h3><span class="tag">P2</span> Panel, read-only + copy <span class="est">~4 h</span></h3>
+  <ul class="tight">
+    <li><code>TailscalePanel.qml</code> — titlebar, self card, peer <code>ListView</code>, empty states. Toggle rendered but disabled.</li>
+    <li><code>TailscalePeerItem.qml</code> — collapsed row, expansion, address rows.</li>
+    <li><code>copyText()</code> + the swap-glyph feedback. <strong>“Copy IP” is complete at the end of this phase.</strong></li>
+    <li>Settings wiring: <code>SettingsTab.qml</code> and <code>SettingsIndex.qml</code>, <code>section: 10</code>.</li>
+    <li><strong>Verify</strong> visually over Moonlight; side-by-side against the Wi-Fi panel for type scale, row height, radius and hover tint.</li>
+  </ul>
+</div>
+
+<div class="phase">
+  <h3><span class="tag">P3</span> Mutations — the three switching axes <span class="est">~3 h</span></h3>
+  <ul class="tight">
+    <li>Axis A: <code>up()</code>/<code>down()</code>/<code>toggle()</code>, wired to the titlebar toggle. <code>needsLogin</code> path.</li>
+    <li>Axis B: <code>setExitNode()</code>/<code>clearExitNode()</code>, exit-node <code>OptionsMenu</code>, per-peer action buttons, LAN-access switch.</li>
+    <li>Axis C: <code>profilesProc</code>, <code>switchProfile()</code>, profile menu with confirm step.</li>
+    <li><code>operatorMissing</code> detection, the setup notice, and disabled-state handling throughout.</li>
+    <li><strong>Verify</strong> — see the SSH warning in §10 before testing the disconnect path.</li>
+  </ul>
+</div>
+
+<div class="phase">
+  <h3><span class="tag">P4</span> Quick controls + config <span class="est">~1.5 h</span></h3>
+  <ul class="tight">
+    <li><code>QuickControls.qml</code>: button, <code>expandedPanel === 2</code>, third <code>Loader</code>, index-relative slide maths.</li>
+    <li>Config keys in <strong>both</strong> <code>config/defaults/system.js</code> and <code>config/Config.qml</code>.</li>
+    <li><strong>Verify</strong> the three-way panel slide animates coherently in both directions, and that a clean profile (delete the sandbox <code>system.json</code>) regenerates with the new keys.</li>
+  </ul>
+</div>
+
+<div class="phase">
+  <h3><span class="tag">P5</span> Polish <span class="est">~2 h · optional</span></h3>
+  <ul class="tight">
+    <li>Peer search/filter via <code>SearchInput</code> once the list exceeds ~10 rows.</li>
+    <li>Collapsible “Offline” group.</li>
+    <li>Relative <code>LastSeen</code> formatting (“3 h ago”).</li>
+    <li>Rx/Tx byte counters on expanded rows.</li>
+    <li><code>acceptRoutes</code> / <code>acceptDNS</code> / <code>shieldsUp</code> as switches.</li>
+    <li>Taildrop send — deliberately last; it needs a file picker and is a separate feature.</li>
+  </ul>
+</div>
+
+<p><strong>Total for P0–P4 (the full request): roughly 11–12 hours.</strong> The copy-IP deliverable is
+usable after P2; connection switching after P3.</p>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2 id="testing">10 · Test protocol</h2>
+
+<p>Per <code>CLAUDE.md</code>: author and commit on Zephyrus, pull and run on Bostrom. Never edit in the
+Bostrom checkout.</p>
+
+<pre><code><span class="cmt"># Zephyrus — authoring</span>
+git switch -c feature/tailscale-panel
+<span class="cmt"># … edit, commit …</span>
+git push -u origin feature/tailscale-panel
+
+<span class="cmt"># Bostrom — test target</span>
+ssh bostrom
+cd ~/Projects/aspect-ambxst
+git fetch origin &amp;&amp; git switch feature/tailscale-panel
+
+<span class="cmt"># Sandboxed run FIRST — never let an untested change reach boot</span>
+./lab/run-isolated.sh
+<span class="cmt"># logs: ~/.local/state/ambxst-lab/latest.log</span></code></pre>
+
+<div class="box stop">
+  <div class="hd">Testing disconnect will cut your own SSH session</div>
+  <p>Bostrom is reachable as <code>ssh bostrom</code> <em>over the Tailnet</em>. <code>tailscale down</code> — the P3
+  toggle — kills that path instantly, and the panel that would turn it back on is on the other
+  side of it.</p>
+  <p>Before exercising axis A:</p>
+  <ul class="tight">
+    <li>Connect via <code>ssh bostrom-lan</code> instead, which survives the tunnel dropping.</li>
+    <li>Keep a Moonlight session open as the visual channel, independent of SSH.</li>
+    <li>Recovery from the console if needed: <code>sudo tailscale up</code>.</li>
+    <li>Same caution for axis C — a profile switch changes which tailnet the node is on, so the <code>bostrom</code> host alias may resolve differently or not at all afterwards.</li>
+  </ul>
+</div>
+
+<h3>Per-phase checks</h3>
+<table>
+<thead><tr><th style="width:9%">Phase</th><th>Check</th></tr></thead>
+<tbody>
+<tr><td>P1</td><td>Peer count matches <code>tailscale status</code>. No QML warnings in <code>latest.log</code>. <code>watch-ipn</code> process is alive (<code>pgrep -f '[w]atch-ipn'</code>) and a real event (unplug ethernet, or <code>tailscale set --hostname</code>) triggers a refresh. No busy-loop: CPU at idle is unchanged.</td></tr>
+<tr><td>P2</td><td>Panel opens from the settings sidebar and from the quick-control long-press. Rows visually indistinguishable in metrics from Wi-Fi rows. Copy button places the correct value on the clipboard (<code>wl-paste</code> to confirm). Glyph swap fires and reverts. Empty state renders when disconnected.</td></tr>
+<tr><td>P3</td><td>Toggle connects and disconnects, state re-converges within ~2 s of the event. Exit-node menu populates (needs an advertised exit node — see §11). Profile list populates. With the operator deliberately unset, the setup notice appears and no control fails silently.</td></tr>
+<tr><td>P4</td><td>Quick-control button reflects live state. All three panels slide correctly in both directions. Deleting the sandbox <code>system.json</code> regenerates it with the <code>tailscale</code> block intact.</td></tr>
+<tr><td>All</td><td><code>./lab/check-prereqs.sh</code> clean. No absolute home paths, tailnet names, IPs or hostnames in the diff — <code>git diff | grep -nE '100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.|\.ts\.net|/home/'</code> must come back empty.</td></tr>
+</tbody>
+</table>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2 id="risks">11 · Risks &amp; caveats</h2>
+
+<table>
+<thead><tr><th style="width:24%">Risk</th><th style="width:9%">Severity</th><th>Mitigation</th></tr></thead>
+<tbody>
+<tr>
+  <td><strong>Operator not set</strong> — every mutation denied</td>
+  <td class="pill pre">high</td>
+  <td>P0 handles it. The service detects and surfaces it rather than failing silently; the panel stays useful read-only. See §3.</td>
+</tr>
+<tr>
+  <td><strong>No exit nodes on this tailnet</strong> — axis B cannot be tested end-to-end</td>
+  <td class="pill warn">med</td>
+  <td>Confirmed empty as of 2026-07-27. Options: advertise one temporarily from Zephyrus (<code>sudo tailscale set --advertise-exit-node</code>, then approve it in the admin console), or develop against a JSON fixture with synthetic values. <strong>Build it regardless</strong> — the UI self-hides when the list is empty, so shipping it untested is low-risk, but say so explicitly in the PR rather than implying it was verified.</td>
+</tr>
+<tr>
+  <td><strong>Disconnect severs SSH to the test host</strong></td>
+  <td class="pill pre">high</td>
+  <td><code>ssh bostrom-lan</code> + Moonlight before touching axis A. See §10.</td>
+</tr>
+<tr>
+  <td><strong>Leaking tailnet identifiers into a public repo</strong></td>
+  <td class="pill pre">high</td>
+  <td>No fixtures with real data, no peer names in <code>console.log</code>, grep gate in the pre-commit check (§10). Already burned this repo once.</td>
+</tr>
+<tr>
+  <td><strong>Shell injection via peer hostname</strong></td>
+  <td class="pill warn">med</td>
+  <td>argv-form <code>Process.command</code> everywhere. Never <code>bash -c</code> with an interpolated peer field. A real peer name already contains a non-ASCII apostrophe.</td>
+</tr>
+<tr>
+  <td><strong><code>watch-ipn</code> is an undocumented <code>debug</code> subcommand</strong></td>
+  <td class="pill warn">med</td>
+  <td>Verified working on 1.98.9, but no stability guarantee across upgrades. The <code>fallbackTimer</code> covers its disappearance; if <code>watcher</code> exits non-zero at startup, log once and fall back to polling rather than retrying in a loop.</td>
+</tr>
+<tr>
+  <td><strong>Upstream merge conflict</strong> in the four edited files</td>
+  <td class="pill warn">med</td>
+  <td>Upstream touches <code>SettingsTab.qml</code> and <code>QuickControls.qml</code> occasionally. All edits are pure appends at the end of lists, which conflict cleanly and resolve trivially. Keeping the new panel’s logic in new files rather than extending <code>NetworkService</code> is deliberate for this reason.</td>
+</tr>
+<tr>
+  <td><strong><code>switch --list</code> output format changes</strong></td>
+  <td class="pill">low</td>
+  <td>Text, not JSON. Parse defensively; on any unexpected shape produce an empty <code>profiles</code> list, which hides the profile row entirely.</td>
+</tr>
+<tr>
+  <td><strong>Panel added to the boot-critical shell</strong></td>
+  <td class="pill warn">med</td>
+  <td>Ambxst is Bostrom’s primary shell; a QML error can cost the desktop. Every phase is tested under <code>lab/run-isolated.sh</code> first. <code>available</code> gating means a machine without Tailscale never constructs the panel. The Noctalia fallback in <code>autostart-shell.sh</code> remains the backstop.</td>
+</tr>
+<tr>
+  <td><strong>Hardware divergence</strong></td>
+  <td class="pill">none</td>
+  <td>Unlike the <code>asusctl</code>/<code>supergfxctl</code> work, Tailscale is pure userspace networking with identical 1.98.9 builds on both machines. This feature is fully validatable on Bostrom.</td>
+</tr>
+</tbody>
+</table>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2 id="oos">12 · Out of scope</h2>
+<ul class="tight">
+  <li><strong>Taildrop file transfer</strong> — needs a file picker and a receive-side handler; a feature in its own right.</li>
+  <li><strong>Serve / Funnel management</strong> — a configuration surface far larger than a control panel.</li>
+  <li><strong>Subnet-route advertisement and approval</strong> — inherently an admin-console operation.</li>
+  <li><strong>SSH-into-peer</strong> — belongs in the launcher, not a network panel.</li>
+  <li><strong>ACL / policy viewing</strong> — read-only web surface; <code>Icons.popOpen</code> to the admin console covers the need.</li>
+  <li><strong>Bar indicator widget</strong> — plausible follow-up, but the bar’s widget registry is a separate wiring surface with its own config schema. The quick-control button already gives at-a-glance state.</li>
+  <li><strong>Fixing the <code>SettingsIndex.qml</code> numbering drift</strong> — pre-existing upstream bug; see §6.5.</li>
+</ul>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<h2 id="accept">13 · Acceptance criteria</h2>
+<ol>
+  <li>A <strong>Tailscale</strong> section appears in the dashboard settings sidebar with <code>Icons.vpn</code>, and its panel loads lazily like every other section.</li>
+  <li>The panel’s titlebar toggle <strong>connects and disconnects</strong> the node, and the displayed state re-converges within ~2 s of an external <code>tailscale up</code>/<code>down</code>.</li>
+  <li>An <strong>exit node can be selected and cleared</strong> from the panel, from both the header menu and a peer row; the active exit node is visible in the titlebar status and badged in the list.</li>
+  <li>When more than one profile exists, a <strong>profile switcher</strong> is present and switching works after confirmation.</li>
+  <li>This node’s <strong>IPv4, IPv6 and MagicDNS name are each copyable in one click</strong>, with visible confirmation, and the same is true for every peer.</li>
+  <li>Peers list with hostname, OS icon, online state and exit-node capability, sorted online-first.</li>
+  <li>The panel is <strong>visually indistinguishable in idiom</strong> from <code>WifiPanel</code>: same titlebar, row height, radii, type scale, hover tint and animation timing. No raw <code>Rectangle</code>, no hardcoded color, size or radius anywhere in the diff.</li>
+  <li>With the operator unset, the panel is <strong>read-only and says so</strong>, with a copyable fix — it never fails silently.</li>
+  <li>On a machine without the <code>tailscale</code> binary, the section and quick-control button are <strong>absent</strong> and no processes are spawned.</li>
+  <li>New config keys exist in <strong>both</strong> <code>config/defaults/system.js</code> and <code>config/Config.qml</code>, and a clean profile regenerates cleanly.</li>
+  <li><code>lab/run-isolated.sh</code> runs clean: no QML warnings, no measurable idle CPU increase.</li>
+  <li>The diff contains <strong>no tailnet names, node IDs, CGNAT addresses, hostnames, emails or absolute home paths</strong>.</li>
+</ol>
+
+<div class="footer">
+  <strong>Aspect Ambxst</strong> — Tailscale control panel implementation plan · drafted 2026-07-27<br>
+  Environment findings in §2 verified against Bostrom, Tailscale 1.98.9, on that date; re-probe if
+  significant time has passed. Design precedents cited against the repo state at commit
+  <code>37566c41</code>.
+</div>
+
+</main>
+</div>
+</body>
+</html>
