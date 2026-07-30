@@ -124,6 +124,33 @@ Item {
         ], 280, 36, "tailscale-profile");
     }
 
+    function requestToggle(): void {
+        if (TailscaleService.connected) {
+            TailscaleService.down();
+            return;
+        }
+        if (!NordVpnService.connected || Config.system.nordvpn.handoffPolicy !== "confirm") {
+            VpnService.switchToTailscale();
+            return;
+        }
+        if (!Visibilities.contextMenu)
+            return;
+        Visibilities.contextMenu.openCustomMenu([
+            {
+                text: "Switch from NordVPN to Tailscale",
+                icon: Icons.vpn,
+                onTriggered: function () {
+                    VpnService.switchToTailscale();
+                }
+            },
+            {
+                text: "Cancel",
+                icon: Icons.cancel,
+                onTriggered: function () {}
+            }
+        ], 320, 36, "vpn-provider-handoff");
+    }
+
     function positionAtBeginning(): void {
         peerList.contentY = peerList.headerItem ? peerList.headerItem.y : peerList.originY;
     }
@@ -255,7 +282,7 @@ Item {
                         }
                     ])
 
-                    onToggleChanged: TailscaleService.toggle()
+                    onToggleChanged: root.requestToggle()
                 }
 
                 StyledRect {
