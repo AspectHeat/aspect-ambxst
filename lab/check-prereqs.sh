@@ -109,8 +109,9 @@ if grep -qE '^\s*hl\.bind\(mainMod \.\. " \+ Return"' "$BINDS_LUA" 2>/dev/null; 
 else
     warn "no SUPER+Return terminal bind found in $BINDS_LUA; recovery would need SSH"
 fi
-if grep -qi noctalia "$BINDS_LUA" 2>/dev/null; then
-    warn "$BINDS_LUA still references noctalia; those hotkeys are dead"
+# Comments explaining the removal are fine; a live `noctalia msg` bind is not.
+if grep -vE '^\s*--' "$BINDS_LUA" 2>/dev/null | grep -qi noctalia; then
+    warn "$BINDS_LUA still binds keys to noctalia; those hotkeys are dead"
 fi
 
 say
