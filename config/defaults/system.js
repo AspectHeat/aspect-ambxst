@@ -10,6 +10,14 @@ var data = {
         "copyFormat": "ipv4",
         "adminConsoleUrl": "https://login.tailscale.com/admin/machines"
     },
+    "nordvpn": {
+        "enabled": true,
+        "showInBar": false,
+        "pollInterval": 20,
+        "preferredMode": "fastest",
+        "preferredCountry": "",
+        "handoffPolicy": "confirm"
+    },
     "idle": {
         "general": {
             "lock_cmd": "ambxst lock",

@@ -107,10 +107,10 @@ Item {
                 }
 
                 Text {
-                    text: Icons.caretRight
+                    text: TailscaleService.connected ? Icons.shieldCheck : Icons.caretRight
                     font.family: Icons.font
                     font.pixelSize: Styling.fontSize(0)
-                    color: Colors.overSurfaceVariant
+                    color: TailscaleService.connected ? Styling.srItem("overprimary") : Colors.overSurfaceVariant
                 }
             }
 
@@ -124,22 +124,105 @@ Item {
             }
         }
 
+        StyledRect {
+            id: nordVpnCard
+
+            Layout.fillWidth: true
+            implicitHeight: 72
+            variant: nordVpnMouseArea.containsMouse ? "focus" : "common"
+            radius: Styling.radius(4)
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 12
+                anchors.rightMargin: 12
+                spacing: 12
+
+                StyledRect {
+                    Layout.preferredWidth: 40
+                    Layout.preferredHeight: 40
+                    variant: NordVpnService.connected ? "primary" : "internalbg"
+                    radius: Styling.radius(2)
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: Icons.vpn
+                        font.family: Icons.font
+                        font.pixelSize: Styling.fontSize(3)
+                        color: NordVpnService.connected ? Styling.srItem("primary") : Colors.overBackground
+                    }
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        Text {
+                            text: "NordVPN"
+                            font.family: Config.theme.font
+                            font.pixelSize: Config.theme.fontSize
+                            font.weight: Font.Medium
+                            color: Colors.overBackground
+                        }
+
+                        Text {
+                            text: !NordVpnService.available ? "Not installed"
+                                : (NordVpnService.connected ? "Connected" : "Off")
+                            font.family: Config.theme.font
+                            font.pixelSize: Styling.fontSize(-2)
+                            color: NordVpnService.connected ? Styling.srItem("overprimary")
+                                : (!NordVpnService.available ? Colors.warning : Colors.overSurfaceVariant)
+                        }
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: "Countries, fast servers, and P2P routing"
+                        font.family: Config.theme.font
+                        font.pixelSize: Styling.fontSize(-2)
+                        color: Colors.overSurfaceVariant
+                        elide: Text.ElideRight
+                    }
+                }
+
+                Text {
+                    text: NordVpnService.connected ? Icons.shieldCheck : Icons.caretRight
+                    font.family: Icons.font
+                    font.pixelSize: Styling.fontSize(0)
+                    color: NordVpnService.connected ? Styling.srItem("overprimary") : Colors.overSurfaceVariant
+                }
+            }
+
+            MouseArea {
+                id: nordVpnMouseArea
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.currentSection = "nordvpn"
+            }
+        }
+
         Text {
             Layout.fillWidth: true
-            visible: !TailscaleService.available
-            text: "Tailscale is not installed on this system."
+            visible: VpnService.isSwitching || VpnService.lastError !== ""
+            text: VpnService.isSwitching ? VpnService.phase : VpnService.lastError
             wrapMode: Text.Wrap
             font.family: Config.theme.font
             font.pixelSize: Styling.fontSize(-2)
-            color: Colors.overSurfaceVariant
+            color: VpnService.lastError !== "" ? Colors.error : Colors.overSurfaceVariant
         }
     }
 
     Loader {
         id: providerLoader
         anchors.fill: parent
-        active: root.currentSection === "tailscale"
-        source: active ? "TailscalePanel.qml" : ""
+        active: root.currentSection === "tailscale" || root.currentSection === "nordvpn"
+        source: root.currentSection === "tailscale" ? "TailscalePanel.qml"
+            : (root.currentSection === "nordvpn" ? "NordVpnPanel.qml" : "")
         asynchronous: true
 
         onLoaded: {

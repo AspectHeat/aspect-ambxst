@@ -166,7 +166,7 @@ Rectangle {
     property string pendingSubSection: ""
 
     function sectionForRequestedSubSection(subSection) {
-        if (subSection === "tailscale")
+        if (subSection === "tailscale" || subSection === "nordvpn")
             return 10;
         return root.currentSection;
     }
@@ -280,7 +280,7 @@ Rectangle {
             section: 0,
             isIcon: true
         }
-    ].concat(TailscaleService.available && Config.system.tailscale.enabled ? [{
+    ].concat(Config.system.tailscale.enabled || Config.system.nordvpn.enabled ? [{
         icon: Icons.vpn,
         label: "VPN",
         section: 10,

@@ -16,13 +16,19 @@ QtObject {
     // 0: Network, 1: Bluetooth, 2: Mixer, 3: Effects, 4: Theme, 5: Binds, 6: System, 7: Compositor, 8: Ambxst
     
     property var dynamicItems: []
-    readonly property var tailscaleItems: TailscaleService.available && Config.system.tailscale.enabled ? [
-        { label: "VPN", keywords: "virtual private network providers", section: 10, subSection: "", subLabel: "", icon: Icons.vpn, isIcon: true },
+    readonly property var vpnItems: (Config.system.tailscale.enabled || Config.system.nordvpn.enabled) ? [
+        { label: "VPN", keywords: "virtual private network providers", section: 10, subSection: "", subLabel: "", icon: Icons.vpn, isIcon: true }
+    ].concat(Config.system.tailscale.enabled ? [
         { label: "Tailscale", keywords: "vpn mesh tailnet wireguard remote", section: 10, subSection: "tailscale", subLabel: "VPN", icon: Icons.vpn, isIcon: true },
         { label: "Tailscale IP", keywords: "copy address ip magicdns dns", section: 10, subSection: "tailscale", subLabel: "VPN > Tailscale", icon: Icons.copy, isIcon: true },
         { label: "Exit Node", keywords: "route traffic vpn egress exit", section: 10, subSection: "tailscale", subLabel: "VPN > Tailscale", icon: Icons.globe, isIcon: true },
         { label: "Tailnet Profile", keywords: "account switch login profile", section: 10, subSection: "tailscale", subLabel: "VPN > Tailscale", icon: Icons.user, isIcon: true }
-    ] : []
+    ] : []).concat(Config.system.nordvpn.enabled ? [
+        { label: "NordVPN", keywords: "vpn privacy commercial nordlynx wireguard", section: 10, subSection: "nordvpn", subLabel: "VPN", icon: Icons.vpn, isIcon: true },
+        { label: "VPN Countries", keywords: "location flag server country region", section: 10, subSection: "nordvpn", subLabel: "VPN > NordVPN", icon: Icons.globe, isIcon: true },
+        { label: "P2P VPN", keywords: "peer torrent speed optimized server", section: 10, subSection: "nordvpn", subLabel: "VPN > NordVPN", icon: Icons.lightning, isIcon: true },
+        { label: "Quick Connect", keywords: "fastest recommended nordvpn server", section: 10, subSection: "nordvpn", subLabel: "VPN > NordVPN", icon: Icons.lightning, isIcon: true }
+    ] : []) : []
 
     readonly property var staticItems: [
         // --- Network ---
@@ -219,7 +225,7 @@ QtObject {
         { label: "Shell System", keywords: "config settings ambxst", section: 8, subSection: "system", subLabel: "Ambxst > System", icon: Icons.circuitry, isIcon: true }
     ]
 
-    property var items: staticItems.concat(dynamicItems).concat(tailscaleItems)
+    property var items: staticItems.concat(dynamicItems).concat(vpnItems)
 
     function addDynamicItems(newItems) {
         // Simple deduplication based on label + section
