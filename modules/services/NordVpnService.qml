@@ -26,7 +26,10 @@ Singleton {
     readonly property bool connected: root.state === "connected"
     readonly property bool connecting: root.state === "connecting"
     readonly property bool disconnecting: root.state === "disconnecting"
+    // Either signal is sufficient, and they arrive from two independent async reads whose
+    // order is not guaranteed - so this must be an OR, not a state assignment.
     readonly property bool needsLogin: root.state === "loggedOut"
+        || (root.available && !root.loggedIn)
     readonly property bool inError: root.state === "error"
 
     // Connection detail. Every one is empty-safe; the panel hides a row rather than
@@ -60,6 +63,12 @@ Singleton {
     // Without it the detached browser flow looks like a click that did nothing.
     property bool loginPending: false
 
+    // Set when lastError came from a mutation. A mutation failure triggers an immediate
+    // refresh, and the successful status read that follows would otherwise clear the error
+    // within ~200ms - before VpnService's 500ms handoff tick ever observed it, leaving the
+    // user watching "Connecting..." until timeout instead of seeing the reason.
+    property bool errorFromMutation: false
+
     // Promoted failure class, mirroring TailscaleService.operatorMissing: a permissions
     // problem needs one-time setup guidance, not a raw CLI string thrown at the user.
     property bool permissionDenied: false
@@ -67,6 +76,13 @@ Singleton {
     // False when the daemon is unreachable. Distinct from needsLogin so the panel never
     // offers a login flow that cannot possibly succeed.
     property bool daemonReachable: true
+
+    // From `nordvpn account`. This is load-bearing: on a logged-out machine
+    // `nordvpn status` prints only "Status: Disconnected" (see
+    // lab/fixtures/nordvpn/status-disconnected.txt, captured while logged out), so status
+    // alone can NEVER tell us we are logged out. Without this the panel offers Quick
+    // Connect and 149 countries that all fail.
+    property bool loggedIn: true
 
     // ---------------------------------------------------------------- model
     readonly property list<NordVpnCountry> countries: []
@@ -153,9 +169,10 @@ Singleton {
             return;
 
         root.isReading = true;
-        root.refreshPartsRemaining = 2;
+        root.refreshPartsRemaining = 3;
         statusProc.run();
         settingsProc.run();
+        accountProc.run();
 
         // Static lists: fetch once, then only on explicit demand.
         if (root.countries.length === 0 && !countriesProc.running)
@@ -256,12 +273,14 @@ Singleton {
 
         root.isMutating = true;
         root.lastError = "";
+        root.errorFromMutation = false;
         root.runAsync(command).then(() => {
             root.permissionDenied = false;
             root.isMutating = false;
             root.refresh();
         }).catch(error => {
             root.handleMutationError(error);
+            root.errorFromMutation = root.lastError !== "";
             root.isMutating = false;
             root.refresh();
         });
@@ -511,6 +530,21 @@ Singleton {
                 root.lastError = error || output.trim() || "Could not read NordVPN status";
             }
 
+            root.finishRefreshPart();
+        }
+    }
+
+    CliRead {
+        id: accountProc
+        command: ["nordvpn", "account"]
+
+        onParsed: (output, error, code) => {
+            const parsed = Parse.parseAccount(error + "\n" + output, code);
+            root.loggedIn = parsed.loggedIn;
+            if (!parsed.daemonReachable)
+                root.daemonReachable = false;
+            if (parsed.loggedIn)
+                root.loginPending = false;
             root.finishRefreshPart();
         }
     }

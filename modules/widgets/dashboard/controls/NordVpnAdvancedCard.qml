@@ -188,6 +188,7 @@ ColumnLayout {
             }
 
             SegmentedSwitch {
+                id: protocolSwitch
                 Layout.fillWidth: true
                 visible: root.has.technology === true
                 // SegmentedSwitch assigns currentIndex imperatively on click, so without a
@@ -206,6 +207,32 @@ ColumnLayout {
                     const wanted = index === 1 ? "OpenVPN" : "NordLynx";
                     if (wanted !== NordVpnService.technology)
                         NordVpnService.setTechnology(wanted);
+                    protocolResync.restart();
+                }
+
+                // SegmentedSwitch assigns currentIndex imperatively on click, destroying the
+                // binding above - the same hazard as PanelTitlebar's Switch. Re-assert from
+                // the service so a rejected mutation, or a change made in another terminal,
+                // cannot leave the selected segment lying.
+                function syncFromService(): void {
+                    const want = NordVpnService.technology === "OpenVPN" ? 1 : 0;
+                    if (protocolSwitch.currentIndex !== want)
+                        protocolSwitch.currentIndex = want;
+                }
+
+                Timer {
+                    id: protocolResync
+                    interval: 400
+                    repeat: false
+                    onTriggered: protocolSwitch.syncFromService()
+                }
+
+                Connections {
+                    target: NordVpnService
+
+                    function onTechnologyChanged() {
+                        protocolSwitch.syncFromService();
+                    }
                 }
             }
 

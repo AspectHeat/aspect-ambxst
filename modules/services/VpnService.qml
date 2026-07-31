@@ -101,7 +101,9 @@ Singleton {
     }
 
     function requestProvider(target, selection = "", p2p = false): void {
-        if (root.busy || target === "")
+        // Also ignored while awaiting confirmation: otherwise a second country click
+        // silently swapped pendingSelection while the prompt still named the first one.
+        if (root.busy || root.awaitingConfirmation || target === "")
             return;
 
         root.pendingSelection = selection;
@@ -124,7 +126,11 @@ Singleton {
             NordVpnService.connectTo(selection, p2p);
             return;
         }
-        if (target === "tailscale" && root.tailscaleUp)
+        // Only a no-op when Tailscale ALREADY owns egress. If it is up mesh-only while
+        // NordVPN owns the route, "switch to Tailscale" is a real request: release NordVPN
+        // so traffic goes direct and the tailnet keeps working. Returning on tailscaleUp
+        // alone made that click do nothing at all.
+        if (target === "tailscale" && root.routeOwner === "tailscale")
             return;
 
         root.handoffTarget = target;
@@ -181,6 +187,14 @@ Singleton {
         root.handoffTarget = target;
         root.handoffPhase = "connecting";
         root.elapsedTicks = 0;
+
+        // Already connected: the handoff's purpose was releasing the OTHER provider, which
+        // has now happened. Issuing `tailscale up` again would be a pointless mutation and
+        // the timer would succeed on its first tick anyway.
+        if (root.providerConnected(target)) {
+            root.succeed();
+            return;
+        }
 
         let started = true;
         if (target === "nordvpn")

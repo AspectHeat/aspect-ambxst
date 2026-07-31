@@ -171,7 +171,9 @@ Singleton {
     // Returns false when the request was rejected, so VpnService can fail a handoff fast
     // instead of sitting in "Disconnecting..." against a command that never ran.
     function runMutation(command): bool {
-        if (!available || !enabled || isUpdating)
+        // isMutating, not isUpdating: rejecting because a background status/prefs read is
+        // in flight made handoffs fail for a reason the user did not cause.
+        if (!available || !enabled || isMutating)
             return false;
 
         isUpdating = true;

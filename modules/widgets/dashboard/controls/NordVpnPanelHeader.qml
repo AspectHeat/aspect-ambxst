@@ -41,6 +41,7 @@ ColumnLayout {
             && !NordVpnService.permissionDenied
         toggleChecked: NordVpnService.connected
         toggleEnabled: !NordVpnService.isMutating && !VpnService.busy
+            && !VpnService.awaitingConfirmation
 
         actions: (root.showBackButton ? [{
             icon: Icons.caretLeft,
@@ -87,6 +88,7 @@ ColumnLayout {
         flat: true
         implicitHeight: 40
         enabled: !NordVpnService.isMutating && !VpnService.busy
+            && !VpnService.awaitingConfirmation
 
         background: StyledRect {
             variant: quickConnectButton.hovered ? "primaryfocus" : "primary"

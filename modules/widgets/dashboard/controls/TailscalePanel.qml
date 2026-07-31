@@ -431,11 +431,15 @@ Item {
 
                             Text {
                                 Layout.fillWidth: true
-                                text: TailscaleService.exitNodeName || "None (direct)"
+                                text: VpnService.routeOwner === "nordvpn"
+                                    ? "Unavailable while NordVPN is connected"
+                                    : (TailscaleService.exitNodeName || "None (direct)")
                                 font.family: Config.theme.font
                                 font.pixelSize: Styling.fontSize(-2)
-                                color: Colors.overSurfaceVariant
+                                color: VpnService.routeOwner === "nordvpn"
+                                    ? Colors.warning : Colors.overSurfaceVariant
                                 elide: Text.ElideRight
+                                wrapMode: Text.Wrap
                             }
                         }
 
@@ -444,7 +448,15 @@ Item {
                             flat: true
                             implicitWidth: 32
                             implicitHeight: 32
-                            enabled: !TailscaleService.operatorMissing && !TailscaleService.isUpdating
+                            // Blocked while NordVPN owns the default route: selecting an exit
+                            // node is itself an egress change, so allowing it here would route
+                            // around VpnService's confirmation and leave two providers
+                            // claiming egress. isMutating, not isUpdating, so a background
+                            // read never disables it.
+                            enabled: !TailscaleService.operatorMissing
+                                && !TailscaleService.isMutating
+                                && VpnService.routeOwner !== "nordvpn"
+                                && !VpnService.busy
 
                             background: StyledRect {
                                 variant: exitNodeMenuButton.hovered ? "focus" : "common"
@@ -461,6 +473,12 @@ Item {
                             }
 
                             onClicked: exitNodeMenu.popup()
+
+                            StyledToolTip {
+                                visible: exitNodeMenuButton.hovered && !exitNodeMenuButton.enabled
+                                    && VpnService.routeOwner === "nordvpn"
+                                tooltipText: "Disconnect NordVPN first — it currently carries your internet traffic"
+                            }
                         }
 
                         OptionsMenu {

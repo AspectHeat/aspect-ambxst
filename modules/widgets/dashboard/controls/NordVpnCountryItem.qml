@@ -20,6 +20,7 @@ Item {
         && (root.country?.matchesStatusName(NordVpnService.country) ?? false)
     // isMutating, NOT isUpdating: gating on reads greys out every row on each poll tick.
     readonly property bool busy: NordVpnService.isMutating || VpnService.busy
+        || VpnService.awaitingConfirmation
     readonly property bool canExpand: (root.country?.cityCount ?? 0) > 0
         || !(root.country?.citiesLoaded ?? false)
 
