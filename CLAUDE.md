@@ -209,6 +209,27 @@ own `update` command in this clone. After any sync, re-run the shell under
 6. **`mpvpaper` is not installed** — it needs a `luajit` build no longer on any
    mirror, so it requires a full `pacman -Syu` plus reboot. Only affects video
    wallpapers; Ambxst logs a killed-mpvpaper line and continues.
+8. **Adding a new `.qml` file needs a shell restart, not a hot reload.** Quickshell
+   hot-reloads edits to existing files fine, but a newly *added* type is not
+   registered into the directory's implicit module by a reload. The symptom is
+   misleading: `Failed to load configuration ... <NewType> is not a type`, pointing
+   at the file that *uses* it rather than the new file itself. The config is fine — a
+   fresh start picks it up. Verify with an offscreen load before restarting the
+   primary shell:
+   ```bash
+   QT_QPA_PLATFORM=offscreen qs -p /path/to/clone/shell.qml   # exercises QML type
+                                                              # resolution, creates
+                                                              # no real surfaces
+   ```
+   Quickshell rejects a bad reload and keeps the previous scene, so a failed reload
+   does not cost the desktop — but it does leave the checkout on a config that will
+   not load on the *next* cold start. Revert the checkout or fix it before walking away.
+9. **`qmllint` cannot resolve `qs.*` imports**, so it catches syntax errors only.
+   `lab/check-qml-syntax.sh` wraps it and filters the unresolvable-import noise. For
+   real type and binding checks, instantiate the component under
+   `QT_QPA_PLATFORM=offscreen` as above — that surfaces `ReferenceError`s and bad
+   property names that `qmllint` silently passes.
+
 7. Three krfoss CachyOS mirrors are commented out after repeated signature 404s
    (backups at `/etc/pacman.d/*.bak-20260726`).
 
