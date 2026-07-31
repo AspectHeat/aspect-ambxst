@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Aspect Ambxst — NordVPN Provider Widget Plan</title>
+<title>Aspect Ambxst — NordVPN Provider Widget Plan v2</title>
 <style>
   :root {
     --bg:#0f1117; --surface:#181b24; --surface2:#202430; --surface3:#292e3c;
@@ -117,313 +117,761 @@
 <div class="layout">
 <nav>
   <strong>Aspect Ambxst</strong>
-  <small>NordVPN provider widget<br>implementation plan</small>
-  <a href="#outcome">1 · Product outcome</a>
-  <a href="#findings">2 · Existing integration</a>
-  <a href="#ux">3 · UX specification</a>
-  <a href="#handoff">4 · Provider handoff</a>
-  <a href="#service">5 · Service contract</a>
-  <a href="#data">6 · Countries &amp; flags</a>
-  <a href="#files">7 · File plan</a>
-  <a href="#phases">8 · Delivery phases</a>
-  <a href="#testing">9 · Test protocol</a>
-  <a href="#risks">10 · Risks &amp; decisions</a>
-  <a href="#acceptance">11 · Acceptance criteria</a>
+  <small>NordVPN provider widget<br>implementation plan &middot; v2</small>
+  <a href="#outcome">1 &middot; Product outcome</a>
+  <a href="#postmortem">2 &middot; Why v1 failed</a>
+  <a href="#data">3 &middot; Data availability</a>
+  <a href="#model">4 &middot; Provider model</a>
+  <a href="#contract">5 &middot; Service contract</a>
+  <a href="#state">6 &middot; State &amp; display text</a>
+  <a href="#ux">7 &middot; UX specification</a>
+  <a href="#files">8 &middot; Component plan</a>
+  <a href="#conventions">9 &middot; Conventions &amp; hazards</a>
+  <a href="#phases">10 &middot; Delivery gates</a>
+  <a href="#tests">11 &middot; Test protocol</a>
+  <a href="#risks">12 &middot; Risks</a>
+  <a href="#acceptance">13 &middot; Acceptance criteria</a>
 </nav>
 
 <main>
-<header>
-  <h1>NordVPN as a first-class VPN provider</h1>
-  <p class="lede">Add a NordVPN country browser and speed-oriented connection flow beside the existing Tailscale provider, with a deliberate one-click handoff between mesh access and commercial VPN egress.</p>
-  <div class="meta">
-    <span class="chip">Plan only — no QML implementation</span>
-    <span class="chip">Repo state: 2026-07-29</span>
-    <span class="chip">Design anchor: current Tailscale panel</span>
-    <span class="chip">Backend: official NordVPN Linux CLI</span>
-  </div>
-</header>
+<h1>NordVPN as a first-class VPN provider</h1>
+<p class="lede">A NordVPN country browser and connection flow beside the existing Tailscale provider,
+with a deliberate, serialized handoff between mesh access and commercial VPN egress. This is
+<strong>v2</strong>: it supersedes the v1 plan, which was implemented and then reverted.</p>
 
-<h2 id="outcome">1 · Product outcome</h2>
-<p>The VPN settings entry remains a provider hub. Tailscale and NordVPN each receive a separate provider menu, but share a small coordination layer so the primary toggle behaves predictably. Tailscale continues to expose devices, exit nodes, and profiles. NordVPN exposes Quick Connect, countries with flags, a P2P-optimized mode, connection details, and a compact set of safe connection preferences.</p>
+<div class="meta">
+  <span class="chip">Plan only &mdash; no QML implementation</span>
+  <span class="chip">Supersedes v1 (2026-07-29)</span>
+  <span class="chip">Repo state: 2026-07-30</span>
+  <span class="chip">Design anchor: TailscalePanel + TailscalePeerItem</span>
+  <span class="chip">Backend: NordVPN Linux CLI only</span>
+</div>
+
+<div class="callout stop">
+  <strong>Read this before writing any QML</strong>
+  v1 was a good-looking plan that produced unusable code. The failure was structural, not
+  effort-related: the plan specified a UI its own data source could not feed, and it had no
+  phase gates, so the contradiction was resolved at the keyboard by improvising a network
+  dependency. &sect;2 and &sect;3 exist to prevent a repeat. Do not skip to &sect;7.
+</div>
+
+<h2 id="outcome">1 &middot; Product outcome</h2>
+<p>The VPN settings entry remains a provider hub. Tailscale and NordVPN each get their own provider
+page and share a thin coordination layer so the primary toggles behave predictably. Tailscale keeps
+devices, exit nodes, and profiles. NordVPN exposes Quick Connect, a searchable flagged country list
+with city drill-down, a Standard/P2P group selector, connection details, and a small set of safe
+preferences.</p>
+
+<table>
+<tr><th>Need</th><th>Planned behavior</th><th>Existing precedent</th></tr>
+<tr><td>Countries and flags</td><td>Searchable country rows from <code>nordvpn countries</code>, decorated by a local ISO-code flag map with a two-letter badge fallback.</td><td>Tailscale peer list + settings search idiom</td></tr>
+<tr><td>P2P / better speeds</td><td><code>SegmentedSwitch</code> for Standard vs P2P. Country selection applies to either. P2P explicitly requests the CLI group.</td><td>Tailscale exit-node selector</td></tr>
+<tr><td>Easy provider toggle</td><td>Provider hub shows live state for both. Activating one performs a confirmed, serialized disconnect &rarr; connect handoff.</td><td><code>VpnPanel.currentSection</code> routing</td></tr>
+<tr><td>Same settings menu</td><td>NordVPN is subsection <code>"nordvpn"</code> inside section 10, next to <code>"tailscale"</code>.</td><td><code>SettingsTab.sectionForRequestedSubSection()</code></td></tr>
+</table>
 
 <div class="callout">
-  <strong>Recommended interaction model</strong>
-  Clicking an inactive provider asks for a handoff only when the other provider currently owns the default route. On confirmation, disconnect the old provider, wait for its disconnected state, then connect the new provider. Never issue both mutations at once.
+  <strong>Explicit non-goals for v1</strong>
+  No per-server browsing, no server load meters, no latency numbers, no kill-switch toggling during
+  a handoff, no tray icon. Each is cut for a reason recorded in &sect;3 or &sect;12.
+</div>
+
+<h2 id="postmortem">2 &middot; Why v1 failed &mdash; and what changed here</h2>
+<p>v1 shipped as commits <code>de755246</code>, <code>82624989</code>, <code>46de5791</code>,
+<code>800f520f</code>, then was reverted. The defects were symptoms; these were the causes.</p>
+
+<table>
+<tr><th>Root cause in v1</th><th>Consequence observed</th><th>Fix in v2</th></tr>
+<tr>
+  <td><strong>The plan contradicted itself.</strong> &sect;3's mock showed per-server load and <code>26&nbsp;ms</code> latency; &sect;5 specified a CLI-only service that exposes neither.</td>
+  <td>The implementer reached for <code>api.nordvpn.com</code> over <code>curl</code> to obtain <code>load</code>, and silently dropped latency entirely. The server feed was then fetched over the very link the VPN was tearing down, so switching produced "feed unavailable" errors.</td>
+  <td><strong>&sect;3 data availability matrix.</strong> Every UI element is bound to a named field from one source, with an explicit degradation rule. Nothing may appear in a mock that &sect;3 does not feed.</td>
+</tr>
+<tr>
+  <td><strong>No phase exit artifacts.</strong> Five phases were listed; none had a deliverable that would show up in a diff.</td>
+  <td>Phase 01 (recon) and Phase 02 (fixtures) were skipped invisibly. Parsers were written against a guessed CLI surface.</td>
+  <td><strong>&sect;10 gates.</strong> Each phase names a committed artifact. A missing artifact blocks the next phase and is visible in review.</td>
+</tr>
+<tr>
+  <td><strong>The contract was pre-written, then "verified".</strong> &sect;5 listed exact commands and parse targets hedged with "re-verify during Phase 1".</td>
+  <td>Implementation anchored to guesses. When reality diverged there was a contract to satisfy and no data.</td>
+  <td><strong>&sect;5 is a template with blanks.</strong> Phase 01 fills it from real redacted output. The blanks are the gate.</td>
+</tr>
+<tr>
+  <td><strong>The plan's own pseudocode taught an anti-pattern:</strong> <code>phase = "disconnecting-current"</code>.</td>
+  <td><code>VpnService.qml</code> branched on <code>phase.startsWith("Disconnecting")</code> &mdash; display text used as the state variable, never cleared on external change.</td>
+  <td><strong>&sect;6.</strong> An enum that is never rendered, plus a pure mapping function for text, plus direction scoping.</td>
+</tr>
+<tr>
+  <td><strong>Zero QML-internal risks.</strong> The risk table covered CLI drift, privileges, routing, fonts, licensing &mdash; all external.</td>
+  <td>Every bug actually hit was QML-internal: <code>Switch</code> binding destruction, stale transient state, direction-blind status text.</td>
+  <td><strong>&sect;9 hazards</strong>, each with an in-repo precedent that already solves it.</td>
+</tr>
+<tr>
+  <td><strong>No state &times; surface copy matrix.</strong></td>
+  <td>Undefined cells rendered whatever was left in memory &mdash; e.g. the NordVPN page displaying "Disconnecting Tailscale&hellip;" as its own status.</td>
+  <td><strong>&sect;7.3.</strong> All 7 states &times; 3 surfaces have defined copy.</td>
+</tr>
+<tr>
+  <td><strong>No decomposition budget.</strong> <code>NordVpnCountryItem.qml</code> was named but nothing forced extraction.</td>
+  <td>A 613-line panel: ~340-line inline <code>ListView</code> header, ~155-line inline delegate, 12 levels of nesting.</td>
+  <td><strong>&sect;8 budgets</strong> with hard limits and a named file per concern.</td>
+</tr>
+<tr>
+  <td><strong>Providers modeled as symmetric.</strong> A single <code>activeProvider</code> string and mutually exclusive toggles.</td>
+  <td><code>TailscaleService.connected</code> means "daemon Running"; <code>NordVpnService.connected</code> means "owns default route". Conflating them let a toggle read off while the coordinator believed Tailscale was up.</td>
+  <td><strong>&sect;4.</strong> Two independent connection booleans plus a separately observed route owner.</td>
+</tr>
+</table>
+
+<h2 id="data">3 &middot; Data availability matrix</h2>
+<p>This table is the contract between the UI and the backend. <strong>An element may not appear in
+any mock, panel, or delegate unless it has a row here with a verified source.</strong></p>
+<p><strong>Phase 02 status:</strong> recon completed against <strong>NordVPN 5.2.0</strong> on Bostrom.
+Fixtures are committed under <code>lab/fixtures/nordvpn/</code> and asserted by
+<code>lab/test-nordvpn-parse.sh</code>. Nothing needed redaction &mdash; the account is logged out and
+disconnected, so no IP, email, or server hostname ever appeared.</p>
+<div class="callout warn">
+  <strong>One gap remains, and it is the important one</strong>
+  A logged-out CLI never prints the connected form of <code>nordvpn status</code>. The disconnected
+  form is the single line <code>Status: Disconnected</code>, so <em>every field that only exists while
+  connected is still unverified</em>. Those rows below are marked
+  <span class="tag edit">assumed</span>. Clearing them requires logging in and connecting, which
+  cannot be done over SSH &mdash; a route change can sever the session, and with a kill switch it can
+  lock out remote access to Bostrom entirely. Capture at the physical machine.
 </div>
 
 <table>
-  <thead><tr><th>Need</th><th>Planned behavior</th><th>Existing precedent</th></tr></thead>
-  <tbody>
-    <tr><td>Countries and flags</td><td>Searchable country rows generated from <code>nordvpn countries</code>, decorated through a local ISO-code flag map.</td><td>Tailscale peer list + settings search idiom</td></tr>
-    <tr><td>P2P / better speeds</td><td>Connection mode segmented control: <strong>Fastest</strong> uses NordLynx/recommended server; <strong>P2P optimized</strong> requests the CLI P2P group. Country selection applies to either mode.</td><td>Tailscale exit-node selector</td></tr>
-    <tr><td>Easy provider toggle</td><td>Provider hub shows live state for both. Activating one can perform a guarded disconnect → connect handoff.</td><td><code>VpnPanel.currentSection</code> provider routing</td></tr>
-    <tr><td>Same settings menu</td><td>NordVPN is subsection <code>"nordvpn"</code> inside section 10, next to <code>"tailscale"</code>.</td><td><code>SettingsTab.sectionForRequestedSubSection()</code></td></tr>
-  </tbody>
+<tr><th>UI element</th><th>Field</th><th>Source</th><th>If absent</th></tr>
+<tr><td>Connection state</td><td><code>state</code></td><td><code>nordvpn status</code> &rarr; <code>Status:</code> <span class="tag new">verified</span> <code>status-disconnected.txt</code></td><td>Blocking. Feature cannot ship.</td></tr>
+<tr><td>Country name</td><td><code>country</code></td><td><code>nordvpn status</code> &rarr; <code>Country:</code> <span class="tag edit">assumed</span></td><td>Show hostname only.</td></tr>
+<tr><td>City name</td><td><code>city</code></td><td><code>nordvpn status</code> &rarr; <code>City:</code> <span class="tag edit">assumed</span></td><td>Omit the city line.</td></tr>
+<tr><td>Server hostname</td><td><code>server</code></td><td><code>nordvpn status</code> &rarr; <code>Hostname:</code> <span class="tag edit">assumed</span></td><td>Omit. Never synthesize.</td></tr>
+<tr><td>Technology</td><td><code>technology</code></td><td><code>nordvpn settings</code> &rarr; <code>Technology: NORDLYNX</code> <span class="tag new">verified</span> <code>settings.txt</code>. Note it is <strong>uppercase</strong>; the parser normalizes to <code>NordLynx</code>/<code>OpenVPN</code>.</td><td>Hide the technology row and its control.</td></tr>
+<tr><td>Uptime</td><td><code>uptime</code></td><td><code>nordvpn status</code> &rarr; <code>Uptime:</code> <span class="tag edit">assumed</span></td><td>Omit. Do not compute client-side.</td></tr>
+<tr><td>Country list</td><td><code>countries</code></td><td><code>nordvpn countries</code> &rarr; 149 bare tokens, one per line, underscores for spaces <span class="tag new">verified</span> <code>countries.txt</code></td><td>Quick Connect only; show an explanatory empty state.</td></tr>
+<tr><td>City list per country</td><td><code>cities</code></td><td><code>nordvpn cities &lt;Country_Token&gt;</code> <span class="tag new">verified</span> <code>cities-japan.txt</code> (2), <code>cities-united-states.txt</code> (55)</td><td>Country-level connect only; no drill-down caret.</td></tr>
+<tr><td>P2P availability</td><td><code>groups</code></td><td><code>nordvpn groups</code> &rarr; token is exactly <code>P2P</code> <span class="tag new">verified</span> <code>groups.txt</code></td><td>Hide the <code>SegmentedSwitch</code> entirely.</td></tr>
+<tr><td>Login state</td><td><code>state === "loggedOut"</code></td><td><code>nordvpn account</code> &rarr; exit <strong>1</strong>, stdout <code>You're not logged in.</code> <span class="tag new">verified</span> <code>account-logged-out.txt</code></td><td>Blocking for the login path.</td></tr>
+<tr><td>Country flag</td><td><code>flag</code></td><td><code>nordvpn-iso.js</code>, 149/149 tokens mapped, no orphans or duplicate codes, asserted by the harness <span class="tag new">verified</span></td><td>Two-letter ISO badge. Never a network fetch.</td></tr>
+<tr><td>Kill switch / autoconnect / LAN discovery</td><td><code>settings.*</code></td><td><code>nordvpn settings</code> &rarr; <code>Kill Switch:</code>, <code>Auto-connect:</code>, <code>LAN Discovery:</code>, values <code>enabled</code>/<code>disabled</code> <span class="tag new">verified</span> <code>settings.txt</code></td><td>Hide each row independently via <code>settings.has.*</code>.</td></tr>
 </table>
 
-<h2 id="findings">2 · What the recent Tailscale integration established</h2>
-<p>The commits from <code>23d80351</code> through <code>bc124e90</code> created the architecture this feature should extend, not replace:</p>
+<div class="callout">
+  <strong>Bonus verified from <code>--help</code>, without mutating anything</strong>
+  <code>nordvpn connect</code> accepts <code>&lt;country&gt;</code>, <code>&lt;server&gt;</code>,
+  <code>&lt;country_code&gt;</code>, <code>&lt;city&gt;</code>, <code>&lt;group&gt;</code>, and the two-arg
+  <code>&lt;country&gt; &lt;city&gt;</code> form; the group flag is <code>--group value</code> / <code>-g</code>
+  (<code>help-connect.txt</code>). So the ISO map does double duty &mdash; flags <em>and</em> a valid
+  connect target &mdash; and city drill-down is a verified two-argument call rather than a guess.
+</div>
+
+<h3>Deliberately cut, with reasons</h3>
+<table>
+<tr><th>Cut</th><th>Why</th></tr>
+<tr><td>Per-server load %</td><td>Not exposed by the CLI. Obtainable only from <code>api.nordvpn.com</code>, which fails mid-handoff by construction (the fetch races the route it depends on) and ranks results by the caller's real IP.</td></tr>
+<tr><td>Latency (<code>26&nbsp;ms</code>)</td><td>Exposed by no source. Would require active probing per server &mdash; a background ping fleet this shell has no business running.</td></tr>
+<tr><td>Individual server browsing</td><td>Follows from the two cuts above: without load or latency there is nothing to choose between servers in one city, and the CLI picks the best one anyway.</td></tr>
+</table>
+
+<div class="callout warn">
+  <strong>If someone later wants load meters back</strong>
+  They may only be added as an optional enrichment layer over a working CLI implementation:
+  cached to disk, never blocking a render, never fetched while <code>VpnService.handoffPhase !== "idle"</code>,
+  and behind a config key that defaults off. They may never become the source of the country list.
+</div>
+
+<h2 id="model">4 &middot; Provider model &mdash; the two are not symmetric</h2>
+<p>v1's single <code>activeProvider</code> string was wrong because the two services mean different
+things by "connected". Model three independent facts instead.</p>
+
+<pre><code>// VpnService.qml
+readonly property bool tailscaleUp:  TailscaleService.connected        // daemon Running; mesh reachable
+readonly property bool nordUp:       NordVpnService.connected          // tunnel established
+
+// Who actually owns the default route, as observed - not as intended.
+readonly property string routeOwner: nordUp ? "nordvpn"
+    : (tailscaleUp &amp;&amp; TailscaleService.exitNodeId !== "" ? "tailscale" : "none")</code></pre>
+
+<p>Consequences that must be respected in the UI:</p>
 <ul class="tight">
-  <li><code>VpnPanel.qml</code> is already a provider landing page with <code>currentSection</code> routing and lazy loading.</li>
-  <li><code>SettingsTab.qml</code> maps subsection <code>tailscale</code> to settings section 10; <code>SettingsIndex.qml</code> adds searchable deep links.</li>
-  <li><code>TailscaleService.qml</code> owns CLI availability, read state, mutations, errors, and refresh lifecycle.</li>
-  <li><code>TailscalePanel.qml</code> is reusable in full settings and compact tray contexts.</li>
-  <li>Configuration lives in both <code>config/defaults/system.js</code> and <code>config/Config.qml</code>.</li>
-  <li>Recent polish added privacy concealment, stable direct routes, popup scroll reset, and header anchoring. NordVPN should inherit those lessons on its first pass.</li>
+  <li>Tailscale being up is <strong>not</strong> a reason to disconnect it. It only owns egress when an exit node is set. A handoff to NordVPN is only required when <code>routeOwner === "tailscale"</code>.</li>
+  <li>Both may legitimately be connected at once &mdash; Tailscale for peer/subnet access, NordVPN for egress. The hub must be able to render that state without calling it an error.</li>
+  <li>The user can operate either CLI outside Ambxst. The coordinator makes the default interaction safe; it never asserts a state it has not observed.</li>
 </ul>
 
 <div class="callout warn">
-  <strong>Scope boundary</strong>
-  Do not merge NordVPN semantics into <code>TailscaleService</code>. The providers have different state models and CLI lifecycles. Coordination belongs in a thin <code>VpnService</code>; provider details remain in separate services.
+  <strong>Do not promise mutual exclusion</strong>
+  An "Allow simultaneous connections" setting may only be added after lab testing proves routing and
+  DNS behavior on Bostrom. Until then the UI defaults to a serialized handoff but still reports
+  observed reality.
 </div>
 
-<h2 id="ux">3 · UX specification</h2>
-<div class="mock-grid">
-  <div class="stage">
-    <p class="stage-label">VPN provider menu · section 10</p>
-    <div class="panel">
-      <div class="panel-head"><b>VPN</b><span>↻</span></div>
-      <div class="provider">
-        <div class="logo">TS</div>
-        <div class="copy"><b>Tailscale</b><small>Mesh devices, exit nodes, profiles</small></div>
-        <span class="status">Connected</span><span>›</span>
-      </div>
-      <div class="provider active">
-        <div class="logo">N</div>
-        <div class="copy"><b>NordVPN</b><small>Countries, fast servers, P2P</small></div>
-        <span class="switch"></span><span>›</span>
-      </div>
-      <div class="handoff">
-        <div><b>Tailscale</b>Mesh access</div><span class="arrow">⇄</span>
-        <div><b>NordVPN</b>Private egress</div>
-      </div>
-    </div>
-  </div>
+<h2 id="contract">5 &middot; Service contract &mdash; template, to be filled by Phase 01</h2>
+<p><code>NordVpnService.qml</code> is a reactive singleton per <code>modules/services/AGENTS.md</code>.
+argv-form <code>Process.command</code> only; no shell interpolation.</p>
 
-  <div class="stage">
-    <p class="stage-label">NordVPN provider menu · compact overview</p>
-    <div class="panel">
-      <div class="panel-head"><b><span class="back">‹</span> NordVPN</b><span class="switch on"></span></div>
-      <div class="quick">
-        <small>Connected · NordLynx</small>
-        <b>🇳🇱 Netherlands · #1042</b>
-        <small>Amsterdam · 26 ms</small>
-        <button>Disconnect</button>
-      </div>
-      <div class="seg"><span class="selected">Fastest</span><span>P2P optimized</span></div>
-      <div class="search">⌕ Search countries</div>
-      <div class="country"><span class="flag">⚡</span><span class="name"><b>Quick Connect</b><br><small>Best available server</small></span><span>›</span></div>
-      <div class="country"><span class="flag">🇨🇦</span><span class="name">Canada<br><small>Fast connection</small></span><span class="badge">P2P</span><span>›</span></div>
-      <div class="country"><span class="flag">🇩🇪</span><span class="name">Germany<br><small>Available</small></span><span class="badge">P2P</span><span>›</span></div>
-      <div class="country"><span class="flag">🇳🇱</span><span class="name">Netherlands<br><small>Connected</small></span><span class="status">●</span></div>
-      <div class="country"><span class="flag">🇺🇸</span><span class="name">United States<br><small>Available</small></span><span class="badge">P2P</span><span>›</span></div>
-    </div>
-  </div>
+<div class="callout">
+  <strong>Phase 02 complete for everything except the connected-state labels</strong>
+  Filled from NordVPN 5.2.0 on Bostrom. Parsers live in
+  <code>modules/services/nordvpn-parse.js</code> and are asserted by
+  <code>lab/test-nordvpn-parse.sh</code> (80 assertions). Rows still marked
+  <span class="tag edit">assumed</span> need a logged-in capture at the physical machine.
 </div>
-
-<h3>Provider landing page</h3>
-<ul>
-  <li>Keep the existing <code>PanelTitlebar("VPN")</code> and “Providers” label.</li>
-  <li>Add a NordVPN card beneath Tailscale. Each card shows availability, connection state, one-line purpose, and a caret. The whole card opens its submenu.</li>
-  <li>Show “Not installed” inline rather than hiding a configured provider. Hide the entire VPN sidebar section only when no provider is enabled/available.</li>
-  <li>A compact handoff strip appears only while one provider is connected. It names the current route owner and the alternative action.</li>
-</ul>
-
-<h3>NordVPN provider page</h3>
-<ul>
-  <li>Header: back, logo/name, state dot, primary toggle, refresh action.</li>
-  <li>Connected card: country flag, country/city/server, technology, elapsed time if reliably available, and Disconnect.</li>
-  <li>Disconnected card: “Quick Connect” primary action using the last selected mode and country preference.</li>
-  <li>Mode selector: <strong>Fastest</strong> and <strong>P2P optimized</strong>. Explain that standard servers support P2P too; optimized mode explicitly requests the CLI P2P group.</li>
-  <li>Country list: sticky search, Quick Connect pseudo-row, then alphabetized countries. Current country rises beneath Quick Connect while connected.</li>
-  <li>Advanced options collapsed by default: technology (NordLynx/OpenVPN), kill switch, auto-connect, LAN discovery. Do not expose every CLI knob in v1.</li>
-</ul>
-
-<h2 id="handoff">4 · Tailscale ↔ NordVPN handoff state machine</h2>
-<pre><code>requestProvider(target):
-  if target is already connected:
-      open target panel                        // no mutation
-  else if no other provider is connected:
-      connect(target)
-  else:
-      show confirmation:
-        "Switch from Tailscale to NordVPN?"
-      on confirm:
-        phase = "disconnecting-current"
-        disconnect(current)
-        wait for disconnected, timeout 12 s
-        phase = "connecting-target"
-        connect(target, remembered selection)
-        wait for connected, timeout 25 s
-        phase = success ? "idle" : "failed"
-</code></pre>
-
-<div class="callout stop">
-  <strong>Do not promise perfect mutual exclusion</strong>
-  The user can operate either CLI outside Ambxst, and Tailscale may be useful simultaneously for subnet/peer access while NordVPN owns the default route. The coordinator should make the default UI safe, but report observed reality. Add an “Allow simultaneous connections” advanced setting only after lab testing proves routing and DNS behavior.
-</div>
-
-<p>During a handoff, both provider cards are disabled, the target card shows the current phase, and cancellation is unavailable once disconnect begins. If connecting the target fails, do not silently reconnect the prior provider; show a clear recovery action (“Reconnect Tailscale”). This avoids an unexpected network mutation.</p>
-
-<h2 id="service">5 · NordVPN service contract</h2>
-<p><code>NordVpnService.qml</code> follows the reactive singleton pattern and uses argv-form <code>Process.command</code> exclusively. No shell interpolation is needed.</p>
 
 <table>
-  <thead><tr><th>Surface</th><th>Meaning / source</th></tr></thead>
-  <tbody>
-    <tr><td><code>available</code></td><td><code>which nordvpn</code> succeeded.</td></tr>
-    <tr><td><code>loggedIn</code></td><td>Derived conservatively from <code>nordvpn account</code>; never store credentials.</td></tr>
-    <tr><td><code>state</code></td><td>Normalized enum: unavailable, loggedOut, disconnected, connecting, connected, disconnecting, error.</td></tr>
-    <tr><td><code>country / city / server</code></td><td>Parsed from <code>nordvpn status</code>; empty-safe properties.</td></tr>
-    <tr><td><code>technology / protocol</code></td><td>Status/settings output. Prefer NordLynx as the planned default.</td></tr>
-    <tr><td><code>countries</code></td><td>Normalized model from <code>nordvpn countries</code>, refreshed at startup and on demand.</td></tr>
-    <tr><td><code>isUpdating / lastError</code></td><td>Shared mutation/read feedback pattern matching Tailscale.</td></tr>
-    <tr><td><code>connect(countryCode, mode)</code></td><td>Quick: <code>nordvpn connect [country]</code>. P2P: <code>nordvpn connect --group p2p [country]</code>.</td></tr>
-    <tr><td><code>disconnect()</code></td><td><code>nordvpn disconnect</code>.</td></tr>
-    <tr><td><code>login()</code></td><td><code>nordvpn login</code>, then browser flow; panel shows pending login guidance.</td></tr>
-    <tr><td><code>setTechnology(value)</code></td><td><code>nordvpn set technology NordLynx|OpenVPN</code>; disconnect/reconnect requirement shown before mutation.</td></tr>
-  </tbody>
+<tr><th>Surface</th><th>Command</th><th>Parse target</th></tr>
+<tr><td><code>available</code></td><td><code>["which","nordvpn"]</code></td><td>exit 0 <span class="tag new">verified</span> (<code>/usr/bin/nordvpn</code>, v5.2.0)</td></tr>
+<tr><td><code>state</code></td><td><code>["nordvpn","status"]</code></td><td><code>Status:</code>; <code>Disconnected</code> <span class="tag new">verified</span>. <code>Connected</code>/<code>Connecting</code>/<code>Disconnecting</code> <span class="tag edit">assumed</span>. Anything else &rarr; <code>error</code>.</td></tr>
+<tr><td><code>country</code>, <code>city</code>, <code>server</code>, <code>uptime</code></td><td><code>["nordvpn","status"]</code></td><td><code>Country:</code>, <code>City:</code>, <code>Hostname:</code>, <code>Uptime:</code> <span class="tag edit">assumed</span> &mdash; absent from the disconnected form</td></tr>
+<tr><td><code>loggedIn</code></td><td><code>["nordvpn","account"]</code></td><td>exit <strong>1</strong> + <code>You're not logged in.</code> <span class="tag new">verified</span>. Daemon errors are distinguished separately so the UI never offers a login that cannot succeed.</td></tr>
+<tr><td><code>countries</code></td><td><code>["nordvpn","countries"]</code></td><td>one bare token per line, 149 entries, ASCII, underscores for spaces, trailing newline <span class="tag new">verified</span></td></tr>
+<tr><td><code>cities</code></td><td><code>["nordvpn","cities",&lt;Country_Token&gt;]</code></td><td>same line format <span class="tag new">verified</span></td></tr>
+<tr><td><code>groups</code></td><td><code>["nordvpn","groups"]</code></td><td>6 tokens; P2P token is exactly <code>P2P</code> <span class="tag new">verified</span></td></tr>
+<tr><td><code>settings</code></td><td><code>["nordvpn","settings"]</code></td><td><code>Key: Value</code>, single space, <code>enabled</code>/<code>disabled</code>; <code>Technology</code> is uppercase <span class="tag new">verified</span></td></tr>
+<tr><td><code>connect(target, p2p)</code></td><td><code>["nordvpn","connect"]</code> + optional <code>["--group","P2P"]</code> + optional <code>&lt;Country&gt;</code> or <code>&lt;Country&gt; &lt;City&gt;</code> or <code>&lt;code&gt;</code></td><td>argument grammar <span class="tag new">verified</span> from <code>help-connect.txt</code>; runtime behavior <span class="tag edit">assumed</span></td></tr>
+<tr><td><code>disconnect()</code></td><td><code>["nordvpn","disconnect"]</code></td><td>runtime behavior <span class="tag edit">assumed</span></td></tr>
+<tr><td><code>login()</code></td><td><code>Quickshell.execDetached(["nordvpn","login"])</code></td><td>browser flow; panel shows pending guidance</td></tr>
 </table>
+
+<h3>Environment facts confirmed on Bostrom</h3>
+<ul class="tight">
+  <li><code>nordvpnd.service</code> is <strong>active</strong>; the <code>bostrom</code> user is already in the <code>nordvpn</code> group, so no group change or re-login is needed.</li>
+  <li><code>nordvpnd-killswitch.service</code> is loaded and <code>active (exited)</code> <em>even though</em> <code>nordvpn settings</code> reports <code>Kill Switch: disabled</code>. <strong>Unit state is not a kill-switch signal</strong> &mdash; read it only from <code>nordvpn settings</code>.</li>
+  <li>The account is logged out, so the panel's <code>loggedOut</code> path is the one that can be exercised for real today; connected states need a subscription and physical access.</li>
+</ul>
 
 <h3>Refresh strategy</h3>
-<p>Start with a guarded timer because the documented CLI does not expose a stable public event stream equivalent to <code>tailscale debug watch-ipn</code>. Poll <code>status</code> every 5 seconds only while the provider page is visible, every 20 seconds while NordVPN is connected elsewhere in the shell, and stop when disabled/unavailable. Trigger immediate refresh after each mutation and when the panel opens.</p>
+<p>NordVPN has no documented event stream, so unlike <code>TailscaleService</code> (which uses
+<code>tailscale debug watch-ipn</code> as a push source with a poll only as fallback) this service must
+poll. Follow the <strong>visibility-gated</strong> idiom already used by <code>BluetoothService.qml:246-253</code>
+rather than inventing a second interval config key:</p>
 
-<h3>Parser hardening</h3>
-<ul>
-  <li>Centralize output parsing in pure functions; keep raw CLI text out of UI components.</li>
-  <li>Match labels defensively and tolerate missing/reordered lines, localized output, and new fields.</li>
-  <li>Capture synthetic fixtures only. This public repo must not contain account names, assigned IPs, or real server history.</li>
-  <li>If NordVPN v5 exposes a machine-readable or daemon IPC surface during implementation, prefer it after verifying stability; do not scrape the GUI.</li>
-</ul>
-
-<h2 id="data">6 · Country and flag model</h2>
-<p>The CLI provides country names but may not provide ISO codes. Create a small, auditable mapping from NordVPN’s normalized country tokens to ISO 3166-1 alpha-2 codes, then render flags without network access.</p>
-
-<pre><code>{
-  "cliName": "United_States",
-  "displayName": "United States",
-  "countryCode": "US",
-  "flag": "🇺🇸",
-  "connected": false,
-  "supportsP2p": true
+<pre><code>Timer {
+    id: pollingTimer
+    interval: Math.max(5, Config.system.nordvpn.pollInterval) * 1000
+    repeat: true
+    running: root.available &amp;&amp; root.enabled &amp;&amp; !SuspendManager.isSuspending
+        &amp;&amp; (GlobalStates.dashboardOpen || GlobalStates.launcherOpen || GlobalStates.overviewOpen
+            || root.connected || VpnService.handoffPhase !== "idle")
+    onTriggered: root.refresh()
 }</code></pre>
 
-<ul>
-  <li>Prefer emoji flags for zero asset overhead. Test glyph availability under the configured Ambxst font; fall back to a two-letter badge when the emoji renders as missing glyphs.</li>
-  <li>Do not hardcode a server-availability catalog. The country list comes from the installed CLI and can change.</li>
-  <li>For v1, the P2P badge means “selectable in P2P optimized mode,” not a live speed guarantee. If a country-specific P2P request fails, retain the selection and offer global fastest P2P.</li>
-  <li>Search matches display name, ISO code, and CLI token. Sorting uses locale-aware display names.</li>
+<p>Mandatory companions, each with an in-repo precedent:</p>
+<ul class="tight">
+  <li><strong>200&nbsp;ms debouncer</strong> in front of the public <code>refresh()</code>, with the real work in <code>performRefresh()</code> &mdash; <code>TailscaleService.qml:269-274</code>. v1 lacked this and dropped refreshes via <code>if (statusProc.running) return</code>.</li>
+  <li><strong>Multi-process bookkeeping</strong> via a <code>refreshPartsRemaining</code> counter and <code>finishRefreshPart()</code> &mdash; <code>TailscaleService.qml:92-106</code>. <code>isUpdating</code> must not clear until every part has landed. v1 cleared it on a 900&nbsp;ms timer <em>before</em> the status reparse, and the coordinator polled that flag.</li>
+  <li><strong>Suspend awareness</strong> via a <code>Connections</code> on <code>SuspendManager</code> &mdash; <code>NetworkService.qml:22-32</code>. Neither VPN service had this; resume is exactly when tunnel state goes stale.</li>
+  <li><strong>Immediate refresh</strong> after each mutation and on panel open.</li>
 </ul>
 
-<h2 id="files">7 · File-by-file implementation plan</h2>
-<table>
-  <thead><tr><th>Change</th><th>File</th><th>Responsibility</th></tr></thead>
-  <tbody>
-    <tr><td><span class="tag new">new</span></td><td><code>modules/services/NordVpnService.qml</code></td><td>CLI discovery, status/settings/countries, normalized state, login/connect/disconnect, guarded polling.</td></tr>
-    <tr><td><span class="tag new">new</span></td><td><code>modules/services/VpnService.qml</code></td><td>Observed active providers and serialized handoff state machine only.</td></tr>
-    <tr><td><span class="tag new">new</span></td><td><code>modules/widgets/dashboard/controls/NordVpnPanel.qml</code></td><td>Provider header, connection card, mode selector, search, country list, advanced options.</td></tr>
-    <tr><td><span class="tag new">new</span></td><td><code>modules/widgets/dashboard/controls/NordVpnCountryItem.qml</code></td><td>Flag/badge fallback, name/state, connect action.</td></tr>
-    <tr><td><span class="tag edit">edit</span></td><td><code>modules/widgets/dashboard/controls/VpnPanel.qml</code></td><td>Add provider card, loader routing for both subsections, active-provider handoff affordance.</td></tr>
-    <tr><td><span class="tag edit">edit</span></td><td><code>modules/widgets/dashboard/controls/SettingsTab.qml</code></td><td>Route <code>nordvpn</code> to section 10 and make VPN visibility consider both providers.</td></tr>
-    <tr><td><span class="tag edit">edit</span></td><td><code>modules/widgets/dashboard/controls/SettingsIndex.qml</code></td><td>Search entries for NordVPN, countries, P2P, Quick Connect, kill switch, and provider switching.</td></tr>
-    <tr><td><span class="tag edit">edit</span></td><td><code>config/defaults/system.js</code> + <code>config/Config.qml</code></td><td>Mirrored defaults: enabled, poll intervals, preferred mode/country, show-in-bar, handoff policy.</td></tr>
-    <tr><td><span class="tag new">new</span></td><td><code>assets/nordvpn/nordvpn-icon-white.svg</code></td><td>Official-looking monochrome provider mark only if licensing permits; otherwise use <code>Icons.vpn</code>.</td></tr>
-    <tr><td><span class="tag edit">edit</span></td><td><code>shell.qml</code></td><td>Register/self-initialize new critical services according to existing service-init conventions.</td></tr>
-  </tbody>
-</table>
+<h3>Parser hardening</h3>
+<ul class="tight">
+  <li>Parsing lives in pure functions in <code>modules/services/nordvpn-parse.js</code>, each taking a string and returning a plain object. Raw CLI text never reaches a UI component, and the service does no parsing inline. See the quarantine rule in &sect;10.0 &mdash; this file is the only place recon may change.</li>
+  <li>Match labels case-insensitively, tolerate reordered and missing lines, and always fall back with <code>?? default</code> per <code>modules/services/AGENTS.md:35</code>.</li>
+  <li>Force <code>environment: ({ LANG: "C.UTF-8", LC_ALL: "C.UTF-8" })</code> so labels are stable &mdash; <code>TailscaleService.qml:421-424</code>.</li>
+  <li><strong>Never let an unrecognized status silently mean "disconnected."</strong> v1's <code>else state = "disconnected"</code> clobbered <code>loggedOut</code>. Unknown input maps to <code>"error"</code> with the raw line in <code>lastError</code>.</li>
+</ul>
 
-<h3>Proposed configuration</h3>
+<div class="callout stop">
+  <strong>Privacy: <code>nordvpn status</code> includes your assigned IP</strong>
+  It must never be persisted, logged, or committed. If it is displayed at all, it follows the
+  Tailscale concealment idiom (<code>TailscalePeerItem.qml</code> <code>ipv4Revealed</code>: hidden by
+  default, revealed on explicit user action, never in a screenshot-able default state). Fixtures must
+  be scrubbed of IPs, account names, and real server history.
+</div>
+
+<h2 id="state">6 &middot; State model and display text</h2>
+<h3>6.1 Service state &mdash; a normalized enum</h3>
+<pre><code>// NordVpnService.qml - mirrors the TailscaleService derived-boolean idiom
+property string state: "unavailable"
+// domain: unavailable | loggedOut | disconnected | connecting | connected | disconnecting | error
+
+readonly property bool connected:     state === "connected"
+readonly property bool connecting:    state === "connecting"
+readonly property bool disconnecting: state === "disconnecting"
+readonly property bool needsLogin:    state === "loggedOut"</code></pre>
+<p>v1 declared this domain but never produced <code>"disconnecting"</code>, so there was no state to
+render during teardown. Set it optimistically when the disconnect mutation is issued and let the next
+status read confirm or correct it.</p>
+
+<h3>6.2 Handoff state &mdash; an enum that is never rendered</h3>
+<pre><code>// VpnService.qml
+property string handoffPhase: "idle"      // idle | confirming | disconnecting | connecting | failed
+property string handoffTarget: ""         // "" | "nordvpn" | "tailscale"
+property string lastError: ""
+
+// Text is DERIVED, and scoped to the asking surface. A panel never reads handoffPhase directly.
+function statusTextFor(provider): string {
+    if (handoffTarget !== provider)
+        return "";                        // <-- the v1 "Disconnecting Tailscale..." bug, fixed
+    switch (handoffPhase) {
+    case "disconnecting": return "Disconnecting " + labelFor(otherProvider(provider)) + "…";
+    case "connecting":    return "Connecting "    + labelFor(provider) + "…";
+    case "failed":        return lastError;
+    default:              return "";
+    }
+}</code></pre>
+
+<p>Three rules follow, and they are the fix for the artifacts users reported:</p>
+<ul class="tight">
+  <li><strong>Never branch on display text.</strong> No <code>phase.startsWith(...)</code>. Branch on the enum.</li>
+  <li><strong>Scope by direction.</strong> A surface only renders phase text when it is the handoff target. This is why the NordVPN page could show "Disconnecting Tailscale&hellip;".</li>
+  <li><strong>Transient state must be cleared on entry, not only on exit.</strong> Clear <code>handoffPhase</code>, <code>handoffTarget</code> and <code>lastError</code> when a provider page mounts and when an external state change is observed. v1 rendered <code>lastError</code> indefinitely.</li>
+</ul>
+
+<h3>6.3 Handoff sequence</h3>
+<pre><code>requestProvider(target):
+  if target already connected:            open target page          // no mutation
+  else if routeOwner === "none" or routeOwner === target:
+                                          connect(target)           // nothing to hand off
+  else:
+      handoffPhase = "confirming"         // Config.system.vpn.handoffPolicy === "confirm"
+      on confirm:
+        handoffPhase = "disconnecting";   disconnect(routeOwner)
+        await disconnected                timeout 12 s
+        handoffPhase = "connecting";      connect(target, remembered selection)
+        await connected                   timeout 25 s
+        handoffPhase = success ? "idle" : "failed"</code></pre>
+<p>Use two independently-bounded waits, not v1's single 500&nbsp;ms&nbsp;&times;&nbsp;50 loop shared by
+both legs. During a handoff both provider cards are disabled and only the target card shows phase
+text. Cancellation is unavailable once disconnect begins. <strong>On failure, do not silently
+reconnect the prior provider</strong> &mdash; surface a "Reconnect Tailscale" recovery action so no
+network mutation is a surprise.</p>
+
+<p>The confirmation reuses the existing context-menu idiom rather than a new dialog type &mdash;
+<code>TailscalePanel.confirmProfile()</code> calls <code>Visibilities.contextMenu.openCustomMenu([...])</code>
+with accept/cancel entries (<code>Icons.accept</code> / <code>Icons.cancel</code>).</p>
+
+<h2 id="ux">7 &middot; UX specification</h2>
+
+<h3>7.1 Provider hub (section 10, <code>currentSection === ""</code>)</h3>
+<div class="mock-grid">
+  <div class="stage">
+    <p class="stage-label">Provider hub</p>
+    <div class="panel">
+      <div class="panel-head"><b>VPN</b><span class="back">&#8635;</span></div>
+      <div class="provider active">
+        <div class="logo">TS</div>
+        <div class="copy"><b>Tailscale</b><small>Mesh devices, exit nodes, profiles</small></div>
+        <span class="status">Connected</span>
+      </div>
+      <div class="provider">
+        <div class="logo">N</div>
+        <div class="copy"><b>NordVPN</b><small>Countries, cities, P2P routing</small></div>
+        <span>&#8250;</span>
+      </div>
+      <div class="handoff">
+        <div><b>Tailscale</b>mesh only</div>
+        <div class="arrow">&#8646;</div>
+        <div><b>NordVPN</b>private egress</div>
+      </div>
+    </div>
+  </div>
+  <div class="stage">
+    <p class="stage-label">NordVPN page &mdash; connected</p>
+    <div class="panel">
+      <div class="panel-head"><span class="back">&#8249;</span><b>NordVPN</b><span class="switch on"></span></div>
+      <div class="provider active">
+        <div class="copy"><b>&#127475;&#127473; Netherlands &middot; Amsterdam</b><small>nl1042 &middot; NordLynx &middot; up 14m</small></div>
+      </div>
+      <div class="seg"><span class="selected">Standard</span><span>P2P</span></div>
+      <div class="search">&#8981; Search countries</div>
+      <div class="country"><span class="flag">&#9889;</span><span class="name">Quick Connect</span><small>Best available</small></div>
+      <div class="country"><span class="flag">&#127475;&#127473;</span><span class="name">Netherlands</span><span class="badge">Connected</span></div>
+      <div class="country"><span class="flag">&#127465;&#127466;</span><span class="name">Germany</span><small>&#8250;</small></div>
+    </div>
+  </div>
+</div>
+
+<ul class="tight">
+  <li>Keep the existing <code>PanelTitlebar("VPN")</code> and the "Providers" sub-header <code>Text</code>.</li>
+  <li>Each provider card shows availability, connection state, a one-line purpose, and a caret. The whole card opens its page.</li>
+  <li>Show "Not installed" inline rather than hiding a configured provider. Hide the whole VPN sidebar section only when no provider is enabled.</li>
+  <li>The handoff strip appears only when <code>routeOwner !== "none"</code>. It names the observed route owner &mdash; not merely which daemon is running (&sect;4).</li>
+</ul>
+
+<h3>7.2 NordVPN provider page</h3>
+<ul class="tight">
+  <li><strong>Header:</strong> <code>PanelTitlebar</code> with back action, state text, primary toggle, refresh action &mdash; the same <code>actions</code>-concat idiom as <code>TailscalePanel.qml:209-215</code>.</li>
+  <li><strong>Connected card:</strong> flag, country &middot; city, hostname, technology, uptime, Disconnect. Every field degrades independently per &sect;3.</li>
+  <li><strong>Disconnected card:</strong> Quick Connect using the remembered mode and country.</li>
+  <li><strong>Mode selector:</strong> <code>SegmentedSwitch</code> with Standard / P2P. Copy must state that standard servers also carry P2P traffic; the toggle only requests the optimized group. Hidden entirely if <code>groups</code> is unavailable.</li>
+  <li><strong>Country list:</strong> sticky <code>SearchInput</code>, Quick Connect pseudo-row, then alphabetized countries; the connected country rises directly beneath Quick Connect. A caret opens city drill-down when <code>cities</code> is available.</li>
+  <li><strong>Advanced, collapsed by default:</strong> technology, kill switch, autoconnect, LAN discovery. Each row hidden if its field is absent. Not every CLI knob in v1.</li>
+</ul>
+
+<h3>7.3 State &times; surface copy matrix</h3>
+<p>Every cell is defined. An undefined cell is what produced v1's artifacts.</p>
+<table>
+<tr><th><code>state</code></th><th>Hub card status</th><th>Provider page status</th><th>Primary action</th></tr>
+<tr><td><code>unavailable</code></td><td>Not installed</td><td>Not installed</td><td>Toggle hidden; setup guidance shown</td></tr>
+<tr><td><code>loggedOut</code></td><td>Login required</td><td>Log in required</td><td>"Log in" &rarr; <code>execDetached</code>, then pending-login guidance</td></tr>
+<tr><td><code>disconnected</code></td><td>Off</td><td>Disconnected</td><td>Quick Connect</td></tr>
+<tr><td><code>connecting</code></td><td>Connecting&hellip;</td><td>Connecting&hellip;</td><td>Disabled</td></tr>
+<tr><td><code>connected</code></td><td>Connected</td><td><code>country</code> &middot; <code>city</code></td><td>Disconnect</td></tr>
+<tr><td><code>disconnecting</code></td><td>Disconnecting&hellip;</td><td>Disconnecting&hellip;</td><td>Disabled</td></tr>
+<tr><td><code>error</code></td><td>Error</td><td><code>lastError</code></td><td>Retry</td></tr>
+</table>
+<p>Orthogonally: while <code>handoffTarget === "nordvpn"</code>, the page status is
+<code>VpnService.statusTextFor("nordvpn")</code> and both provider cards are disabled. While
+<code>handoffTarget === "tailscale"</code>, the NordVPN page shows <strong>its own</strong> state from
+the table above &mdash; never the Tailscale phase.</p>
+
+<h3>7.4 Configuration</h3>
+<p>Every key must exist in <strong>both</strong> <code>config/defaults/system.js</code> and
+<code>config/Config.qml</code> (root <code>AGENTS.md</code>; v1 got this right &mdash; keep it).</p>
 <pre><code>"nordvpn": {
     "enabled": true,
     "showInBar": false,
     "pollInterval": 20,
-    "visiblePollInterval": 5,
-    "preferredMode": "fastest",
-    "preferredCountry": "",
-    "handoffPolicy": "confirm"
+    "preferredMode": "standard",
+    "preferredCountry": ""
+},
+"vpn": {
+    "handoffPolicy": "confirm"          // confirm | immediate
 }</code></pre>
-<p>Do not persist credentials, tokens, account data, the connected server, or current IP. Those are runtime/provider-owned state.</p>
+<p>Note what is <em>not</em> here: no <code>visiblePollInterval</code> (visibility is a
+<code>running:</code> condition, not a second interval &mdash; &sect;5), and no credentials, tokens,
+account data, connected server, or IP. Those are runtime, provider-owned state.</p>
 
-<h2 id="phases">8 · Phased delivery</h2>
-<div class="phase"><h3><span class="num">01</span>Recon on the Bostrom lab</h3>
-  <p>Install dependencies explicitly (never use the repo’s forbidden installer paths), add the session user to the NordVPN group if required, reboot/log out if required, and capture redacted outputs for <code>version</code>, <code>status</code>, <code>settings</code>, <code>countries</code>, and <code>groups</code>. Confirm v5 CLI syntax before coding.</p></div>
-<div class="phase"><h3><span class="num">02</span>Provider service and fixtures</h3>
-  <p>Build <code>NordVpnService</code>, pure parsers, country mapping, availability/login states, and read-only refresh. Test with synthetic output fixtures before any connection mutation.</p></div>
-<div class="phase"><h3><span class="num">03</span>Standalone NordVPN panel</h3>
-  <p>Add the provider card, routed submenu, Quick Connect, country search/flags, Fastest/P2P modes, and settings-index entries. Match <code>TailscalePanel</code> sizing, scroll reset, titlebar anchoring, null safety, and privacy behavior.</p></div>
-<div class="phase"><h3><span class="num">04</span>Serialized provider handoff</h3>
-  <p>Add <code>VpnService</code>, confirmation UI, timeouts, error recovery, and explicit route-owner messaging. Validate Tailscale peer access and internet egress after every transition.</p></div>
-<div class="phase"><h3><span class="num">05</span>Optional tray integration</h3>
-  <p>Only after settings behavior is stable, generalize the current Tailscale tray entry into a VPN status entry or add a NordVPN sibling. Avoid two competing always-visible VPN icons by default.</p></div>
-
-<h2 id="testing">9 · Test protocol</h2>
-<div class="grid">
-  <div class="card"><h3>Service</h3><ul class="tight">
-    <li>CLI missing, daemon stopped, logged out</li>
-    <li>Connected/disconnected/transitional parsing</li>
-    <li>Country names with spaces/underscores</li>
-    <li>Mutation timeout and non-zero exit</li>
-    <li>No overlapping <code>Process</code> mutations</li>
-  </ul></div>
-  <div class="card"><h3>Interface</h3><ul class="tight">
-    <li>480 px full settings and compact popup width</li>
-    <li>Empty, filtered, long-country-list states</li>
-    <li>Emoji flag and ISO fallback glyph</li>
-    <li>Keyboard focus/search and scroll reset</li>
-    <li>Theme variants; no hardcoded QML colors/sizes</li>
-  </ul></div>
-  <div class="card"><h3>Routing</h3><ul class="tight">
-    <li>Tailscale → NordVPN and reverse handoff</li>
-    <li>Cancel before handoff</li>
-    <li>Disconnect success + target failure</li>
-    <li>External CLI state change reflected</li>
-    <li>DNS, LAN, MagicDNS, and peer reachability</li>
-  </ul></div>
-  <div class="card"><h3>Safety</h3><ul class="tight">
-    <li>Kill switch behavior during transition</li>
-    <li>Closed settings panel during mutation</li>
-    <li>Quickshell restart while connected</li>
-    <li>Sandboxed <code>HOME</code> under <code>lab/</code></li>
-    <li>No personal data in logs or fixtures</li>
-  </ul></div>
-</div>
-
-<h2 id="risks">10 · Risks and decisions to resolve during recon</h2>
+<h2 id="files">8 &middot; Component plan and decomposition budget</h2>
 <table>
-  <thead><tr><th>Risk</th><th>Plan response</th></tr></thead>
-  <tbody>
-    <tr><td>NordVPN v5 CLI/output drift</td><td>Probe the installed release first; isolate parsers and feature-detect commands.</td></tr>
-    <tr><td>Privilege/group membership</td><td>Detect permission errors and display one-time setup guidance. Never embed <code>sudo</code> in UI mutations.</td></tr>
-    <tr><td>Tailscale + NordVPN route/DNS interaction</td><td>Default to serialized handoff; test simultaneous mode separately before exposing it.</td></tr>
-    <tr><td>Kill switch blocks recovery or Tailnet</td><td>Show current kill-switch state prominently during handoff testing; never toggle it implicitly.</td></tr>
-    <tr><td>“P2P is faster” is not universal</td><td>Label it “P2P optimized,” preserve Fastest as default, and avoid speed promises.</td></tr>
-    <tr><td>Flags unavailable in configured font</td><td>Runtime-friendly two-letter ISO badge fallback.</td></tr>
-    <tr><td>Provider logo licensing</td><td>Verify NordVPN brand asset terms or use the existing generic VPN icon.</td></tr>
-  </tbody>
+<tr><th></th><th>File</th><th>Responsibility</th><th>Budget</th></tr>
+<tr><td><span class="tag new">new</span></td><td><code>modules/services/NordVpnService.qml</code></td><td>CLI discovery, status/settings/countries/cities/groups, normalized state, mutations, visibility-gated polling.</td><td>&le; 450 lines</td></tr>
+<tr><td><span class="tag new">new</span></td><td><code>modules/services/NordVpnCountry.qml</code></td><td>Per-country <code>QtObject</code> following the <code>TailscalePeer.qml</code> contract: a <code>lastIpcObject</code>-style ingest slot, raw fields as bindings with <code>?? default</code>, then <code>readonly</code> presentational props (<code>flag</code>, <code>displayName</code>).</td><td>&le; 60 lines</td></tr>
+<tr><td><span class="tag new">new</span></td><td><code>modules/services/nordvpn-iso.js</code></td><td>Auditable CLI-token &rarr; ISO-3166 alpha-2 map. Pure data, no network.</td><td>data only</td></tr>
+<tr><td><span class="tag new">new</span></td><td><code>modules/services/nordvpn-parse.js</code></td><td><strong>The only recon-gated file.</strong> <code>.pragma library</code>; pure functions from CLI text to plain objects. No QML imports, no <code>Config</code>, no side effects, so the &sect;11.1 harness can run it under <code>node</code>.</td><td>&le; 200 lines</td></tr>
+<tr><td><span class="tag new">new</span></td><td><code>modules/services/VpnService.qml</code></td><td>Observed provider facts, <code>routeOwner</code>, serialized handoff enum, <code>statusTextFor()</code>. No provider CLI knowledge.</td><td>&le; 180 lines</td></tr>
+<tr><td><span class="tag new">new</span></td><td><code>.../controls/NordVpnPanel.qml</code></td><td>Panel shell only: root <code>Item</code>, <code>ListView</code>, model filtering, and wiring. Delegates and header extracted.</td><td><strong>&le; 220 lines</strong></td></tr>
+<tr><td><span class="tag new">new</span></td><td><code>.../controls/NordVpnPanelHeader.qml</code></td><td>Titlebar, connection card, mode selector, search, error text &mdash; the <code>ListView.header</code> content.</td><td>&le; 200 lines</td></tr>
+<tr><td><span class="tag new">new</span></td><td><code>.../controls/NordVpnCountryItem.qml</code></td><td>Row: flag or ISO badge, name, state, city caret, connect action. Modeled on <code>TailscalePeerItem.qml</code>.</td><td>&le; 160 lines</td></tr>
+<tr><td><span class="tag edit">edit</span></td><td><code>.../controls/VpnPanel.qml</code></td><td>NordVPN provider card, loader routing, handoff strip driven by <code>routeOwner</code>.</td><td>&mdash;</td></tr>
+<tr><td><span class="tag edit">edit</span></td><td><code>.../controls/PanelTitlebar.qml</code></td><td><strong>Fix the toggle binding</strong> &mdash; adopt the <code>_updating</code> latch (&sect;9.1). Benefits Tailscale, Wi-Fi, and Bluetooth panels too.</td><td>&mdash;</td></tr>
+<tr><td><span class="tag edit">edit</span></td><td><code>.../controls/SettingsIndex.qml</code></td><td><strong>Revise, don't add.</strong> v1 already left NordVPN entries at <code>:26-31</code>, gated on <code>Config.system.nordvpn.enabled</code>. One of them &mdash; "Live VPN Servers", keywords <code>load flag server country region</code> &mdash; advertises the per-server/load concept that &sect;3 cuts. Rename to "VPN Locations" and drop <code>load</code>, or users will search for a feature that does not exist.</td><td>&mdash;</td></tr>
+<tr><td><span class="tag edit">edit</span></td><td><code>config/defaults/system.js</code> + <code>config/Config.qml</code></td><td>Add the <code>vpn.handoffPolicy</code> block; change the existing <code>nordvpn.preferredMode</code> default from <code>"fastest"</code> to <code>"standard"</code>. <strong>Migration:</strong> a persisted config may still hold <code>"fastest"</code>, so the service must treat any value other than <code>"p2p"</code> as standard rather than matching <code>"standard"</code> exactly.</td><td>&mdash;</td></tr>
+<tr><td><span class="tag edit">edit</span></td><td><code>shell.qml</code></td><td>Register both services &mdash; <code>modules/services/AGENTS.md:40</code> lists omitting this as an anti-pattern and v1 omitted it. Use the <strong>2&nbsp;s deferred</strong> tier (<code>shell.qml:295-302</code>), not the immediate <code>Qt.callLater</code> tier: a VPN panel is never on the critical startup path, and eager init would start polling before the user opens anything.</td><td>&mdash;</td></tr>
+<tr><td><span class="tag new">new</span></td><td><code>lab/fixtures/nordvpn/*.txt</code></td><td>Redacted CLI output captured in Phase 01. The Phase 01 gate.</td><td>&mdash;</td></tr>
 </table>
 
-<h2 id="acceptance">11 · Acceptance criteria</h2>
-<ul>
-  <li>VPN settings shows distinct, live Tailscale and NordVPN provider cards and routes directly to either submenu.</li>
-  <li>NordVPN can Quick Connect, disconnect, search/select a flagged country, and request Fastest or P2P-optimized routing.</li>
-  <li>Switching providers is serialized, confirmed by default, visibly staged, timeout-bounded, and recoverable on failure.</li>
-  <li>The panel correctly handles CLI missing, daemon unavailable, login required, empty country list, and external state changes.</li>
-  <li>No credentials or personal network data are persisted or committed.</li>
-  <li>All QML uses Ambxst styling/config/service conventions; every new config key exists in both required config locations.</li>
-  <li>Lab validation covers Tailscale reachability, public egress, DNS, LAN access, kill switch, and shell restart behavior.</li>
-</ul>
+<p><code>SettingsTab.qml</code> needs <strong>no</strong> change: <code>sectionForRequestedSubSection()</code>
+already maps <code>"nordvpn"</code> &rarr; 10 and section 10 is already in the
+<code>[5,7,8,9,10]</code> subsection whitelist. Verify rather than edit.</p>
 
-<div class="callout">
-  <strong>Official CLI basis checked for this plan</strong>
-  <a href="https://support.nordvpn.com/hc/en-us/articles/20196094470929-How-to-install-the-NordVPN-app-on-Linux-distributions">NordVPN’s Linux CLI documentation</a>
-  currently lists <code>status</code>, <code>countries</code>, <code>connect</code>, <code>disconnect</code>,
-  <code>connect --group p2p &lt;country&gt;</code>, technology selection, and kill-switch settings.
-  The <a href="https://github.com/NordSecurity/nordvpn-linux">official open-source Linux client repository</a>
-  documents NordLynx/WireGuard, OpenVPN, firewall, routing, and DNS responsibilities. Re-verify
-  against the installed Bostrom version during Phase 1.
+<div class="callout warn">
+  <strong>Latent bug to confirm while in here</strong>
+  <code>SettingsTab.qml</code> and <code>SettingsIndex.qml</code> use <em>different</em> section
+  numbering (Theme=5 vs 4, System=7 vs 6, Compositor=8 vs 7). The VPN entries agree at 10, so NordVPN
+  is unaffected &mdash; but do not "helpfully" renumber either file as part of this work. File it separately.
 </div>
 
-<p class="footer">Prepared for Aspect Ambxst. This document is an implementation plan and visual specification; it intentionally makes no live VPN or system changes.</p>
+<h3>As-built line counts</h3>
+<p>Recorded honestly rather than by revising the budgets to fit. Two files were refactored
+specifically to close a breach: <code>NordVpnService</code> 556&nbsp;&rarr;&nbsp;491 by factoring five
+near-identical <code>Process</code> blocks into one <code>component CliRead</code>, and
+<code>NordVpnPanelHeader</code> 356&nbsp;&rarr;&nbsp;207 by extracting the two status cards. Four files
+still exceed; none is a duplication problem, so further splitting would trade one kind of
+readability for another. <strong>Treat the remaining four as an open review question, not as
+settled.</strong></p>
+<table>
+<tr><th>File</th><th>Budget</th><th>As built</th><th></th></tr>
+<tr><td><code>nordvpn-parse.js</code></td><td>200</td><td>165</td><td><span class="tag new">ok</span></td></tr>
+<tr><td><code>NordVpnCountry.qml</code></td><td>60</td><td>38</td><td><span class="tag new">ok</span></td></tr>
+<tr><td><code>NordVpnPanel.qml</code></td><td>220</td><td>171</td><td><span class="tag new">ok</span></td></tr>
+<tr><td><code>NordVpnSetupCard.qml</code></td><td>120</td><td>102</td><td><span class="tag new">ok</span></td></tr>
+<tr><td><code>NordVpnConnectionCard.qml</code></td><td>120</td><td>100</td><td><span class="tag new">ok</span></td></tr>
+<tr><td><code>NordVpnPanelHeader.qml</code></td><td>200</td><td>207</td><td><span class="tag edit">+7</span></td></tr>
+<tr><td><code>NordVpnService.qml</code></td><td>450</td><td>491</td><td><span class="tag edit">+41</span></td></tr>
+<tr><td><code>NordVpnCountryItem.qml</code></td><td>160</td><td>214</td><td><span class="tag edit">+54</span></td></tr>
+<tr><td><code>VpnService.qml</code></td><td>180</td><td>249</td><td><span class="tag edit">+69</span></td></tr>
+</table>
+
+<h3>Hard decomposition rules</h3>
+<ul class="tight">
+  <li>No inline <code>delegate</code> over 40 lines &mdash; extract an item file with a <code>required property</code>.</li>
+  <li>No inline <code>ListView.header</code> over 40 lines &mdash; extract a header file.</li>
+  <li>Max nesting depth 8. v1 hit 12.</li>
+  <li>A file over its budget is a review failure, not a style nit.</li>
+</ul>
+
+<h2 id="conventions">9 &middot; Repo conventions and QML hazards</h2>
+<p>Each hazard below caused a real v1 defect and each already has an in-repo solution. Cite the
+precedent in the implementing commit.</p>
+
+<h3>9.1 <code>Switch</code> destroys its own <code>checked</code> binding</h3>
+<p>Qt Quick Controls assigns <code>checked</code> imperatively on click, which destroys
+<code>checked: root.toggleChecked</code>. After the first interaction the switch stops tracking the
+service &mdash; the toggle position becomes a lie. This is why a Tailscale toggle could read "off"
+while the coordinator believed Tailscale was up.</p>
+<p>The repo already solves this in <code>ShellPanel.qml:149-222</code> (<code>component ToggleRow</code>,
+copied in <code>CompositorPanel.qml:100-153</code> and <code>SystemPanel.qml:1107</code>): bind only the
+outer property, re-push to the inner <code>Switch</code> imperatively in <code>onCheckedChanged</code>,
+and guard the echo with a <code>_updating</code> re-entrancy latch.</p>
+<pre><code>property bool _updating: false
+onCheckedChanged: {
+    if (!_updating &amp;&amp; toggleSwitch.checked !== checked) {
+        _updating = true;
+        toggleSwitch.checked = checked;      // imperative, not a binding
+        _updating = false;
+    }
+}</code></pre>
+<p><strong>Action:</strong> fix <code>PanelTitlebar.qml</code> so every panel using
+<code>showToggle</code> is corrected at once. Treat it as a prerequisite commit (Phase 01),
+separable and independently reviewable.</p>
+<div class="callout">
+  <strong>The titlebar needs a narrower fix than a full <code>ToggleRow</code> port</strong>
+  <code>ToggleRow</code> detects user intent with <code>Switch.onCheckedChanged</code>, so it needs the
+  latch to suppress an echo. <code>PanelTitlebar</code> already uses <code>onToggled</code>
+  (<code>:121</code>), which Qt emits <em>only</em> for user interaction &mdash; an imperative
+  <code>checked</code> assignment raises <code>checkedChanged</code> but not <code>toggled</code>. So the
+  emit side is already correct and must be left alone; only the <em>tracking</em> side is broken.
+  Add the re-assert on <code>onToggleCheckedChanged</code> and keep the latch as re-entrancy defense.
+  <strong>Do not "simplify" this by switching to <code>onCheckedChanged</code></strong> &mdash; that
+  reintroduces the echo the latch exists to catch, and turns every external state change into a
+  spurious command.
+</div>
+
+<h3>9.2 Service-layer rules (<code>modules/services/AGENTS.md</code>)</h3>
+<ul class="tight">
+  <li><code>pragma Singleton</code> + <code>pragma ComponentBehavior: Bound</code>; <code>Singleton { id: root }</code>; all cross-scope writes qualified <code>root.x</code>.</li>
+  <li><code>Qt.callLater()</code> when modifying lists or models inside <code>Process</code> handlers &mdash; explicitly required (<code>:33</code>) and listed as an anti-pattern when omitted (<code>:39</code>).</li>
+  <li>Capture the buffer into a <code>const</code> and clear it <em>before</em> the deferred parse, so the closure reads a stable snapshot.</li>
+  <li>Lists are <code>readonly property list&lt;T&gt;</code> mutated in place and reconciled by identity &mdash; splice removals with <code>destroy()</code>, update survivors, push new, then recompute derived views in one assignment. See <code>TailscaleService.syncPeers()</code> at <code>:122-155</code>. v1 reassigned plain arrays wholesale.</li>
+  <li>Derived/sorted views are plain <code>property list&lt;var&gt;</code> reassigned once so a single change notification fires; always <code>[...list].sort(...)</code>.</li>
+  <li><code>SplitParser</code> for both <code>stdout</code> and <code>stderr</code>; never <code>StdioCollector</code> in this service family.</li>
+  <li>Mutations funnel through one <code>runMutation()</code> guarded by <code>if (!available || !enabled || isUpdating) return;</code>. Clear <code>lastError</code> at mutation start. Re-read in both <code>.then</code> and <code>.catch</code>.</li>
+  <li>Promote recognized failure classes into their own boolean instead of dumping a raw string at the user &mdash; <code>TailscaleService.handleMutationError()</code> at <code>:157-165</code> does this for <code>operatorMissing</code>. Do the same for a NordVPN permission/group error, with one-time setup guidance. Never embed <code>sudo</code> in a UI mutation.</li>
+</ul>
+
+<h3>9.3 Widget-layer rules</h3>
+<ul class="tight">
+  <li><code>pragma ComponentBehavior: Bound</code> on line 1 of every panel and item file. 4-space indent. Alphabetized <code>qs.*</code> imports.</li>
+  <li>Never a raw <code>Rectangle</code> container &mdash; <code>StyledRect</code> with a <code>variant</code>. Never hardcode a color, radius, or font size: use <code>Colors.*</code>, <code>Styling.radius()</code>, <code>Styling.fontSize()</code>. v1 violated this at <code>NordVpnPanel.qml:549</code> (<code>radius: 2</code>).</li>
+  <li><strong>Never set both <code>variant</code> and <code>color</code> on a <code>StyledRect</code></strong> &mdash; <code>color</code> is a computed binding off the variant. v1 did this at <code>NordVpnPanel.qml:545-551</code>.</li>
+  <li>Hover is <code>variant: mouseArea.containsMouse ? "focus" : "common"</code>.</li>
+  <li>Delegates: thin full-width <code>Item</code> with <code>required property var modelData</code>, hosting the extracted item at <code>width: root.contentWidth</code>, horizontally centered.</li>
+  <li>With <code>reuseItems: true</code>, reset local UI state when the model object changes &mdash; <code>TailscalePeerItem.qml:47-50</code> (<code>onPeerChanged</code>). Otherwise a revealed IP or expanded row leaks onto the next country as you scroll.</li>
+  <li>Null-check nested properties (<code>root.country?.code ?? ""</code>).</li>
+  <li>Animate via <code>Behavior on X { enabled: Config.animDuration &gt; 0; ... }</code>.</li>
+  <li><code>JSON.parse()</code> results have no QML signals &mdash; never use one as a <code>Connections</code> target.</li>
+  <li>Icons must exist in <code>modules/theme/Icons.qml</code>. Available and relevant: <code>vpn</code>, <code>globe</code>, <code>lightning</code>, <code>shield</code>, <code>shieldCheck</code>, <code>sync</code>, <code>caretLeft</code>, <code>caretRight</code>, <code>mapPin</code>, <code>gear</code>, <code>lock</code>, <code>accept</code>, <code>cancel</code>, <code>alert</code>, <code>info</code>. There is <strong>no</strong> <code>Icons.warning</code> or <code>Icons.check</code> &mdash; use <code>alert</code> and <code>accept</code>.</li>
+</ul>
+
+<h3>9.4 Reuse, don't reimplement</h3>
+<p>v1 correctly reused <code>SearchInput</code>, <code>SegmentedSwitch</code>, <code>PanelTitlebar</code>
+and <code>StyledRect</code>. Keep that. Note there is deliberately <strong>no</strong> shared styled-button
+or badge component &mdash; the repo norm is an inline <code>Button</code> with a
+<code>background: StyledRect</code> and a <code>contentItem: Text</code>. Match the existing idiom
+rather than inventing a component, but if the same badge appears three times, extract it and say so
+in the commit.</p>
+<p>One caveat: <code>SegmentedSwitch.currentIndex</code> self-assigns on click, so a binding to it
+breaks exactly as in &sect;9.1. Re-derive from config in <code>onIndexChanged</code> (as v1 did) or apply
+the latch.</p>
+
+<h2 id="phases">10 &middot; Delivery phases and exit gates</h2>
+<p>Each phase ends with a committed artifact. <strong>No artifact, no next phase.</strong> This is the
+single most important change from v1.</p>
+
+<h3>10.0 What is blocked on hardware, and what is not</h3>
+<p>Recon requires the NordVPN CLI on Bostrom, which may not be available when work starts. Rather
+than stalling everything behind it, the phases below are ordered so unblocked work lands first.
+<strong>Only the shaded rows genuinely need a real CLI.</strong></p>
+<table>
+<tr><th>Work</th><th>Needs a real CLI?</th><th>Why</th></tr>
+<tr><td><code>PanelTitlebar</code> toggle latch</td><td>No</td><td>Pure QML fix with an in-repo precedent. Verified against existing Tailscale/Wi-Fi/Bluetooth toggles.</td></tr>
+<tr><td>ISO map, <code>NordVpnCountry</code></td><td>No</td><td>Static data and a binding-only <code>QtObject</code>.</td></tr>
+<tr><td>Service skeleton: state enum, debouncer, refresh bookkeeping, mutation funnel, polling gates, suspend handling, list reconciliation</td><td>No</td><td>All convention-driven. Independent of output <em>format</em>.</td></tr>
+<tr><td><code>VpnService</code>: <code>routeOwner</code>, handoff enum, <code>statusTextFor()</code>, timeouts</td><td>No</td><td>Consumes service booleans, not CLI text.</td></tr>
+<tr><td>Panel, header, country item, config, routing, index entries</td><td>No</td><td>Renders from service state; every field degrades per &sect;3.</td></tr>
+<tr style="background:rgba(224,175,104,.09)"><td><strong>Parser bodies</strong> &mdash; label names, delimiters, exit codes</td><td><strong>Yes</strong></td><td>This is the v1 failure mode. Guessing here is what produced unusable code.</td></tr>
+<tr style="background:rgba(224,175,104,.09)"><td><strong>&sect;3 / &sect;5 marker removal</strong></td><td><strong>Yes</strong></td><td>The markers <em>are</em> the gate. They may only be cleared by a fixture.</td></tr>
+<tr style="background:rgba(224,175,104,.09)"><td><strong>Any connect/disconnect validation</strong></td><td><strong>Yes</strong></td><td>Mutations touch real networking.</td></tr>
+</table>
+<div class="callout warn">
+  <strong>Parser quarantine</strong>
+  Because parser bodies are the only recon-gated code, they must live where recon touches
+  <em>nothing else</em>: a standalone <code>modules/services/nordvpn-parse.js</code>
+  (<code>.pragma library</code>, no QML imports, no <code>Config</code>, no side effects). A provisional
+  parser written before recon is acceptable <strong>only</strong> if it is confined to that file and every
+  assumption in it is marked. It must never influence a decision in &sect;3 or &sect;7 &mdash; that inversion
+  is precisely what sank v1.
+</div>
+
+<div class="phase">
+  <h3><span class="num">00</span>Branch strategy</h3>
+  <p>All v2 work happens on <code>feature/nordvpn-live-widget</code>. <strong>Do not reset
+  <code>main</code>.</strong> The v1 NordVPN files are replaced in place on the branch rather than
+  reverted, so the diff against <code>main</code> stays reviewable as one coherent change and
+  <code>main</code> keeps working while v2 is unfinished. Merge only when the &sect;13 criteria pass.</p>
+  <p><strong>Gate:</strong> this plan committed on the branch; <code>main</code> untouched;
+  the shell still runs under <code>lab/run-isolated.sh</code> with Tailscale working.</p>
+</div>
+
+<div class="phase">
+  <h3><span class="num">01</span><code>PanelTitlebar</code> toggle fix</h3>
+  <p>Do this first &mdash; it is unblocked, and it is a regression fix for features that already
+  ship. Add the <code>_updating</code> latch (&sect;9.1) as its own commit, since it changes shared
+  behavior for the Tailscale, Wi-Fi, and Bluetooth panels.</p>
+  <p><strong>Gate:</strong> on each of those three panels, toggle off, let the service settle, and
+  confirm the switch still tracks the service; then change state via the CLI externally and confirm
+  the switch follows. Worth doing on real hardware because it is a regression gate.</p>
+</div>
+
+<div class="phase">
+  <h3><span class="num">02</span>Recon on the Bostrom lab</h3>
+  <p>Install the CLI explicitly with <code>pacman -S --needed</code> (never a <code>curl | sh</code>
+  installer &mdash; see <code>CLAUDE.md</code> "Never run"). Add the session user to the NordVPN group
+  if required; log out or reboot if required. Capture redacted output for version, <code>status</code>
+  (connected <em>and</em> disconnected), <code>account</code>, <code>countries</code>,
+  <code>cities</code>, <code>groups</code>, <code>settings</code>. Confirm the actual CLI syntax.</p>
+  <p><strong>Gate:</strong> <code>lab/fixtures/nordvpn/*.txt</code> committed and scrubbed of IPs,
+  account names, and server history; a <code>nordvpn</code> entry added to
+  <code>lab/check-prereqs.sh</code>; <strong>every <span class="tag edit">fill</span> and
+  <span class="tag edit">unverified</span> marker in &sect;3 and &sect;5 of this document replaced with a
+  real value citing a fixture.</strong> If a field turns out to be unavailable, apply its &sect;3
+  degradation rule and delete the corresponding UI from &sect;7 <em>now</em>.</p>
+</div>
+
+<div class="phase">
+  <h3><span class="num">03</span>Service and pure parsers</h3>
+  <p>Build <code>NordVpnService</code>, <code>NordVpnCountry</code>, <code>nordvpn-iso.js</code>,
+  <code>nordvpn-parse.js</code>, availability and login states, and read-only refresh. No connect
+  mutation yet.</p>
+  <p><strong>Gate:</strong> the fixture harness (&sect;11.1) passes on every committed fixture plus the
+  adversarial cases. Toggle <code>Config.system.nordvpn.enabled</code> and confirm timers stop. Prove
+  the service is inert while the dashboard is closed and NordVPN is disconnected.</p>
+</div>
+
+<div class="phase">
+  <h3><span class="num">04</span>Standalone NordVPN panel</h3>
+  <p>Provider card, routed submenu, Quick Connect, country search with flags, Standard/P2P, city
+  drill-down, advanced rows, settings-index entries. Inherit <code>TailscalePanel</code>'s sizing,
+  scroll reset, titlebar anchoring, null safety, and IP concealment.</p>
+  <p><strong>Gate:</strong> all &sect;8 budgets met; the &sect;7.3 matrix walked cell by cell with real
+  and forced states; 480&nbsp;px and compact widths both correct; no hardcoded color, radius, or font size.</p>
+</div>
+
+<div class="phase">
+  <h3><span class="num">05</span>Serialized provider handoff</h3>
+  <p><code>VpnService</code>, <code>routeOwner</code>, the confirmation menu, independent timeouts,
+  failure recovery, explicit route-owner messaging.</p>
+  <p><strong>Gate:</strong> both directions tested; cancel-before-handoff; disconnect-succeeds-then-target-fails
+  leaves a working recovery action; Tailscale peer reachability, public egress, and DNS verified after
+  every transition. Confirm the NordVPN page never renders Tailscale phase text (&sect;6.2).</p>
+</div>
+
+<div class="phase">
+  <h3><span class="num">06</span>Optional tray integration</h3>
+  <p>Only after settings behavior is stable. Generalize the Tailscale tray entry into a VPN status
+  entry rather than adding a second always-visible VPN icon.</p>
+  <p><strong>Gate:</strong> exactly one VPN tray icon by default.</p>
+</div>
+
+<h2 id="tests">11 &middot; Test protocol</h2>
+
+<h3>11.1 The fixture harness &mdash; runnable, not a checklist</h3>
+<p>v1's test protocol was a list of good intentions with no way to execute it. Parsers here are plain
+JavaScript in <code>modules/services/nordvpn-parse.js</code> with no QML dependencies, which makes them
+testable without Quickshell, a compositor, or a NordVPN subscription. That is the whole reason for the
+quarantine in &sect;10.0.</p>
+<pre><code>lab/test-nordvpn-parse.sh          # runs the harness; exits non-zero on any mismatch
+lab/fixtures/nordvpn/
+    status-connected.txt           # each .txt pairs with a .expected.json
+    status-connected.expected.json
+    status-disconnected.txt
+    status-logged-out.txt
+    countries.txt
+    cities-united-states.txt
+    groups.txt
+    settings.txt
+    status-garbage.txt             # adversarial: must yield state "error", never "disconnected"</code></pre>
+<p>The harness strips the leading <code>.pragma library</code> line, loads the file in
+<code>node</code>, runs each parser over its fixture, and deep-compares against the
+<code>.expected.json</code>. Adding a fixture is therefore adding a test. Keep it in
+<code>lab/</code>, which is ours alone and will never conflict on upstream sync.</p>
+
+<div class="grid">
+  <div class="card">
+    <h3>Service &mdash; against fixtures</h3>
+    <ul class="tight">
+      <li>CLI missing; daemon stopped; logged out; no subscription</li>
+      <li>Connected, disconnected, connecting, disconnecting parses</li>
+      <li>Truncated, reordered, empty, and localized output</li>
+      <li>Unknown status string &rarr; <code>error</code>, never <code>disconnected</code></li>
+      <li>Country names with spaces and underscores; non-ASCII names</li>
+      <li>Mutation timeout and non-zero exit</li>
+      <li>No overlapping <code>Process</code> mutations</li>
+      <li>Permission/group error &rarr; setup guidance, not a raw string</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>Interface</h3>
+    <ul class="tight">
+      <li>480&nbsp;px settings and compact popup widths</li>
+      <li>Empty, filtered, and long-list states</li>
+      <li>Emoji flag vs ISO badge fallback under the configured font</li>
+      <li>Keyboard focus, search, scroll reset</li>
+      <li>Scroll a long list with <code>reuseItems</code> &mdash; no leaked row state</li>
+      <li>Light and dark theme variants; no hardcoded values</li>
+      <li>Every &sect;7.3 cell rendered</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>Routing and handoff</h3>
+    <ul class="tight">
+      <li>Tailscale &rarr; NordVPN and the reverse</li>
+      <li>Cancel before handoff begins</li>
+      <li>Disconnect succeeds, target fails &rarr; recovery action works</li>
+      <li>External CLI state change reflected in the UI</li>
+      <li>Tailscale up <em>without</em> an exit node &rarr; <strong>no</strong> handoff prompt (&sect;4)</li>
+      <li>DNS, LAN, MagicDNS, peer reachability after each transition</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>Safety</h3>
+    <ul class="tight">
+      <li>Kill switch behavior during a transition; never toggled implicitly</li>
+      <li>Settings panel closed mid-mutation</li>
+      <li>Quickshell restart while connected</li>
+      <li>Suspend and resume while connected</li>
+      <li>Sandboxed <code>HOME</code> under <code>lab/</code></li>
+      <li>No IP, account name, or credential in any log, fixture, or commit</li>
+    </ul>
+  </div>
+</div>
+
+<h2 id="risks">12 &middot; Risks</h2>
+<table>
+<tr><th>Risk</th><th>Response</th></tr>
+<tr><td><strong>Phase 01 gets skipped again</strong></td><td>The &sect;3/&sect;5 markers are the gate. A commit touching <code>NordVpnService.qml</code> while any <span class="tag edit">fill</span> remains is rejected on sight.</td></tr>
+<tr><td>CLI output drift between versions</td><td>Probe the installed release first; isolate parsers as pure functions; feature-detect each command rather than assuming.</td></tr>
+<tr><td>Privilege / group membership</td><td>Detect permission errors and promote them to a dedicated boolean with one-time setup guidance. Never embed <code>sudo</code> in a UI mutation.</td></tr>
+<tr><td>Tailscale + NordVPN route/DNS interaction</td><td>Default to serialized handoff keyed on <code>routeOwner</code>. Test simultaneous operation separately before exposing it.</td></tr>
+<tr><td>Kill switch blocks recovery or the tailnet</td><td>Show kill-switch state prominently during handoff testing. Never toggle it implicitly.</td></tr>
+<tr><td>"P2P is faster" is not universal</td><td>Label it "P2P", keep Standard the default, make no speed promises.</td></tr>
+<tr><td>Flags unavailable in the configured font</td><td>Two-letter ISO badge fallback, decided at runtime.</td></tr>
+<tr><td>Provider logo licensing</td><td>Use <code>Icons.vpn</code> unless brand terms are verified.</td></tr>
+<tr><td>Scope creep back toward per-server browsing</td><td>&sect;3's cut list names the reason for each omission. Reopening one requires re-deriving its data source first.</td></tr>
+<tr><td>A bad change costs Bostrom's desktop</td><td>Ambxst is Bostrom's primary shell. Validate under <code>lab/run-isolated.sh</code> before any change reaches boot.</td></tr>
+</table>
+
+<h2 id="acceptance">13 &middot; Acceptance criteria</h2>
+<ul class="tight">
+  <li>VPN settings shows distinct, live Tailscale and NordVPN provider cards and routes directly to either page.</li>
+  <li>NordVPN can Quick Connect, disconnect, search and select a flagged country, drill into cities where available, and request Standard or P2P routing.</li>
+  <li>Provider switching is serialized, confirmed by default, visibly staged, independently timeout-bounded, and recoverable on failure &mdash; and is only offered when <code>routeOwner</code> actually requires it.</li>
+  <li>No surface ever displays another provider's handoff phase.</li>
+  <li>Every toggle still tracks its service after user interaction and after external CLI changes.</li>
+  <li>The panel handles CLI missing, daemon unavailable, login required, empty country list, unknown status, and external state changes.</li>
+  <li>Every element on screen traces to a &sect;3 row with a verified source. Nothing is fetched over the network.</li>
+  <li>No credentials, IPs, account data, or personal network data are persisted, logged, or committed.</li>
+  <li>All QML follows Ambxst conventions; every config key exists in both required locations; every file is within its &sect;8 budget.</li>
+  <li>Lab validation covers Tailscale reachability, public egress, DNS, LAN access, kill switch, suspend/resume, and shell restart.</li>
+</ul>
+
+<p class="footer">Prepared for Aspect Ambxst. v2 supersedes the 2026-07-29 plan, whose implementation
+was reverted. This document is an implementation plan and visual specification; it makes no live VPN
+or system changes. All CLI behavior is marked unverified until Phase 01 fixtures replace it.</p>
 </main>
 </div>
 </body>
