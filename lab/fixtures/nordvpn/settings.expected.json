@@ -1,0 +1,10 @@
+{ "parser": "settings", "expect": {
+  "technology": "NordLynx", "killSwitch": false, "autoConnect": false,
+  "lanDiscovery": false, "threatProtection": false, "firewall": true,
+  "routing": true, "dns": false, "meshnet": false,
+  "virtualLocation": true, "postQuantum": false,
+
+  "has.technology": true, "has.killSwitch": true, "has.autoConnect": true,
+  "has.lanDiscovery": true, "has.threatProtection": true,
+  "has.virtualLocation": true, "has.postQuantum": true, "has.meshnet": true
+} }

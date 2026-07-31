@@ -1,0 +1,30 @@
+Usage: nordvpn set command [command options] [arguments...]
+
+Sets a configuration option
+
+Commands:
+     autoconnect                                  Enables or disables auto-connect. When enabled, this feature will automatically try to connect to VPN on operating system startup.
+     threatprotectionlite, tplite, tpl, cybersec  Enables or disables ThreatProtectionLite. When enabled, the ThreatProtectionLite feature will automatically block suspicious websites so that no malware or other cyber threats can infect your device. Additionally, no flashy ads will come into your sight. More information on how it works: https://nordvpn.com/features/threat-protection/?utm_medium=app&utm_source=nordvpn-linux-cli&utm_campaign=settings-explore_threat_protection&nm=app&ns=nordvpn-linux-cli&nc=settings-explore_threat_protection.
+     defaults                                     Restores settings to their default values.
+     dns                                          Sets custom DNS servers
+     firewall                                     Enables or disables use of the firewall.
+     fwmark                                       Traffic control filter used in policy-based routing. It allows classifying packets based on a previously set fwmark by the firewall.
+     routing                                      Allows routing traffic through VPN servers and peer devices in Meshnet. This setting must be enabled to send your traffic through a VPN server or a peer device. If the setting is disabled, the app will only initiate necessary connections to a VPN server or a peer device but won’t start traffic routing.
+     analytics                                    Help us improve by sending anonymous aggregate data: crash reports, OS version, marketing performance, and feature usage data – nothing that could identify you.
+     killswitch                                   Enables or disables Kill Switch. This security feature blocks your device from accessing the Internet while not connected to the VPN or in case connection with a VPN server is lost.
+     notify                                       Enables or disables notifications
+     tray                                         Enables or disables the NordVPN icon in the system tray. The icon provides quick access to basic controls and your VPN status details.
+     technology                                   Sets the technology
+     lan-discovery                                Access printers, TVs, and other devices on your local network while connected to a VPN.
+     virtual-location                             Enables or disables access to virtual locations. Virtual location servers let you access more locations worldwide.
+     post-quantum, pq                             Enables or disables post-quantum encryption. When enabled, the encryption protects your VPN connection against potential quantum computer attacks.
+                                                  Note: Currently, post-quantum encryption works only with standard NordLynx servers, so it won’t activate when you use a dedicated IP, OpenVPN, NordWhisper or obfuscated servers.
+                                                  The feature is not compatible with Meshnet.
+     arp-ignore                                   Controls whether your device ignores or responds to ARP requests while the VPN is active.
+                                                  By default, arp-ignore is on. This means ARP requests are ignored to prevent VPN exposure.
+     meshnet, mesh                                Enables or disables Meshnet on this device.
+     help, h                                      Shows a list of commands or help for one command
+
+Options:
+   --help, -h  Show help
+   

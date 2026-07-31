@@ -1,0 +1,3 @@
+{ "parser": "status", "expectExact": {
+  "state": "disconnected", "country": "", "city": "", "server": "",
+  "technology": "", "protocol": "", "transfer": "", "uptime": "" } }

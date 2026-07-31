@@ -1,0 +1,6 @@
+{ "parser": "settings", "expect": {
+  "technology": "OpenVPN", "killSwitch": true, "autoConnect": true, "lanDiscovery": true,
+  "has.technology": true, "has.killSwitch": true, "has.autoConnect": true,
+  "has.lanDiscovery": true,
+  "has.threatProtection": false, "has.virtualLocation": false,
+  "has.postQuantum": false, "has.meshnet": false } }

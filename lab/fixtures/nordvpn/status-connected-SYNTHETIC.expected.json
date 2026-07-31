@@ -1,0 +1,5 @@
+{ "parser": "status", "expect": {
+  "state": "connected", "country": "Japan", "city": "Tokyo",
+  "server": "xx000.nordvpn.com", "technology": "NordLynx", "protocol": "UDP",
+  "uptime": "3 minutes 21 seconds" },
+  "refute": ["ip", "serverIp", "yourNewIp"] }

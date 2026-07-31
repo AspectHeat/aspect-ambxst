@@ -1,0 +1,2 @@
+{ "parser": "groups", "expect": { "supportsP2p": true, "p2pToken": "P2P" },
+  "count": 6, "countKey": "groups", "includes": ["P2P", "Standard_VPN_Servers", "Onion_Over_VPN"] }
