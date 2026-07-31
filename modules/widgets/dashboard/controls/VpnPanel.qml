@@ -89,7 +89,11 @@ Item {
                         }
 
                         Text {
-                            text: TailscaleService.connected ? "Connected" : "Off"
+                            // "Connected" alone was misleading: Tailscale can be up for mesh
+                            // access without owning egress. Naming that distinction here is
+                            // what makes the handoff rules legible.
+                            text: !TailscaleService.connected ? "Off"
+                                : (VpnService.routeOwner === "tailscale" ? "Exit node" : "Mesh only")
                             font.family: Config.theme.font
                             font.pixelSize: Styling.fontSize(-2)
                             color: TailscaleService.connected ? Styling.srItem("overprimary") : Colors.overSurfaceVariant
@@ -118,7 +122,10 @@ Item {
                 id: tailscaleMouseArea
                 anchors.fill: parent
                 hoverEnabled: true
-                enabled: TailscaleService.available
+                // Both cards are inert during a handoff, so a second network mutation
+                // cannot be started while one is in flight.
+                enabled: TailscaleService.available && !VpnService.busy
+                    && !VpnService.awaitingConfirmation
                 cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
                 onClicked: root.currentSection = "tailscale"
             }
@@ -170,12 +177,22 @@ Item {
                         }
 
                         Text {
+                            // Mirrors the section 7.3 matrix so the hub never shows a state
+                            // the provider page would describe differently.
                             text: !NordVpnService.available ? "Not installed"
-                                : (NordVpnService.connected ? "Connected" : "Off")
+                                : NordVpnService.permissionDenied ? "Permission denied"
+                                : !NordVpnService.daemonReachable ? "Daemon unavailable"
+                                : NordVpnService.needsLogin ? "Login required"
+                                : NordVpnService.connecting ? "Connecting…"
+                                : NordVpnService.disconnecting ? "Disconnecting…"
+                                : NordVpnService.connected ? "Connected" : "Off"
                             font.family: Config.theme.font
                             font.pixelSize: Styling.fontSize(-2)
                             color: NordVpnService.connected ? Styling.srItem("overprimary")
-                                : (!NordVpnService.available ? Colors.warning : Colors.overSurfaceVariant)
+                                : (!NordVpnService.available || NordVpnService.needsLogin
+                                    || NordVpnService.permissionDenied
+                                    || !NordVpnService.daemonReachable
+                                    ? Colors.warning : Colors.overSurfaceVariant)
                         }
                     }
 
@@ -201,21 +218,57 @@ Item {
                 id: nordVpnMouseArea
                 anchors.fill: parent
                 hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
+                enabled: !VpnService.busy && !VpnService.awaitingConfirmation
+                cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                // Opens the page even when the CLI is missing, so the setup card can explain
+                // what to install rather than the row being a dead end.
                 onClicked: root.currentSection = "nordvpn"
             }
         }
 
-        Text {
+        // Route-owner strip. Appears only when something actually owns egress - Tailscale
+        // merely running is not egress unless an exit node is set (VpnService.routeOwner).
+        StyledRect {
             Layout.fillWidth: true
-            visible: VpnService.isSwitching || VpnService.lastError !== ""
-            text: VpnService.isSwitching ? VpnService.phase : VpnService.lastError
-            wrapMode: Text.Wrap
-            font.family: Config.theme.font
-            font.pixelSize: Styling.fontSize(-2)
-            color: VpnService.lastError !== "" ? Colors.error : Colors.overSurfaceVariant
+            visible: VpnService.routeOwner !== "" && VpnService.routeOwner !== "none"
+                && VpnService.handoffPhase === "idle"
+            implicitHeight: 34
+            variant: "internalbg"
+            radius: Styling.radius(4)
+
+            Text {
+                anchors.centerIn: parent
+                width: parent.width - 20
+                text: VpnService.labelFor(VpnService.routeOwner) + " currently owns the default route"
+                    + (VpnService.bothConnected ? " · both providers connected" : "")
+                horizontalAlignment: Text.AlignHCenter
+                elide: Text.ElideRight
+                font.family: Config.theme.font
+                font.pixelSize: Styling.fontSize(-2)
+                color: Colors.overSurfaceVariant
+            }
         }
+
     }
+
+    // Floating, and a sibling of BOTH the hub column and the provider Loader, because a
+    // handoff can be started from the hub or from either provider page - all three render
+    // inside this item. When the confirm controls lived in the hub column (hidden whenever
+    // currentSection !== ""), confirming a switch from a provider page was impossible.
+    VpnHandoffCard {
+        // Above the provider Loader. Declaration order alone is not enough: the Loader is
+        // declared later and fills the panel, so with default z it painted OVER this card and
+        // a confirmation started from a provider page was still unanswerable.
+        z: 1
+        anchors.bottom: parent.bottom
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottomMargin: 8
+        width: root.contentWidth
+    }
+
+    // Drop any stale phase or error from a previous visit so it cannot linger on screen.
+    // Preserves an in-flight or awaiting-confirmation handoff (see VpnService.clearTransient).
+    Component.onCompleted: VpnService.clearTransient()
 
     Loader {
         id: providerLoader

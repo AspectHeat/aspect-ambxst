@@ -1,150 +1,302 @@
 pragma Singleton
+pragma ComponentBehavior: Bound
 
 import QtQuick
 import Quickshell
 import qs.config
 
+// Coordinates the two VPN providers. Knows nothing about either CLI - it only reads their
+// booleans and serializes transitions between them.
+//
+// Two rules this file exists to enforce:
+//   1. handoffPhase is an ENUM and is never rendered. UI text comes from statusTextFor(),
+//      which returns "" for any surface that is not the current handoff target. v1 rendered
+//      a shared phase string everywhere, so the NordVPN page announced "Disconnecting
+//      Tailscale...".
+//   2. "connected" is not symmetric between providers, so a handoff is keyed on who owns
+//      the DEFAULT ROUTE, not on who happens to be running.
 Singleton {
     id: root
 
-    property bool isSwitching: false
-    property string phase: ""
-    property string targetProvider: ""
-    property string pendingCountry: ""
-    property bool pendingP2p: false
-    property string pendingServerKey: ""
-    property int attempts: 0
+    // ---------------------------------------------------------------- observed facts
+    readonly property bool tailscaleUp: TailscaleService.connected
+    readonly property bool nordUp: NordVpnService.connected
+
+    // Tailscale being up is not egress. It only owns the default route when an exit node is
+    // set, so mesh-only Tailscale must never trigger a handoff prompt.
+    readonly property string routeOwner: root.nordUp ? "nordvpn"
+        : (root.tailscaleUp && TailscaleService.exitNodeId !== "" ? "tailscale" : "none")
+
+    // Both providers can legitimately be connected at once (mesh + commercial egress).
+    readonly property bool bothConnected: root.tailscaleUp && root.nordUp
+
+    // ---------------------------------------------------------------- handoff state
+    // idle | confirming | disconnecting | connecting | failed
+    property string handoffPhase: "idle"
+    property string handoffTarget: ""
     property string lastError: ""
 
-    readonly property string activeProvider: NordVpnService.connected ? "nordvpn" : (TailscaleService.connected ? "tailscale" : "")
+    // The provider that was torn down, so a failed handoff can offer to restore it rather
+    // than silently mutating the network back.
+    property string recoveryProvider: ""
 
-    function switchToNord(country = "", p2p = false): void {
-        if (isSwitching)
-            return;
-        pendingCountry = country;
-        pendingP2p = p2p;
-        pendingServerKey = "";
-        if (NordVpnService.connected) {
-            NordVpnService.connectTo(country, p2p);
-            return;
-        }
-        targetProvider = "nordvpn";
-        lastError = "";
-        attempts = 0;
-        isSwitching = true;
-        if (TailscaleService.connected) {
-            phase = "Disconnecting Tailscale…";
-            TailscaleService.down();
-            handoffTimer.restart();
-        } else {
-            connectTarget();
+    property string pendingSelection: ""
+    property bool pendingP2p: false
+    property int elapsedTicks: 0
+
+    readonly property bool busy: root.handoffPhase === "disconnecting"
+        || root.handoffPhase === "connecting"
+    readonly property bool awaitingConfirmation: root.handoffPhase === "confirming"
+
+    // 500 ms ticks. Independently bounded per leg, unlike v1's single shared 25 s budget.
+    readonly property int disconnectTimeoutTicks: 24  // 12 s
+    readonly property int connectTimeoutTicks: 50     // 25 s
+
+    // ---------------------------------------------------------------- text mapping
+    function labelFor(provider): string {
+        if (provider === "nordvpn")
+            return "NordVPN";
+        if (provider === "tailscale")
+            return "Tailscale";
+        return "";
+    }
+
+    function otherProvider(provider): string {
+        return provider === "nordvpn" ? "tailscale" : "nordvpn";
+    }
+
+    // The direction guard. A surface only ever sees its own phase.
+    function statusTextFor(provider): string {
+        if (root.handoffTarget !== provider)
+            return "";
+
+        switch (root.handoffPhase) {
+        case "confirming":
+            return "Switch to " + root.labelFor(provider) + "?";
+        case "disconnecting":
+            return "Disconnecting " + root.labelFor(root.otherProvider(provider)) + "…";
+        case "connecting":
+            return "Connecting " + root.labelFor(provider) + "…";
+        case "failed":
+            return root.lastError !== "" ? root.lastError : "Switch failed";
+        default:
+            return "";
         }
     }
 
-    function switchToNordServer(serverKey): void {
-        if (isSwitching || !serverKey)
+    // ---------------------------------------------------------------- lifecycle
+    // Called when a provider page mounts, so a stale phase or error from an earlier attempt
+    // cannot persist on screen. v1 rendered lastError indefinitely.
+    function clearTransient(): void {
+        // Also preserved while confirming: NordVpnPanel calls this on mount, and a handoff
+        // started from the hub would otherwise be cancelled the moment the page opened.
+        if (root.busy || root.awaitingConfirmation)
             return;
-        pendingCountry = "";
-        pendingP2p = false;
-        pendingServerKey = serverKey;
-        if (NordVpnService.connected) {
-            NordVpnService.connectToServer(serverKey);
-            return;
-        }
-        targetProvider = "nordvpn";
-        lastError = "";
-        attempts = 0;
-        isSwitching = true;
-        if (TailscaleService.connected) {
-            phase = "Disconnecting Tailscale…";
-            TailscaleService.down();
-            handoffTimer.restart();
-        } else {
-            connectTarget();
-        }
+        handoffTimer.stop();
+        root.handoffPhase = "idle";
+        root.handoffTarget = "";
+        root.lastError = "";
+        root.recoveryProvider = "";
+        root.elapsedTicks = 0;
     }
 
-    function switchToTailscale(): void {
-        if (isSwitching || TailscaleService.connected)
+    function requestProvider(target, selection = "", p2p = false): void {
+        if (root.busy || target === "")
             return;
-        targetProvider = "tailscale";
-        lastError = "";
-        attempts = 0;
-        isSwitching = true;
-        if (NordVpnService.connected) {
-            phase = "Disconnecting NordVPN…";
-            NordVpnService.disconnect();
-            handoffTimer.restart();
-        } else {
-            connectTarget();
+
+        root.pendingSelection = selection;
+        root.pendingP2p = p2p;
+
+        // Remember a country-level pick so Quick Connect and the primary toggle reuse it.
+        // Nothing wrote this before, so "Quick Connect" always ignored the user's last
+        // choice. City-level picks ("Country City") are deliberately not persisted - the
+        // CLI's own recommended server within a country is the better default next time.
+        if (target === "nordvpn" && selection !== "" && !selection.includes(" "))
+            Config.system.nordvpn.preferredCountry = selection;
+        root.lastError = "";
+        root.recoveryProvider = "";
+
+        // Already connected: a country/city change is a plain reconnect, NOT a handoff.
+        // Routing it through the handoff phases made handoffTimer see providerConnected()
+        // already true on its first tick and declare success while the reconnect was still
+        // in flight.
+        if (target === "nordvpn" && root.nordUp) {
+            NordVpnService.connectTo(selection, p2p);
+            return;
         }
+        if (target === "tailscale" && root.tailscaleUp)
+            return;
+
+        root.handoffTarget = target;
+
+        // Nothing owns egress, or the target already does: connect directly.
+        if (root.routeOwner === "none" || root.routeOwner === target) {
+            root.connectTarget(target);
+            return;
+        }
+
+        if (Config.system.vpn.handoffPolicy === "confirm") {
+            root.handoffPhase = "confirming";
+            return;
+        }
+        root.beginHandoff();
     }
 
-    function connectTarget(): void {
-        attempts = 0;
-        if (targetProvider === "nordvpn") {
-            phase = "Connecting NordVPN…";
-            if (pendingServerKey !== "")
-                NordVpnService.connectToServer(pendingServerKey);
-            else
-                NordVpnService.connectTo(pendingCountry, pendingP2p);
-        } else {
-            phase = "Connecting Tailscale…";
-            TailscaleService.up();
+    function confirmHandoff(): void {
+        if (root.handoffPhase !== "confirming")
+            return;
+        root.beginHandoff();
+    }
+
+    function cancelHandoff(): void {
+        // Only legal before a disconnect has been issued.
+        if (root.handoffPhase !== "confirming")
+            return;
+        root.clearTransient();
+    }
+
+    function beginHandoff(): void {
+        const owner = root.routeOwner;
+        root.recoveryProvider = owner;
+        root.handoffPhase = "disconnecting";
+        root.elapsedTicks = 0;
+
+        // A provider rejects a mutation while one is already in flight. Detect that instead
+        // of showing "Disconnecting..." for 12 s against a command that never ran.
+        let started = true;
+        if (owner === "tailscale")
+            started = TailscaleService.down();
+        else if (owner === "nordvpn")
+            started = NordVpnService.disconnect();
+
+        if (!started) {
+            root.fail("Could not disconnect " + root.labelFor(owner) + " right now. Try again.");
+            return;
         }
+
         handoffTimer.restart();
     }
 
-    function cancelWithError(message): void {
+    function connectTarget(target): void {
+        root.handoffTarget = target;
+        root.handoffPhase = "connecting";
+        root.elapsedTicks = 0;
+
+        let started = true;
+        if (target === "nordvpn")
+            started = NordVpnService.connectTo(root.pendingSelection, root.pendingP2p);
+        else
+            started = TailscaleService.up();
+
+        if (!started) {
+            // Covers Tailscale needing a browser login as well as a busy provider: either way
+            // there is no mutation to wait on, so say so instead of timing out.
+            root.fail("Could not connect " + root.labelFor(target)
+                + " right now. It may be busy or need you to log in.");
+            return;
+        }
+
+        handoffTimer.restart();
+    }
+
+    function providerConnected(provider): bool {
+        return provider === "nordvpn" ? root.nordUp : root.tailscaleUp;
+    }
+
+    function providerSettled(provider): bool {
+        // isMutating for NordVPN: waiting on isUpdating would also wait out unrelated
+        // background reads, stretching every handoff by a poll cycle.
+        return provider === "nordvpn"
+            ? !root.nordUp && !NordVpnService.isMutating
+            : !root.tailscaleUp && !TailscaleService.isUpdating;
+    }
+
+    function providerError(provider): string {
+        return provider === "nordvpn" ? NordVpnService.lastError : TailscaleService.lastError;
+    }
+
+    function succeed(): void {
         handoffTimer.stop();
-        lastError = message;
-        phase = "";
-        targetProvider = "";
-        pendingServerKey = "";
-        isSwitching = false;
+        root.handoffPhase = "idle";
+        root.handoffTarget = "";
+        root.recoveryProvider = "";
+        root.lastError = "";
+        root.elapsedTicks = 0;
+    }
+
+    function fail(message): void {
+        handoffTimer.stop();
+        root.lastError = String(message ?? "") || "VPN switch failed";
+        root.handoffPhase = "failed";
+        root.elapsedTicks = 0;
+    }
+
+    // Explicit user recovery after a failed handoff. Never automatic - an unexpected
+    // network mutation is worse than a visible failure.
+    function recover(): void {
+        if (root.recoveryProvider === "")
+            return;
+        const provider = root.recoveryProvider;
+        root.lastError = "";
+        root.connectTarget(provider);
+    }
+
+    function dismissFailure(): void {
+        if (root.handoffPhase !== "failed")
+            return;
+        handoffTimer.stop();
+        root.handoffPhase = "idle";
+        root.handoffTarget = "";
+        root.recoveryProvider = "";
+        root.lastError = "";
+        root.elapsedTicks = 0;
+    }
+
+    // Safety net: a confirmation can be requested from a surface that has no confirm UI
+    // mounted (the tray popup can be dismissed mid-question). Auto-cancel rather than
+    // leaving the coordinator wedged in "confirming" for the rest of the session.
+    Timer {
+        id: confirmTimeout
+        interval: 30000
+        repeat: false
+        running: root.awaitingConfirmation
+        onTriggered: if (root.awaitingConfirmation) root.cancelHandoff()
     }
 
     Timer {
         id: handoffTimer
         interval: 500
-        repeat: false
+        repeat: true
 
         onTriggered: {
-            root.attempts++;
-            if (root.attempts > 50) {
-                root.cancelWithError("VPN switch timed out");
+            root.elapsedTicks++;
+
+            if (root.handoffPhase === "disconnecting") {
+                if (root.providerSettled(root.otherProvider(root.handoffTarget))) {
+                    root.connectTarget(root.handoffTarget);
+                    return;
+                }
+                if (root.elapsedTicks > root.disconnectTimeoutTicks)
+                    root.fail("Timed out disconnecting " + root.labelFor(root.recoveryProvider));
                 return;
             }
 
-            if (root.phase.startsWith("Disconnecting")) {
-                const disconnected = root.targetProvider === "nordvpn"
-                    ? !TailscaleService.connected && !TailscaleService.isUpdating
-                    : !NordVpnService.connected && !NordVpnService.isUpdating;
-                if (disconnected) {
-                    root.connectTarget();
+            if (root.handoffPhase === "connecting") {
+                if (root.providerConnected(root.handoffTarget)) {
+                    root.succeed();
                     return;
                 }
-            } else {
-                const connected = root.targetProvider === "nordvpn"
-                    ? NordVpnService.connected
-                    : TailscaleService.connected;
-                const failed = root.targetProvider === "nordvpn"
-                    ? NordVpnService.lastError !== ""
-                    : TailscaleService.lastError !== "";
-                if (connected) {
-                    root.phase = "";
-                    root.targetProvider = "";
-                    root.pendingServerKey = "";
-                    root.isSwitching = false;
+                const error = root.providerError(root.handoffTarget);
+                if (error !== "") {
+                    root.fail(error);
                     return;
                 }
-                if (failed) {
-                    root.cancelWithError(root.targetProvider === "nordvpn"
-                        ? NordVpnService.lastError : TailscaleService.lastError);
-                    return;
-                }
+                if (root.elapsedTicks > root.connectTimeoutTicks)
+                    root.fail("Timed out connecting " + root.labelFor(root.handoffTarget));
+                return;
             }
-            restart();
+
+            handoffTimer.stop();
         }
     }
 }

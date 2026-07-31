@@ -38,6 +38,11 @@ Item {
     ].filter(row => row.value !== "")
     readonly property var selfRows: compactMode ? allSelfRows.filter(row => row.label === "IPv4").slice(0, 1) : allSelfRows
     readonly property string statusText: {
+        // Scoped to this provider: returns "" unless Tailscale is the handoff target, so
+        // this page can never announce NordVPN's phase (the mirror of the v1 bug).
+        const handoff = VpnService.statusTextFor("tailscale");
+        if (handoff !== "")
+            return handoff;
         if (TailscaleService.lastError !== "")
             return TailscaleService.lastError;
         if (TailscaleService.operatorMissing)
@@ -129,7 +134,10 @@ Item {
             TailscaleService.down();
             return;
         }
-        VpnService.switchToTailscale();
+        // Goes through the coordinator so a NordVPN tunnel that owns the default route is
+        // torn down first, with confirmation. requestProvider is a no-op when nothing else
+        // owns egress, so bringing Tailscale up for mesh access stays a single click.
+        VpnService.requestProvider("tailscale");
     }
 
     function positionAtBeginning(): void {
@@ -202,7 +210,9 @@ Item {
                     title: "Tailscale"
                     statusText: root.statusText
                     statusColor: TailscaleService.lastError !== "" ? Colors.error : ((TailscaleService.operatorMissing || TailscaleService.needsLogin) ? Colors.warning : Styling.srItem("overprimary"))
-                    showToggle: true
+                    // Was unconditionally true, so an unavailable Tailscale still showed a
+                    // switch whose mutation is rejected outright by the service guard.
+                    showToggle: TailscaleService.available
                     toggleChecked: TailscaleService.connected
                     toggleEnabled: !TailscaleService.operatorMissing && !TailscaleService.isUpdating
 
@@ -264,6 +274,15 @@ Item {
                     ])
 
                     onToggleChanged: root.requestToggle()
+                }
+
+                // Tray-only: in full settings VpnPanel already provides one, and two
+                // instances would both render. Without this, a handoff started from the tray
+                // asks "Switch to ...?" with nothing to answer it. VpnService auto-cancels
+                // after 30 s as a backstop, but a backstop is not an interface.
+                VpnHandoffCard {
+                    Layout.fillWidth: true
+                    hostEnabled: root.compactMode
                 }
 
                 StyledRect {
