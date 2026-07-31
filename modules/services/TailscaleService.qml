@@ -16,6 +16,10 @@ Singleton {
     readonly property bool connected: backendState === "Running"
     readonly property bool needsLogin: backendState === "NeedsLogin"
     property bool isUpdating: false
+
+    // Mutations only. isUpdating also covers background reads, so gating a control on it
+    // disables the user's own switch during an unrelated poll - a perceived-lag bug.
+    property bool isMutating: false
     property bool operatorMissing: false
     property string lastError: ""
 
@@ -164,34 +168,42 @@ Singleton {
         }
     }
 
-    function runMutation(command): void {
+    // Returns false when the request was rejected, so VpnService can fail a handoff fast
+    // instead of sitting in "Disconnecting..." against a command that never ran.
+    function runMutation(command): bool {
         if (!available || !enabled || isUpdating)
-            return;
+            return false;
 
         isUpdating = true;
+        isMutating = true;
         lastError = "";
         runAsync(command).then(() => {
             operatorMissing = false;
             isUpdating = false;
+            isMutating = false;
             refresh();
             refreshProfiles();
         }).catch(error => {
             handleMutationError(error);
             isUpdating = false;
+            isMutating = false;
             refresh();
         });
+        return true;
     }
 
-    function up(): void {
+    function up(): bool {
         if (needsLogin) {
             login();
-            return;
+            // A browser login is not a mutation this call can wait on; report "not started"
+            // so a coordinator does not sit in a connecting phase waiting for it.
+            return false;
         }
-        runMutation(["tailscale", "up"]);
+        return runMutation(["tailscale", "up"]);
     }
 
-    function down(): void {
-        runMutation(["tailscale", "down"]);
+    function down(): bool {
+        return runMutation(["tailscale", "down"]);
     }
 
     function toggle(): void {
