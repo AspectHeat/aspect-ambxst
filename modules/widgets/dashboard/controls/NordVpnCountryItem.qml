@@ -19,8 +19,13 @@ Item {
     readonly property bool isConnected: NordVpnService.connected
         && (root.country?.matchesStatusName(NordVpnService.country) ?? false)
     // isMutating, NOT isUpdating: gating on reads greys out every row on each poll tick.
+    // Also inert when the account cannot connect. The setup card explains why; leaving the
+    // rows live would let a logged-out user click a country and get nothing (connectTo()
+    // refuses), which reads as a broken widget rather than a clear prerequisite.
     readonly property bool busy: NordVpnService.isMutating || VpnService.busy
         || VpnService.awaitingConfirmation
+        || NordVpnService.needsLogin || NordVpnService.permissionDenied
+        || !NordVpnService.daemonReachable
     readonly property bool canExpand: (root.country?.cityCount ?? 0) > 0
         || !(root.country?.citiesLoaded ?? false)
 

@@ -214,7 +214,13 @@ Item {
                     // switch whose mutation is rejected outright by the service guard.
                     showToggle: TailscaleService.available
                     toggleChecked: TailscaleService.connected
-                    toggleEnabled: !TailscaleService.operatorMissing && !TailscaleService.isUpdating
+                    // isMutating, not isUpdating: a background refresh must never disable the
+                    // user's own toggle. Also inert during a handoff or a pending
+                    // confirmation, otherwise `down()` could fire mid-question and change
+                    // egress behind the prompt the user is still looking at.
+                    toggleEnabled: !TailscaleService.operatorMissing
+                        && !TailscaleService.isMutating
+                        && !VpnService.busy && !VpnService.awaitingConfirmation
 
                     actions: (root.showBackButton ? [{
                         icon: Icons.caretLeft,

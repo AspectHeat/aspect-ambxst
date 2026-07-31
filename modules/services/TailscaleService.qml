@@ -280,6 +280,21 @@ Singleton {
         return name;
     }
 
+    // runMutation now rejects while isMutating, so a `tailscale` invocation that never
+    // exits would block every future mutation for the rest of the session. Ceiling it.
+    Timer {
+        id: mutationWatchdog
+        interval: 45000
+        repeat: false
+        running: root.isMutating
+        onTriggered: {
+            root.isMutating = false;
+            root.isUpdating = false;
+            root.lastError = "Tailscale command timed out";
+            root.refresh();
+        }
+    }
+
     Timer {
         id: refreshDebouncer
         interval: 200

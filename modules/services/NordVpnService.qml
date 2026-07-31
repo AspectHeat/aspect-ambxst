@@ -300,6 +300,13 @@ Singleton {
     // target: "" for recommended, else a country token, an ISO code, or "Country City".
     // Argument grammar verified from lab/fixtures/nordvpn/help-connect.txt.
     function connectTo(target = "", p2p = false): bool {
+        // Last line of defence. The panel hides connect affordances while logged out, but a
+        // status read can land before the account read, so for a moment the UI may still
+        // offer them. Refusing here means the worst case is a no-op rather than a CLI error
+        // the user has to interpret.
+        if (root.needsLogin || root.permissionDenied || !root.daemonReachable)
+            return false;
+
         const command = ["nordvpn", "connect"];
         if (p2p && root.supportsP2p)
             command.push("--group", root.p2pToken);
@@ -322,11 +329,6 @@ Singleton {
         return true;
     }
 
-    function connectToCity(countryToken, cityToken): bool {
-        if (!countryToken || !cityToken)
-            return false;
-        return root.connectTo(countryToken + " " + cityToken, root.p2pPreferred);
-    }
 
     function disconnect(): bool {
         if (!root.runMutation(["nordvpn", "disconnect"]))
@@ -368,6 +370,50 @@ Singleton {
     }
 
     // ---------------------------------------------------------------- timers
+    // Watchdogs. Both flags are latches that gate everything downstream: performRefresh
+    // early-returns on isReading, and runMutation rejects on isMutating. If a `nordvpn`
+    // invocation never exits - a wedged daemon is the realistic case - the corresponding
+    // latch would stay set for the rest of the session, silently freezing all state reads
+    // or making every button permanently dead. Neither failure is recoverable without
+    // restarting the shell, so both get a ceiling.
+    Timer {
+        id: readWatchdog
+        interval: 20000
+        repeat: false
+        running: root.isReading
+        onTriggered: {
+            root.isReading = false;
+            root.refreshPartsRemaining = 0;
+            root.lastError = "Timed out reading NordVPN state";
+        }
+    }
+
+    Timer {
+        id: mutationWatchdog
+        // Generous: a real connect legitimately takes many seconds.
+        interval: 45000
+        repeat: false
+        running: root.isMutating
+        onTriggered: {
+            root.isMutating = false;
+            root.lastError = "NordVPN command timed out";
+            root.errorFromMutation = true;
+            root.refresh();
+        }
+    }
+
+    // A mutation error is preserved against the refresh it triggers, but it must not be
+    // preserved forever: without a ceiling, one failed connect would pin the error banner
+    // for the rest of the session even after the tunnel recovered. Long enough for the
+    // coordinator's 500ms tick and for a human to read it, then it becomes clearable again.
+    Timer {
+        id: mutationErrorTtl
+        interval: 10000
+        repeat: false
+        running: root.errorFromMutation
+        onTriggered: root.errorFromMutation = false
+    }
+
     Timer {
         id: refreshDebouncer
         interval: 200
@@ -524,7 +570,20 @@ Singleton {
                     root.technology = parsed.technology;
                 root.daemonReachable = true;
                 root.permissionDenied = false;
-                root.lastError = "";
+
+                // Only clear a READ-originated error. A failed mutation triggers an
+                // immediate refresh, and clearing here unconditionally erased the reason
+                // ~200ms later - before VpnService's 500ms handoff tick could observe it, so
+                // the user watched "Connecting..." until timeout instead of seeing why.
+                if (!root.errorFromMutation)
+                    root.lastError = "";
+
+                // Never leave an unrecognized status as a bare "Error" with no detail. This
+                // is the one place that knows what the CLI actually said.
+                if (parsed.state === "error" && parsed.unknownStatus !== undefined) {
+                    root.lastError = "Unexpected VPN status: " + parsed.unknownStatus;
+                    root.errorFromMutation = false;
+                }
             } else {
                 root.state = "error";
                 root.lastError = error || output.trim() || "Could not read NordVPN status";
