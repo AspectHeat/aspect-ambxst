@@ -281,7 +281,7 @@ Rectangle {
             isIcon: true
         }
     ].concat(Config.system.tailscale.enabled || Config.system.nordvpn.enabled ? [{
-        icon: Icons.vpn,
+        icon: Icons.network,
         label: "VPN",
         section: 10,
         isIcon: true

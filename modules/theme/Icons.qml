@@ -239,6 +239,7 @@ QtObject {
     readonly property string sparkle: ""
 
     readonly property string ethernet: ""
+    readonly property string network: "" // Phosphor network, U+EDDE
     readonly property string router: ""
     readonly property string signalNone: ""
     readonly property string vpn: ""
