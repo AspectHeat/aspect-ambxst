@@ -20,7 +20,7 @@ ColumnLayout {
     id: root
 
     property int contentWidth: 480
-    signal advancedExpandedChanged(bool expanded)
+    readonly property bool advancedExpanded: advancedCard.expanded
 
     spacing: 8
 
@@ -94,8 +94,9 @@ ColumnLayout {
     }
 
     NordVpnAdvancedCard {
+        id: advancedCard
+
         Layout.fillWidth: true
-        onExpandedChanged: root.advancedExpandedChanged(expanded)
     }
 
     // Service-level errors only. Handoff failure and its recovery action live in

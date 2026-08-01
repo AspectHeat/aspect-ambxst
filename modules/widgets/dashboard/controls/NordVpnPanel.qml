@@ -182,8 +182,19 @@ Item {
             }
 
             header: Item {
+                id: countryHeader
+
                 width: countryList.width
                 height: headerContent.implicitHeight + 8
+
+                // ListView preserves the first delegate's screen position when an inline
+                // header grows, adjusting contentY after the Advanced click handler runs.
+                // React to the resulting geometry change instead, then reset one event-loop
+                // turn later after that compensation has been applied.
+                onHeightChanged: {
+                    if (headerContent.advancedExpanded)
+                        Qt.callLater(() => root.positionAtBeginning());
+                }
 
                 NordVpnPanelHeader {
                     id: headerContent
@@ -191,14 +202,6 @@ Item {
                     width: root.contentWidth
                     anchors.horizontalCenter: parent.horizontalCenter
                     contentWidth: root.contentWidth
-
-                    // Expanding a ListView header changes its height below the current
-                    // viewport. Return to the header origin after relayout so the protocol
-                    // and setting controls open from their beginning instead of being clipped.
-                    onAdvancedExpandedChanged: expanded => {
-                        if (expanded)
-                            Qt.callLater(() => root.positionAtBeginning());
-                    }
                 }
             }
 
