@@ -14,7 +14,32 @@ Item {
 
     property int maxContentWidth: 480
     property string currentSection: ""
+    property bool tailscalePositioned: false
+    property bool nordVpnPositioned: false
     readonly property int contentWidth: Math.min(width, maxContentWidth)
+
+    function positionTailscaleOnFirstVisit(): void {
+        if (root.tailscalePositioned || !tailscaleLoader.item)
+            return;
+        root.tailscalePositioned = true;
+        // The retained panel may have compiled while its Loader was hidden and had no usable
+        // viewport geometry. Wait until this visit has made it visible before positioning.
+        Qt.callLater(() => tailscaleLoader.item.positionAtBeginning());
+    }
+
+    function positionNordVpnOnFirstVisit(): void {
+        if (root.nordVpnPositioned || !nordVpnLoader.item)
+            return;
+        root.nordVpnPositioned = true;
+        Qt.callLater(() => nordVpnLoader.item.positionAtBeginning());
+    }
+
+    onCurrentSectionChanged: {
+        if (root.currentSection === "tailscale")
+            root.positionTailscaleOnFirstVisit();
+        else if (root.currentSection === "nordvpn")
+            root.positionNordVpnOnFirstVisit();
+    }
 
     ColumnLayout {
         visible: root.currentSection === ""
@@ -130,17 +155,24 @@ Item {
                 StyledRect {
                     Layout.preferredWidth: 32
                     Layout.preferredHeight: 32
-                    variant: "internalbg"
+                    variant: NordVpnService.connected ? "primary" : "internalbg"
                     radius: Styling.radius(2)
 
                     Image {
                         anchors.centerIn: parent
-                        width: 28
-                        height: 28
+                        width: 20
+                        height: 20
                         source: Qt.resolvedUrl("../../../../assets/nordvpn/nordvpn.svg")
-                        sourceSize: Qt.size(56, 56)
+                        sourceSize: Qt.size(40, 40)
                         smooth: true
                         mipmap: true
+
+                        layer.enabled: true
+                        layer.effect: MultiEffect {
+                            colorization: 1
+                            colorizationColor: NordVpnService.connected
+                                ? Styling.srItem("primary") : Colors.overBackground
+                        }
                     }
                 }
 
@@ -254,7 +286,8 @@ Item {
             if (item) {
                 item.maxContentWidth = root.maxContentWidth;
                 item.showBackButton = true;
-                Qt.callLater(() => item.positionAtBeginning());
+                if (root.currentSection === "tailscale")
+                    root.positionTailscaleOnFirstVisit();
             }
         }
     }
@@ -271,7 +304,8 @@ Item {
             if (item) {
                 item.maxContentWidth = root.maxContentWidth;
                 item.showBackButton = true;
-                Qt.callLater(() => item.positionAtBeginning());
+                if (root.currentSection === "nordvpn")
+                    root.positionNordVpnOnFirstVisit();
             }
         }
     }
