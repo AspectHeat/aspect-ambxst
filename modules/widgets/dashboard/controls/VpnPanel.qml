@@ -2,7 +2,6 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Effects
 import QtQuick.Layouts
 import qs.config
 import qs.modules.components
@@ -40,81 +39,42 @@ Item {
             id: tailscaleCard
 
             Layout.fillWidth: true
-            implicitHeight: 72
-            variant: tailscaleMouseArea.containsMouse ? "focus" : "common"
-            radius: Styling.radius(4)
+            Layout.preferredHeight: 56
+            variant: tailscaleMouseArea.containsMouse ? "focus" : "pane"
+            radius: Styling.radius(0)
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 12
-                anchors.rightMargin: 12
-                spacing: 12
+                anchors.margins: 16
+                spacing: 16
 
-                StyledRect {
-                    Layout.preferredWidth: 40
-                    Layout.preferredHeight: 40
-                    variant: TailscaleService.connected ? "primary" : "internalbg"
-                    radius: Styling.radius(2)
-
-                    Image {
-                        anchors.centerIn: parent
-                        width: 24
-                        height: 24
-                        source: Qt.resolvedUrl("../../../../assets/tailscale/tailscale-icon-white.svg")
-                        sourceSize: Qt.size(48, 48)
-                        smooth: true
-
-                        layer.enabled: true
-                        layer.effect: MultiEffect {
-                            colorization: 1
-                            colorizationColor: TailscaleService.connected ? Styling.srItem("primary") : Colors.overBackground
-                        }
-                    }
-                }
-
-                ColumnLayout {
+                RowLayout {
                     Layout.fillWidth: true
-                    spacing: 2
+                    spacing: 8
 
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-
-                        Text {
-                            text: "Tailscale"
-                            font.family: Config.theme.font
-                            font.pixelSize: Config.theme.fontSize
-                            font.weight: Font.Medium
-                            color: Colors.overBackground
-                        }
-
-                        Text {
-                            // "Connected" alone was misleading: Tailscale can be up for mesh
-                            // access without owning egress. Naming that distinction here is
-                            // what makes the handoff rules legible.
-                            text: !TailscaleService.connected ? "Off"
-                                : (VpnService.routeOwner === "tailscale" ? "Exit node" : "Mesh only")
-                            font.family: Config.theme.font
-                            font.pixelSize: Styling.fontSize(-2)
-                            color: TailscaleService.connected ? Styling.srItem("overprimary") : Colors.overSurfaceVariant
-                        }
+                    Text {
+                        text: "Tailscale"
+                        font.family: Config.theme.font
+                        font.pixelSize: Styling.fontSize(0)
+                        font.bold: true
+                        color: Colors.overBackground
                     }
 
                     Text {
-                        Layout.fillWidth: true
-                        text: "Mesh VPN, devices, exit nodes, and profiles"
+                        // "Connected" alone is misleading: mesh access is not egress.
+                        text: !TailscaleService.connected ? "Off"
+                            : (VpnService.routeOwner === "tailscale" ? "Exit node" : "Mesh only")
                         font.family: Config.theme.font
                         font.pixelSize: Styling.fontSize(-2)
-                        color: Colors.overSurfaceVariant
-                        elide: Text.ElideRight
+                        color: TailscaleService.connected ? Styling.srItem("overprimary") : Colors.overSurfaceVariant
                     }
                 }
 
                 Text {
-                    text: TailscaleService.connected ? Icons.shieldCheck : Icons.caretRight
+                    text: Icons.caretRight
                     font.family: Icons.font
-                    font.pixelSize: Styling.fontSize(0)
-                    color: TailscaleService.connected ? Styling.srItem("overprimary") : Colors.overSurfaceVariant
+                    font.pixelSize: 20
+                    color: Colors.overSurfaceVariant
                 }
             }
 
@@ -135,82 +95,51 @@ Item {
             id: nordVpnCard
 
             Layout.fillWidth: true
-            implicitHeight: 72
-            variant: nordVpnMouseArea.containsMouse ? "focus" : "common"
-            radius: Styling.radius(4)
+            Layout.preferredHeight: 56
+            variant: nordVpnMouseArea.containsMouse ? "focus" : "pane"
+            radius: Styling.radius(0)
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 12
-                anchors.rightMargin: 12
-                spacing: 12
+                anchors.margins: 16
+                spacing: 16
 
-                StyledRect {
-                    Layout.preferredWidth: 40
-                    Layout.preferredHeight: 40
-                    variant: NordVpnService.connected ? "primary" : "internalbg"
-                    radius: Styling.radius(2)
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: Icons.vpn
-                        font.family: Icons.font
-                        font.pixelSize: Styling.fontSize(3)
-                        color: NordVpnService.connected ? Styling.srItem("primary") : Colors.overBackground
-                    }
-                }
-
-                ColumnLayout {
+                RowLayout {
                     Layout.fillWidth: true
-                    spacing: 2
+                    spacing: 8
 
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-
-                        Text {
-                            text: "NordVPN"
-                            font.family: Config.theme.font
-                            font.pixelSize: Config.theme.fontSize
-                            font.weight: Font.Medium
-                            color: Colors.overBackground
-                        }
-
-                        Text {
-                            // Mirrors the section 7.3 matrix so the hub never shows a state
-                            // the provider page would describe differently.
-                            text: !NordVpnService.available ? "Not installed"
-                                : NordVpnService.permissionDenied ? "Permission denied"
-                                : !NordVpnService.daemonReachable ? "Daemon unavailable"
-                                : NordVpnService.needsLogin ? "Login required"
-                                : NordVpnService.connecting ? "Connecting…"
-                                : NordVpnService.disconnecting ? "Disconnecting…"
-                                : NordVpnService.connected ? "Connected" : "Off"
-                            font.family: Config.theme.font
-                            font.pixelSize: Styling.fontSize(-2)
-                            color: NordVpnService.connected ? Styling.srItem("overprimary")
-                                : (!NordVpnService.available || NordVpnService.needsLogin
-                                    || NordVpnService.permissionDenied
-                                    || !NordVpnService.daemonReachable
-                                    ? Colors.warning : Colors.overSurfaceVariant)
-                        }
+                    Text {
+                        text: "NordVPN"
+                        font.family: Config.theme.font
+                        font.pixelSize: Styling.fontSize(0)
+                        font.bold: true
+                        color: Colors.overBackground
                     }
 
                     Text {
-                        Layout.fillWidth: true
-                        text: "Live servers, locations, and P2P routing"
+                        // Mirrors the provider page's state vocabulary.
+                        text: !NordVpnService.available ? "Not installed"
+                            : NordVpnService.permissionDenied ? "Permission denied"
+                            : !NordVpnService.daemonReachable ? "Daemon unavailable"
+                            : NordVpnService.needsLogin ? "Login required"
+                            : NordVpnService.connecting ? "Connecting…"
+                            : NordVpnService.disconnecting ? "Disconnecting…"
+                            : NordVpnService.connected ? "Connected" : "Off"
                         font.family: Config.theme.font
                         font.pixelSize: Styling.fontSize(-2)
-                        color: Colors.overSurfaceVariant
-                        elide: Text.ElideRight
+                        color: NordVpnService.connected ? Styling.srItem("overprimary")
+                            : (!NordVpnService.available || NordVpnService.needsLogin
+                                || NordVpnService.permissionDenied
+                                || !NordVpnService.daemonReachable
+                                ? Colors.warning : Colors.overSurfaceVariant)
                     }
                 }
 
                 Text {
-                    text: NordVpnService.connected ? Icons.shieldCheck : Icons.caretRight
+                    text: Icons.caretRight
                     font.family: Icons.font
-                    font.pixelSize: Styling.fontSize(0)
-                    color: NordVpnService.connected ? Styling.srItem("overprimary") : Colors.overSurfaceVariant
+                    font.pixelSize: 20
+                    color: Colors.overSurfaceVariant
                 }
             }
 

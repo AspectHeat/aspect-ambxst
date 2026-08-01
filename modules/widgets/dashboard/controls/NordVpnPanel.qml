@@ -17,6 +17,7 @@ Item {
     property bool compactMode: false
     property bool showBackButton: false
     property string searchText: ""
+    property bool awaitingAdvancedRelayout: false
 
     signal backRequested
 
@@ -192,8 +193,12 @@ Item {
                 // React to the resulting geometry change instead, then reset one event-loop
                 // turn later after that compensation has been applied.
                 onHeightChanged: {
-                    if (headerContent.advancedExpanded)
-                        Qt.callLater(() => root.positionAtBeginning());
+                    if (root.awaitingAdvancedRelayout && headerContent.advancedExpanded) {
+                        Qt.callLater(() => {
+                            root.positionAtBeginning();
+                            root.awaitingAdvancedRelayout = false;
+                        });
+                    }
                 }
 
                 NordVpnPanelHeader {
@@ -202,6 +207,13 @@ Item {
                     width: root.contentWidth
                     anchors.horizontalCenter: parent.horizontalCenter
                     contentWidth: root.contentWidth
+
+                    // Only an explicit closed -> open action earns a scroll reset. Connection
+                    // and status updates also change this header's height; treating those as
+                    // expansion relayouts jumped the user to the top after choosing a country.
+                    onAdvancedExpandedChanged: {
+                        root.awaitingAdvancedRelayout = headerContent.advancedExpanded;
+                    }
                 }
             }
 
