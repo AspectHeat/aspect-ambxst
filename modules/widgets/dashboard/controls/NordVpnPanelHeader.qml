@@ -8,66 +8,20 @@ import qs.modules.components
 import qs.modules.services
 import qs.modules.theme
 
-// The NordVPN page's ListView.header content: titlebar, connection card, mode selector,
-// search, and error/recovery strip. Extracted per plan section 8 - v1 inlined ~340 lines
-// of this directly into the ListView.
+// The NordVPN page's scrolling header content: setup card, connection card, Quick Connect,
+// mode selector, advanced settings, and service errors.
+//
+// The titlebar and the search field deliberately do NOT live here. They are pinned by
+// NordVpnPanel outside the ListView, because a ListView re-lays-out its header on every
+// model reset - and the model resets on every keystroke of the country filter, which took
+// focus away from the search field after each character. SettingsTab uses the same
+// SearchInput outside a ListView and does not have the problem.
 ColumnLayout {
     id: root
 
     property int contentWidth: 480
-    property bool showBackButton: false
-    property string statusText: ""
-    property color statusColor: Styling.srItem("overprimary")
-
-    signal backRequested
-    signal searchTextChanged(string text)
-
-    function clearSearch(): void {
-        countrySearch.clear();
-    }
-
-    function focusSearchInput(): void {
-        countrySearch.focusInput();
-    }
 
     spacing: 8
-
-    PanelTitlebar {
-        Layout.fillWidth: true
-        title: "NordVPN"
-        statusText: root.statusText
-        statusColor: root.statusColor
-        showToggle: NordVpnService.available && !NordVpnService.needsLogin
-            && !NordVpnService.permissionDenied
-        toggleChecked: NordVpnService.connected
-        toggleEnabled: !NordVpnService.isMutating && !VpnService.busy
-            && !VpnService.awaitingConfirmation
-
-        actions: (root.showBackButton ? [{
-            icon: Icons.caretLeft,
-            tooltip: "Back to VPN providers",
-            onClicked: function () {
-                root.backRequested();
-            }
-        }] : []).concat([{
-            icon: Icons.sync,
-            tooltip: "Refresh NordVPN state",
-            loading: NordVpnService.isUpdating,
-            enabled: NordVpnService.available,
-            onClicked: function () {
-                NordVpnService.refreshCountries();
-                NordVpnService.refresh();
-            }
-        }])
-
-        onToggleChanged: checked => {
-            if (checked)
-                VpnService.requestProvider("nordvpn", Config.system.nordvpn.preferredCountry,
-                    NordVpnService.p2pPreferred);
-            else
-                NordVpnService.disconnect();
-        }
-    }
 
     // Both cards self-gate on service state, so the header does not duplicate those
     // conditions. Extracted per plan section 8 - v1 inlined all of this.
@@ -153,17 +107,5 @@ ColumnLayout {
         font.pixelSize: Styling.fontSize(-2)
         color: Colors.error
         wrapMode: Text.Wrap
-    }
-
-    // ------------------------------------------------------------ search
-    SearchInput {
-        id: countrySearch
-        Layout.fillWidth: true
-        visible: NordVpnService.available && NordVpnService.countryCount > 0
-        implicitHeight: 40
-        variant: "internalbg"
-        placeholderText: "Search countries"
-        iconText: Icons.globe
-        onSearchTextChanged: text => root.searchTextChanged(text)
     }
 }

@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Layouts
 import qs.config
 import qs.modules.components
 import qs.modules.services
@@ -73,8 +74,7 @@ Item {
     }
 
     function focusSearchInput(): void {
-        if (countryList.headerItem)
-            countryList.headerItem.focusSearch();
+        countrySearch.focusInput();
     }
 
     // Clear any stale handoff phase or error from a previous attempt on mount, so it cannot
@@ -92,80 +92,129 @@ Item {
         onTriggered: NordVpnService.refresh()
     }
 
-    ListView {
-        id: countryList
-
+    ColumnLayout {
         anchors.fill: parent
-        clip: true
-        spacing: 4
-        cacheBuffer: 1000
-        reuseItems: true
-        boundsBehavior: Flickable.StopAtBounds
-        flickableDirection: Flickable.VerticalFlick
-        model: root.visibleCountries
+        spacing: 8
 
-        ScrollBar.vertical: ScrollBar {
-            policy: ScrollBar.AsNeeded
-        }
+        // Pinned, NOT inside the ListView. A ListView re-lays-out its header whenever the
+        // model resets, and the model resets on every keystroke of the country filter, which
+        // was taking focus off the search field after each character. Keeping both out of the
+        // view also means the back button and the filter stay reachable while scrolling 149
+        // countries, which is better for a list this long anyway.
+        PanelTitlebar {
+            Layout.preferredWidth: root.contentWidth
+            Layout.alignment: Qt.AlignHCenter
+            title: "NordVPN"
+            statusText: root.statusText
+            statusColor: root.statusColor
+            showToggle: NordVpnService.available && !NordVpnService.needsLogin
+                && !NordVpnService.permissionDenied
+            toggleChecked: NordVpnService.connected
+            toggleEnabled: !NordVpnService.isMutating && !VpnService.busy
+                && !VpnService.awaitingConfirmation
 
-        header: Item {
-            id: headerWrapper
+            actions: (root.showBackButton ? [{
+                icon: Icons.caretLeft,
+                tooltip: "Back to VPN providers",
+                onClicked: function () {
+                    root.backRequested();
+                }
+            }] : []).concat([{
+                icon: Icons.sync,
+                tooltip: "Refresh NordVPN state",
+                loading: NordVpnService.isUpdating,
+                enabled: NordVpnService.available,
+                onClicked: function () {
+                    NordVpnService.refreshCountries();
+                    NordVpnService.refresh();
+                }
+            }])
 
-            width: countryList.width
-            height: headerContent.implicitHeight + 8
-
-            function focusSearch(): void {
-                headerContent.focusSearchInput();
-            }
-
-            NordVpnPanelHeader {
-                id: headerContent
-
-                width: root.contentWidth
-                anchors.horizontalCenter: parent.horizontalCenter
-                contentWidth: root.contentWidth
-                showBackButton: root.showBackButton
-                statusText: root.statusText
-                statusColor: root.statusColor
-
-                onBackRequested: root.backRequested()
-                onSearchTextChanged: text => root.searchText = text
-            }
-        }
-
-        delegate: Item {
-            id: rowWrapper
-
-            required property var modelData
-
-            width: countryList.width
-            height: countryItem.implicitHeight
-
-            NordVpnCountryItem {
-                id: countryItem
-
-                width: root.contentWidth
-                anchors.horizontalCenter: parent.horizontalCenter
-                country: rowWrapper.modelData
-                compactMode: root.compactMode
+            onToggleChanged: checked => {
+                if (checked)
+                    VpnService.requestProvider("nordvpn", Config.system.nordvpn.preferredCountry,
+                        NordVpnService.p2pPreferred);
+                else
+                    NordVpnService.disconnect();
             }
         }
 
-        // Distinguishes "no results for this search" from "the CLI reported no countries",
-        // which are different problems with different remedies.
-        Text {
-            anchors.centerIn: parent
-            width: root.contentWidth - 24
-            visible: countryList.count === 0 && NordVpnService.available
-                && !NordVpnService.needsLogin && !NordVpnService.permissionDenied
-            text: NordVpnService.countryCount === 0
-                ? "No locations reported by the NordVPN CLI. Try refreshing."
-                : "No countries match “" + root.searchText + "”"
-            horizontalAlignment: Text.AlignHCenter
-            font.family: Config.theme.font
-            font.pixelSize: Styling.fontSize(-2)
-            color: Colors.overSurfaceVariant
-            wrapMode: Text.Wrap
+        SearchInput {
+            id: countrySearch
+            Layout.preferredWidth: root.contentWidth
+            Layout.alignment: Qt.AlignHCenter
+            visible: NordVpnService.available && NordVpnService.countryCount > 0
+            implicitHeight: 40
+            variant: "internalbg"
+            placeholderText: "Search countries"
+            iconText: Icons.globe
+            onSearchTextChanged: text => root.searchText = text
+        }
+
+        ListView {
+            id: countryList
+
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            clip: true
+            spacing: 4
+            cacheBuffer: 1000
+            reuseItems: true
+            boundsBehavior: Flickable.StopAtBounds
+            flickableDirection: Flickable.VerticalFlick
+            model: root.visibleCountries
+
+            ScrollBar.vertical: ScrollBar {
+                policy: ScrollBar.AsNeeded
+            }
+
+            header: Item {
+                width: countryList.width
+                height: headerContent.implicitHeight + 8
+
+                NordVpnPanelHeader {
+                    id: headerContent
+
+                    width: root.contentWidth
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    contentWidth: root.contentWidth
+                }
+            }
+
+            delegate: Item {
+                id: rowWrapper
+
+                required property var modelData
+
+                width: countryList.width
+                height: countryItem.implicitHeight
+
+                NordVpnCountryItem {
+                    id: countryItem
+
+                    width: root.contentWidth
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    country: rowWrapper.modelData
+                    compactMode: root.compactMode
+                }
+            }
+
+            // Distinguishes "no results for this search" from "the CLI reported no countries",
+            // which are different problems with different remedies.
+            Text {
+                anchors.centerIn: parent
+                width: root.contentWidth - 24
+                visible: countryList.count === 0 && NordVpnService.available
+                    && !NordVpnService.needsLogin && !NordVpnService.permissionDenied
+                text: NordVpnService.countryCount === 0
+                    ? "No locations reported by the NordVPN CLI. Try refreshing."
+                    : "No countries match “" + root.searchText + "”"
+                horizontalAlignment: Text.AlignHCenter
+                font.family: Config.theme.font
+                font.pixelSize: Styling.fontSize(-2)
+                color: Colors.overSurfaceVariant
+                wrapMode: Text.Wrap
+            }
         }
     }
 }

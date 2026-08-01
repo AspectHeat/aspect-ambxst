@@ -347,14 +347,41 @@ Singleton {
             root.connectTo(Config.system.nordvpn.preferredCountry, root.p2pPreferred);
     }
 
+    // `nordvpn login` does NOT open a browser. It prints
+    //     Continue in the browser: https://api.nordvpn.com/v1/users/oauth/login-redirect?...
+    // to stdout and exits 0. Running it detached threw that line away, so clicking "Log in"
+    // did visibly nothing. Capture the output, pull the URL out, and hand it to the desktop's
+    // default handler via xdg-open - the same idiom TailscaleService uses for its admin
+    // console link.
     function login(): void {
-        if (!root.available || !root.enabled)
+        if (!root.available || !root.enabled || root.isMutating)
             return;
-        // Detached browser flow: nothing here can observe its outcome, so mark it pending and
-        // poll faster until the account state resolves. Otherwise the click looks inert.
+
         root.loginPending = true;
-        Quickshell.execDetached(["nordvpn", "login"]);
         loginPollTimer.restart();
+
+        root.runAsync(["nordvpn", "login"]).then(output => {
+            const url = root.extractLoginUrl(output);
+            if (url !== "") {
+                Quickshell.execDetached(["xdg-open", url]);
+                return;
+            }
+            // Logged in already, or a build that opens its own browser: either way the next
+            // poll resolves it. Only complain if we got something we cannot act on.
+            if (!/already logged in/i.test(output))
+                root.lastError = "Could not get a login link from NordVPN";
+            root.loginPending = false;
+        }).catch(error => {
+            root.loginPending = false;
+            root.handleMutationError(error);
+        });
+    }
+
+    // Matches any http(s) URL in the CLI's output rather than the surrounding prose, so a
+    // reworded message or a localized build still works.
+    function extractLoginUrl(output): string {
+        const match = String(output ?? "").match(/https?:\/\/\S+/);
+        return match ? match[0] : "";
     }
 
     function setTechnology(value): void {
