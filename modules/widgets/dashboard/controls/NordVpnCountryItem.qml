@@ -151,6 +151,8 @@ Item {
                 }
 
                 contentItem: Text {
+                    id: expandIcon
+
                     text: root.country?.citiesLoading ? Icons.sync
                         : (root.expanded ? Icons.caretDown : Icons.caretRight)
                     font.family: Icons.font
@@ -160,11 +162,19 @@ Item {
                     verticalAlignment: Text.AlignVCenter
 
                     RotationAnimation on rotation {
+                        id: loadingRotation
+
                         running: root.country?.citiesLoading ?? false
                         from: 0
                         to: 360
                         duration: 1000
                         loops: Animation.Infinite
+
+                        // A stopped property animation retains its current value. Without
+                        // resetting it, the sync glyph becomes a caret at an arbitrary angle
+                        // when loading completes, which made each country row look differently
+                        // misaligned after it had been expanded once.
+                        onRunningChanged: if (!running) expandIcon.rotation = 0
                     }
                 }
 

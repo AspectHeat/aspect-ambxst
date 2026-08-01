@@ -44,8 +44,10 @@ StyledRect {
         root.segmentWidth = Math.ceil(widest);
     }
 
-    implicitWidth: buttonsRow.implicitWidth + padding * 2
-    implicitHeight: Math.max(buttonSize, buttonsRow.implicitHeight) + padding * 2
+    implicitWidth: repeater.count * segmentWidth
+        + Math.max(0, repeater.count - 1) * spacing
+        + padding * 2
+    implicitHeight: buttonSize + padding * 2
 
     Item {
         anchors.fill: parent
@@ -91,7 +93,12 @@ StyledRect {
         }
 
         // Buttons
-        RowLayout {
+        // Use the same explicit equal-width pattern as the gradient type selector in
+        // VariantEditor. RowLayout distributes surplus from layout hints, which made this
+        // control depend on implicit/preferred-width negotiation and proved visually
+        // inconsistent for differently sized labels. A plain Row plus an exact width from
+        // the available space makes every segment share the same boundaries by construction.
+        Row {
             id: buttonsRow
             anchors.fill: parent
             spacing: root.spacing
@@ -117,24 +124,11 @@ StyledRect {
                     onNaturalWidthChanged: root.updateSegmentWidth()
                     Component.onCompleted: root.updateSegmentWidth()
 
-                    Layout.fillHeight: true
-                    // Segments must TILE the control, so they have to grow with it. Without
-                    // fillWidth, a host setting `Layout.fillWidth: true` on the SegmentedSwitch
-                    // stretched only the layout's cells: RowLayout clamps a non-filling item
-                    // to its preferred width and pins it to the cell origin, so the segments
-                    // ended up scattered with dead space between and after them. Measured on
-                    // Bostrom in a 581px control: segment 0 at x=0 w=88, segment 1 at x=344
-                    // w=61, 176px of empty bar to the right. The sliding highlight tracks its
-                    // segment faithfully, so it inherited the gap and read as a stub pinned to
-                    // the left of a wide bar.
-                    //
-                    // preferred AND minimum are both the shared segmentWidth, which is what
-                    // actually makes the segments equal: surplus is split in proportion to
-                    // preferred width, and a per-segment minimum would drag the effective
-                    // preference back to per-segment content and reintroduce the imbalance.
-                    Layout.fillWidth: true
-                    Layout.minimumWidth: root.segmentWidth
-                    Layout.preferredWidth: root.segmentWidth
+                    width: repeater.count > 0
+                        ? (buttonsRow.width - (repeater.count - 1) * buttonsRow.spacing)
+                            / repeater.count
+                        : 0
+                    height: buttonsRow.height
 
                     focusPolicy: Qt.NoFocus
                     hoverEnabled: true
@@ -156,7 +150,11 @@ StyledRect {
                         implicitWidth: contentRow.implicitWidth
                         implicitHeight: contentRow.implicitHeight
 
-                        RowLayout {
+                        // This is content, not a space-distributing layout. RowLayout can
+                        // stretch its children across the button's content rect, leaving the
+                        // icon near one edge and the label near the other. A plain Row keeps
+                        // the icon and label as one compact group for centerIn to centre.
+                        Row {
                             id: contentRow
                             anchors.centerIn: parent
                             spacing: 8
@@ -170,6 +168,7 @@ StyledRect {
                                 sourceSize.height: 16
                                 width: 16
                                 height: 16
+                                anchors.verticalCenter: parent.verticalCenter
                                 fillMode: Image.PreserveAspectFit
                                 opacity: root.currentIndex === optionButton.index ? 1.0 : 0.7
                             }
@@ -181,6 +180,7 @@ StyledRect {
                                 color: root.currentIndex === optionButton.index ? Styling.srItem("overprimary") : Colors.overBackground
                                 font.family: Icons.font
                                 font.pixelSize: 14
+                                anchors.verticalCenter: parent.verticalCenter
                                 horizontalAlignment: Text.AlignHCenter
                                 verticalAlignment: Text.AlignVCenter
 
@@ -201,6 +201,7 @@ StyledRect {
                                 font.family: Config.theme.font
                                 font.pixelSize: 14
                                 font.weight: root.currentIndex === optionButton.index ? Font.DemiBold : Font.Normal
+                                anchors.verticalCenter: parent.verticalCenter
                                 horizontalAlignment: Text.AlignHCenter
                                 verticalAlignment: Text.AlignVCenter
 

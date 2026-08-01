@@ -129,6 +129,8 @@ ColumnLayout {
             && !NordVpnService.permissionDenied
         flat: true
         implicitHeight: 32
+        leftPadding: 12
+        rightPadding: 12
 
         background: StyledRect {
             variant: discloseButton.hovered ? "focus" : "common"
