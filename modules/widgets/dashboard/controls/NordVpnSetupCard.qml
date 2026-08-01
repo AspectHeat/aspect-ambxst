@@ -41,6 +41,10 @@ StyledRect {
         && NordVpnService.daemonReachable
         && !NordVpnService.permissionDenied
 
+    // Manual completion, disclosed rather than shown by default: the one-click flow works on a
+    // healthy desktop, and leading with "paste a link" would make it look like it never does.
+    property bool showManualLogin: false
+
     visible: root.blocked
     implicitHeight: contentColumn.implicitHeight + 20
     variant: "internalbg"
@@ -103,6 +107,94 @@ StyledRect {
             // Opens a browser flow out of process; the panel then waits for the next poll
             // to observe the new login state rather than assuming success.
             onClicked: NordVpnService.login()
+        }
+
+        // ---------------------------------------------------------- manual completion
+        // The browser finishes login by handing nordvpn://login?...&exchange_token=... back to
+        // the desktop, which has to route it to `nordvpn click`. That hop is outside this
+        // widget and it does fail: on Bostrom nordvpn.desktop declares Terminal=true and GLib
+        // would not launch it, so the browser's "open this link" prompt was accepted and
+        // nothing happened. Without this affordance that dead end is unescapable from the UI.
+        Button {
+            id: manualToggle
+            visible: root.canLogIn
+            Layout.topMargin: 2
+            flat: true
+            implicitHeight: 22
+            leftPadding: 0
+
+            background: null
+
+            contentItem: Text {
+                text: (root.showManualLogin ? Icons.caretDown : Icons.caretRight)
+                    + "  Browser didn't bring you back?"
+                font.family: Config.theme.font
+                font.pixelSize: Styling.fontSize(-3)
+                color: manualToggle.hovered ? Colors.overBackground : Colors.overSurfaceVariant
+                verticalAlignment: Text.AlignVCenter
+            }
+
+            onClicked: root.showManualLogin = !root.showManualLogin
+        }
+
+        Text {
+            Layout.fillWidth: true
+            visible: root.canLogIn && root.showManualLogin
+            text: "In the browser, right-click the “Continue” button, copy the link, and paste "
+                + "it here. It starts with nordvpn://"
+            font.family: Config.theme.font
+            font.pixelSize: Styling.fontSize(-3)
+            color: Colors.overSurfaceVariant
+            wrapMode: Text.Wrap
+        }
+
+        // Reuses SearchInput rather than hand-rolling a TextField, per the components AGENTS.md
+        // reuse rule; it already carries the theme's focus, placeholder and accept handling.
+        SearchInput {
+            id: callbackInput
+            Layout.fillWidth: true
+            visible: root.canLogIn && root.showManualLogin
+            implicitHeight: 36
+            variant: "common"
+            placeholderText: "Paste the nordvpn:// link"
+            iconText: Icons.link
+
+            // Clear only on success. A rejected link stays in the field so a mis-copy can be
+            // corrected instead of re-pasted from scratch.
+            onAccepted: {
+                if (NordVpnService.loginWithCallback(callbackInput.text))
+                    callbackInput.clear();
+            }
+        }
+
+        Button {
+            id: callbackSubmit
+            visible: root.canLogIn && root.showManualLogin
+            Layout.fillWidth: true
+            flat: true
+            implicitHeight: 28
+            // Not gated on loginPending: the whole point of this path is recovering from a
+            // browser hand-back that never arrived, which is exactly when loginPending is set.
+            enabled: callbackInput.text.trim() !== ""
+
+            background: StyledRect {
+                variant: callbackSubmit.hovered ? "focus" : "common"
+                radius: Styling.radius(-2)
+            }
+
+            contentItem: Text {
+                text: "Finish logging in"
+                font.family: Config.theme.font
+                font.pixelSize: Styling.fontSize(-2)
+                color: callbackSubmit.enabled ? Colors.overBackground : Colors.outline
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+            }
+
+            onClicked: {
+                if (NordVpnService.loginWithCallback(callbackInput.text))
+                    callbackInput.clear();
+            }
         }
     }
 }

@@ -165,7 +165,12 @@ Singleton {
         // is exactly when the UI most needs fresh data.
         if (!root.available || !root.enabled || root.isReading)
             return;
-        if (statusProc.running || settingsProc.running)
+        // All three parts, not just two. accountProc was missing here, and it is the slowest
+        // of the three: a refresh could re-arm refreshPartsRemaining to 3 while the previous
+        // account read was still in flight, so that stale reply decremented the NEW budget and
+        // isReading cleared one part early - defeating the invariant finishRefreshPart() exists
+        // to hold, which is that VpnService never reads a half-refreshed snapshot.
+        if (statusProc.running || settingsProc.running || accountProc.running)
             return;
 
         root.isReading = true;
@@ -338,26 +343,28 @@ Singleton {
         return true;
     }
 
-    function toggle(): void {
-        if (root.permissionDenied || root.isMutating)
-            return;
-        if (root.connected)
-            root.disconnect();
-        else
-            root.connectTo(Config.system.nordvpn.preferredCountry, root.p2pPreferred);
-    }
-
     // `nordvpn login` does NOT open a browser. It prints
     //     Continue in the browser: https://api.nordvpn.com/v1/users/oauth/login-redirect?...
     // to stdout and exits 0. Running it detached threw that line away, so clicking "Log in"
     // did visibly nothing. Capture the output, pull the URL out, and hand it to the desktop's
     // default handler via xdg-open - the same idiom TailscaleService uses for its admin
     // console link.
+    //
+    // Opening the URL is only HALF the flow, and the other half is not ours: the browser
+    // finishes by handing `nordvpn://login?...&exchange_token=...` back to the desktop, which
+    // must route it to `nordvpn click`. When that hop is broken the browser shows its
+    // "open this link" prompt, the user accepts, and nothing happens - see loginWithCallback()
+    // for the escape hatch, and lab/check-prereqs.sh for detecting the broken hop.
     function login(): void {
-        if (!root.available || !root.enabled || root.isMutating)
+        // loginPending, not just isMutating: login() does not run through runMutation, so
+        // isMutating is never set here and two quick clicks would otherwise start two OAuth
+        // attempts and open two browser tabs.
+        if (!root.available || !root.enabled || root.isMutating || root.loginPending)
             return;
 
         root.loginPending = true;
+        // A failed earlier attempt must not keep its error on screen while a new one runs.
+        root.lastError = "";
         loginPollTimer.restart();
 
         root.runAsync(["nordvpn", "login"]).then(output => {
@@ -375,6 +382,47 @@ Singleton {
             root.loginPending = false;
             root.handleMutationError(error);
         });
+    }
+
+    // The manual completion path, for when the browser's hand-back never reaches the CLI.
+    // `nordvpn login --callback "<url>"` is NordVPN's own documented remedy ("Complete the
+    // login manually if your browser fails to open the app"): the user copies the link behind
+    // the browser's "Continue" button and pastes it here.
+    //
+    // This exists because the hand-back is genuinely fragile and is NOT something the widget
+    // can repair. On Bostrom it was broken outright: /usr/share/applications/nordvpn.desktop
+    // declares `Terminal=true`, so GLib refuses to launch `nordvpn click` unless it recognizes
+    // an installed terminal - and it knows nothing about kitty or alacritty, which is all this
+    // machine has. `gio launch` failed with "Unable to find terminal required for application"
+    // while the browser reported success, which is exactly the reported symptom: log in, click
+    // Continue, accept the prompt, stay logged out.
+    //
+    // No shell is involved, so the URL is passed as a single argv element and the quoting the
+    // CLI's help asks for is neither needed nor wanted.
+    function loginWithCallback(url): bool {
+        if (!root.available || !root.enabled || root.isMutating)
+            return false;
+
+        const trimmed = String(url ?? "").trim();
+        // Checked before spending a process: the CLI answers a malformed argument with
+        // "Expected a url.", which tells the user nothing about what went wrong.
+        if (!/^nordvpn:\/\/\S+$/.test(trimmed)) {
+            root.lastError = "That does not look like a NordVPN login link. "
+                + "It should start with nordvpn://";
+            return false;
+        }
+
+        root.loginPending = true;
+        root.lastError = "";
+
+        root.runAsync(["nordvpn", "login", "--callback", trimmed]).then(() => {
+            // Success is confirmed by the account read, not assumed here.
+            root.refresh();
+        }).catch(error => {
+            root.loginPending = false;
+            root.handleMutationError(error);
+        });
+        return true;
     }
 
     // Matches any http(s) URL in the CLI's output rather than the surrounding prose, so a
@@ -570,10 +618,20 @@ Singleton {
                 root.lastError = "";
                 // Not a login problem, so stop claiming we are waiting on a browser.
                 root.loginPending = false;
-            } else if (/not logged in|log in/i.test(combined)) {
+            // Anchored phrases, not a bare "log in" substring. `nordvpn status` is the one
+            // read that runs while CONNECTED, and the CLI is happy to append promotional or
+            // hint lines to it; a bare match would let any of them demote a live tunnel to
+            // "logged out" and hide the whole panel behind the setup card. Missing an unusual
+            // phrasing here is cheap because `nordvpn account` is the authoritative signal and
+            // needsLogin ORs the two.
+            } else if (/not logged in|please log in|log in to nordvpn/i.test(combined)) {
                 root.state = "loggedOut";
                 root.daemonReachable = true;
-                root.lastError = "";
+                // Same rule as the success branch below: a mutation's error must survive the
+                // refresh that mutation triggered. Clearing unconditionally here meant a
+                // connect that failed on a logged-out account lost its reason immediately.
+                if (!root.errorFromMutation)
+                    root.lastError = "";
             } else if (/daemon|socket|connection refused/i.test(combined)) {
                 root.daemonReachable = false;
                 root.state = "error";

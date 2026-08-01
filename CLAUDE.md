@@ -256,6 +256,32 @@ own `update` command in this clone. After any sync, re-run the shell under
     remote sessions — suspend takes SSH and Tailscale with it. Do not "helpfully" restore
     them. Note this is the live machine config, not `config/defaults/system.js`; the
     shipped defaults still carry the listeners, which is correct for other users.
+12. **A `Terminal=true` desktop file cannot be launched on Bostrom at all.** GLib only
+    launches terminal applications through a terminal it recognizes, and its built-in
+    list (`xdg-terminal-exec`, `gnome-terminal`, `xterm`, …) matches nothing here —
+    Bostrom has only kitty and alacritty, and `$TERMINAL` is unset. `gio launch` fails
+    with *"Unable to find terminal required for application"*.
+
+    This bit NordVPN login, and the failure is silent in the worst way: browser login
+    ends by handing `nordvpn://login?…&exchange_token=…` back to the desktop for
+    `nordvpn click`, and `/usr/share/applications/nordvpn.desktop` ships
+    `Terminal=true`. The browser shows its "open this link" prompt, reports success, and
+    the user stays logged out with nothing in any log. Fixed with `Terminal=false`
+    overrides in **both** data homes — the real one and the lab sandbox's, because
+    `run-isolated.sh` repoints `XDG_DATA_HOME` and a browser the shell spawns inherits
+    it:
+    ```bash
+    for d in ~/.local/share ~/.local/share/ambxst-lab/home/.local/share; do
+        mkdir -p "$d/applications"
+        sed 's/^Terminal=true/Terminal=false/' /usr/share/applications/nordvpn.desktop \
+            > "$d/applications/nordvpn.desktop"
+        update-desktop-database "$d/applications"
+    done
+    ```
+    `lab/check-prereqs.sh` now checks both homes for this. A package update to
+    `nordvpn` will not clobber the overrides, but suspect them first if login regresses.
+    Generalize the lesson: any URI-handler hand-off we rely on needs `gio launch`
+    tested explicitly, because every layer above it reports success.
 
 ## Conventions worth restating
 

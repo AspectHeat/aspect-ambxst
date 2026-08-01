@@ -84,6 +84,18 @@ StyledRect {
                     required property int index
 
                     Layout.fillHeight: true
+                    // Segments must TILE the control, so they have to grow with it. Without
+                    // this, a host setting `Layout.fillWidth: true` on the SegmentedSwitch
+                    // stretched only the layout's cells: RowLayout clamps a non-filling item
+                    // to its preferred width and pins it to the cell origin, so the segments
+                    // ended up scattered with dead space between and after them. Measured on
+                    // Bostrom in a 581px control: segment 0 at x=0 w=88, segment 1 at x=344
+                    // w=61, 176px of empty bar to the right. The sliding highlight tracks its
+                    // segment faithfully, so it inherited the gap and read as a stub pinned to
+                    // the left of a wide bar - the symptom that survived fixing the itemAt()
+                    // binding below. Content-sized hosts are unaffected: with no surplus to
+                    // distribute, a filling item still settles at its preferred width.
+                    Layout.fillWidth: true
                     Layout.minimumWidth: root.buttonSize
                     Layout.preferredWidth: contentRow.implicitWidth + 16 // Add some padding
 

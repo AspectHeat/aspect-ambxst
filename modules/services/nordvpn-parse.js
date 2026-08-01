@@ -96,9 +96,15 @@ function parseStatus(output) {
 // Verified: logged out -> exit 1, stdout "You're not logged in."
 // A logged-in account prints subscription details, which we neither need nor want, so
 // only the boolean is derived. Never parse or retain the email address.
+// Phrases are anchored rather than matched as bare substrings. The old pattern also accepted
+// "log in" and "login" anywhere in the output, which is a false positive waiting to happen:
+// this text is whatever `nordvpn account` prints for a LOGGED-IN account, and one promotional
+// line or renewal URL containing "login" would report the user as logged out and pin the setup
+// card open right after a successful login. Neither loose alternative was doing any work - the
+// observed logged-out output is "You're not logged in.", which contains neither of them.
 function parseAccount(output, exitCode) {
     var text = String(output ?? "");
-    if (/not logged in|log in|login/i.test(text))
+    if (/not logged in|please log in|log in to nordvpn/i.test(text))
         return { loggedIn: false, daemonReachable: true };
 
     // Distinguish "daemon unreachable" from "logged out": the former is not a login
