@@ -3,6 +3,9 @@ var data = {
     "tool": "none",
     "extraModels": [],
     "defaultModel": "gemini-2.0-flash",
+    "hermesEndpoint": "http://127.0.0.1:8642/v1",
+    "customEndpoint": "",
+    "customCurlTemplate": "",
     "sidebarWidth": 400,
     "sidebarPosition": "right",
     "sidebarPinnedOnStartup": false

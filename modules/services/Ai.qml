@@ -5,6 +5,8 @@ import Quickshell.Io
 import qs.config
 import qs.modules.services
 import "ai"
+import "ai/markdown.js" as Markdown
+import "ai/message-utils.js" as MessageUtils
 import "ai/strategies"
 
 Singleton {
@@ -25,6 +27,8 @@ Singleton {
     property bool isRestored: false
 
     onCurrentModelChanged: {
+        if (activeRequest)
+            cancelActiveRequest(true);
         if (persistenceReady && currentModel && isRestored) {
             StateService.set("lastAiModel", currentModel.model);
         }
@@ -102,6 +106,7 @@ Singleton {
     property GroqApiStrategy groqStrategy: GroqApiStrategy {}
     property OllamaApiStrategy ollamaStrategy: OllamaApiStrategy {}
     property MiniMaxApiStrategy minimaxStrategy: MiniMaxApiStrategy {}
+    property HermesApiStrategy hermesStrategy: HermesApiStrategy {}
 
     property ApiStrategy currentStrategy: openaiStrategy
 
@@ -114,6 +119,7 @@ Singleton {
         case "groq": return groqStrategy;
         case "ollama": return ollamaStrategy;
         case "minimax": return minimaxStrategy;
+        case "hermes": return hermesStrategy;
         case "custom": return openaiStrategy; // custom endpoints use OpenAI-compatible format by default
         default: return openaiStrategy;
         }
@@ -133,13 +139,32 @@ Singleton {
     property bool isLoading: false
     property string lastError: ""
     property string responseBuffer: ""
+    property string pendingDisplayBuffer: ""
 
-    // Current Chat
-    property var currentChat: []
+    // Runtime chat state. The array contains stable IDs only; message objects are
+    // reactive QtObjects and are never replaced while a response streams.
+    property var messageIDs: []
+    property var messageByID: ({})
     property string currentChatId: ""
+    property int nextMessageSerial: 0
 
-    // Chat History List (files)
+    property int requestGeneration: 0
+    property var activeRequest: null
+    property var pendingRequestPayload: null
+    property bool requestProcessBusy: false
+    property bool curlProcessBusy: false
+    property int streamChunkCount: 0
+    property int streamFlushCount: 0
+    property int requestFinishCount: 0
+    property int createdMessageCount: 0
+    property int destroyedMessageCount: 0
+
     property var chatHistory: []
+    property var saveQueue: []
+    property var activeSave: null
+    property int loadGeneration: 0
+    property string pendingLoadId: ""
+    property bool loadProcessBusy: false
 
     FileView {
         id: chatFileView
@@ -151,32 +176,180 @@ Singleton {
         printErrors: false
     }
 
+    Timer {
+        id: streamFlushTimer
+        interval: 50
+        repeat: false
+        onTriggered: root.flushStream(root.activeRequest)
+    }
+
+    // ============================================
+    // MESSAGE OWNERSHIP
+    // ============================================
+
+    function newMessageId() {
+        nextMessageSerial++;
+        return currentChatId + "-" + Date.now().toString() + "-" + nextMessageSerial.toString();
+    }
+
+    function messageAt(index) {
+        if (index < 0 || index >= messageIDs.length)
+            return null;
+        return messageByID[messageIDs[index]] || null;
+    }
+
+    function messageForId(messageId) {
+        return messageByID[messageId] || null;
+    }
+
+    function createMessage(plainMessage, options) {
+        let plain = MessageUtils.cloneValue(plainMessage || {}) || {};
+        let opts = options || {};
+        let storedContent = plain.content === undefined || plain.content === null ? "" : String(plain.content);
+        let rawContent = plain.rawContent === undefined || plain.rawContent === null ? storedContent : String(plain.rawContent);
+        let content = plain.rawContent === undefined || plain.rawContent === null
+            ? Markdown.displayContent(rawContent) : storedContent;
+        let message = aiMessageFactory.createObject(root, {
+            messageId: opts.messageId || newMessageId(),
+            role: plain.role || "assistant",
+            content: content,
+            rawContent: rawContent,
+            done: opts.done === undefined ? true : opts.done,
+            thinking: opts.thinking === true,
+            model: plain.model || "",
+            functionCall: plain.functionCall,
+            functionPending: plain.functionPending === true,
+            functionApproved: plain.functionApproved === true,
+            name: plain.name || "",
+            attachments: plain.attachments,
+            geminiParts: plain.geminiParts,
+            fileMimeType: plain.fileMimeType || "",
+            fileUri: plain.fileUri || "",
+            localFilePath: plain.localFilePath || "",
+            functionName: plain.functionName || "",
+            functionResponse: plain.functionResponse || "",
+            annotations: plain.annotations,
+            annotationSources: plain.annotationSources,
+            searchQueries: plain.searchQueries,
+            visibleToUser: plain.visibleToUser !== false,
+            toolStatus: opts.toolStatus || "",
+            sourceData: plain
+        });
+        if (message)
+            createdMessageCount++;
+        return message;
+    }
+
+    function appendMessage(plainMessage, options) {
+        let message = createMessage(plainMessage, options);
+        if (!message)
+            return null;
+        let nextMap = Object.assign({}, messageByID);
+        nextMap[message.messageId] = message;
+        messageByID = nextMap;
+        messageIDs = messageIDs.concat([message.messageId]);
+        chatModelChanged();
+        return message;
+    }
+
+    function destroyMessage(message) {
+        if (!message)
+            return;
+        destroyedMessageCount++;
+        Qt.callLater(() => message.destroy());
+    }
+
+    function removeMessagesFrom(index) {
+        if (index < 0 || index >= messageIDs.length)
+            return;
+        let removedIds = messageIDs.slice(index);
+        messageIDs = messageIDs.slice(0, index);
+        chatModelChanged();
+        let nextMap = Object.assign({}, messageByID);
+        let removedMessages = [];
+        for (let i = 0; i < removedIds.length; i++) {
+            if (nextMap[removedIds[i]])
+                removedMessages.push(nextMap[removedIds[i]]);
+            delete nextMap[removedIds[i]];
+        }
+        messageByID = nextMap;
+        for (let i = 0; i < removedMessages.length; i++)
+            destroyMessage(removedMessages[i]);
+    }
+
+    function clearChat() {
+        let oldMap = messageByID;
+        let oldIds = messageIDs.slice();
+        messageIDs = [];
+        chatModelChanged();
+        messageByID = ({});
+        for (let i = 0; i < oldIds.length; i++)
+            destroyMessage(oldMap[oldIds[i]]);
+    }
+
+    function replaceChat(plainMessages) {
+        let source = Array.isArray(plainMessages) ? plainMessages : [];
+        let oldMap = messageByID;
+        let oldIds = messageIDs.slice();
+        let nextMap = ({});
+        let nextIds = [];
+        for (let i = 0; i < source.length; i++) {
+            let message = createMessage(source[i], { done: true });
+            if (!message)
+                continue;
+            nextMap[message.messageId] = message;
+            nextIds.push(message.messageId);
+        }
+        messageByID = nextMap;
+        messageIDs = nextIds;
+        chatModelChanged();
+        for (let i = 0; i < oldIds.length; i++)
+            destroyMessage(oldMap[oldIds[i]]);
+    }
+
+    function serializeMessage(message) {
+        return MessageUtils.serializeMessage(message);
+    }
+
+    function serializeCurrentChat() {
+        let output = [];
+        for (let i = 0; i < messageIDs.length; i++) {
+            let message = messageByID[messageIDs[i]];
+            if (message)
+                output.push(serializeMessage(message));
+        }
+        return output;
+    }
+
+    function messagesForApi() {
+        let output = [];
+        for (let i = 0; i < messageIDs.length; i++) {
+            let message = messageByID[messageIDs[i]];
+            if (message)
+                output.push(MessageUtils.messageForApi(message));
+        }
+        return output;
+    }
+
     // ============================================
     // TOOLS
     // ============================================
 
     function regenerateResponse(index) {
-        if (index < 0 || index >= currentChat.length)
+        if (index < 0 || index >= messageIDs.length)
             return;
-
-        let newChat = currentChat.slice(0, index);
-        currentChat = newChat;
-
-        isLoading = true;
+        cancelActiveRequest(true);
+        removeMessagesFrom(index);
         lastError = "";
         makeRequest();
     }
 
     function updateMessage(index, newContent) {
-        if (index < 0 || index >= currentChat.length)
+        let message = messageAt(index);
+        if (!message)
             return;
-
-        let newChat = Array.from(currentChat);
-        let msg = newChat[index];
-        msg.content = newContent;
-        newChat[index] = msg;
-
-        currentChat = newChat;
+        message.content = newContent;
+        message.rawContent = newContent;
         saveCurrentChat();
     }
 
@@ -276,46 +449,41 @@ Singleton {
     }
 
     function pushSystemMessage(text) {
-        let newChat = Array.from(currentChat);
-        newChat.push({
+        appendMessage({
             role: "system",
             content: text
         });
-        currentChat = newChat;
     }
 
     // Function Call Handling
     function approveCommand(index) {
-        let msg = currentChat[index];
-        if (!msg.functionCall)
+        let message = messageAt(index);
+        if (!message || !message.functionCall)
             return;
-
-        let newChat = Array.from(currentChat);
-        newChat[index].functionPending = false;
-        newChat[index].functionApproved = true;
-        currentChat = newChat;
+        message.functionPending = false;
+        message.functionApproved = true;
         saveCurrentChat();
 
-        let args = msg.functionCall.args;
-        if (msg.functionCall.name === "run_shell_command") {
+        let args = message.functionCall.args;
+        if (message.functionCall.name === "run_shell_command") {
             commandExecutionProc.command = ["bash", "-c", args.command];
-            commandExecutionProc.targetIndex = index;
+            commandExecutionProc.targetMessageId = message.messageId;
+            commandExecutionProc.targetChatId = currentChatId;
             commandExecutionProc.running = true;
         }
     }
 
     function rejectCommand(index) {
-        let newChat = Array.from(currentChat);
-        newChat[index].functionPending = false;
-        newChat[index].functionApproved = false;
-
-        newChat.push({
+        let message = messageAt(index);
+        if (!message || !message.functionCall)
+            return;
+        message.functionPending = false;
+        message.functionApproved = false;
+        appendMessage({
             role: "function",
-            name: newChat[index].functionCall.name,
+            name: message.functionCall.name,
             content: "User rejected the command execution."
         });
-
-        currentChat = newChat;
         saveCurrentChat();
         makeRequest();
     }
@@ -325,7 +493,7 @@ Singleton {
             return;
         if (processCommand(text))
             return;
-        isLoading = true;
+        cancelActiveRequest(true);
         lastError = "";
         let userMsg = {
             role: "user",
@@ -333,40 +501,38 @@ Singleton {
         };
         if (attachments && attachments.length > 0)
             userMsg.attachments = attachments;
-        let newChat = Array.from(currentChat);
-        newChat.push(userMsg);
-        currentChat = newChat;
+        appendMessage(userMsg);
         saveCurrentChat();
         makeRequest();
     }
 
     function makeRequest() {
-        let apiKey = getApiKey(currentModel);
-        if (!apiKey && currentModel.requires_key) {
-            lastError = "API Key missing for " + currentModel.name + ". Add it in Settings or set " + (currentModel.key_id || "the environment variable") + ".";
+        if (!currentModel) {
+            lastError = "No AI model is available. Configure a provider in Settings.";
             isLoading = false;
-
-            let errChat = Array.from(currentChat);
-            errChat.push({
-                role: "assistant",
-                content: "Error: " + lastError
-            });
-            currentChat = errChat;
+            appendMessage({ role: "assistant", content: "Error: " + lastError });
             return;
         }
 
-        // Determine endpoint — Gemini streaming uses a different endpoint
-        let endpoint;
-        let isGemini = currentModel.provider === "gemini";
-        if (isGemini && geminiStrategy._getStreamEndpoint) {
-            endpoint = geminiStrategy._getStreamEndpoint(currentModel, apiKey);
-        } else {
-            endpoint = currentStrategy.getEndpoint(currentModel, apiKey);
+        cancelActiveRequest(true);
+        let requestModel = currentModel;
+        let requestStrategy = getStrategyForProvider(requestModel.provider);
+        let apiKey = getApiKey(requestModel);
+        if (!apiKey && requestModel.requires_key) {
+            lastError = "API Key missing for " + requestModel.name + ". Add it in Settings or set " + (requestModel.key_id || "the environment variable") + ".";
+            isLoading = false;
+            appendMessage({ role: "assistant", content: "Error: " + lastError });
+            return;
         }
 
-        let headers = currentStrategy.getHeaders(apiKey);
+        let endpoint;
+        let isGemini = requestModel.provider === "gemini";
+        if (isGemini && geminiStrategy._getStreamEndpoint) {
+            endpoint = geminiStrategy._getStreamEndpoint(requestModel, apiKey);
+        } else {
+            endpoint = requestStrategy.getEndpoint(requestModel, apiKey);
+        }
 
-        // Build messages array
         let messages = [];
         if (Config.ai.systemPrompt) {
             messages.push({
@@ -374,84 +540,223 @@ Singleton {
                 content: Config.ai.systemPrompt
             });
         }
+        messages = messages.concat(messagesForApi());
 
-        for (let i = 0; i < currentChat.length; i++) {
-            let msg = currentChat[i];
-            let apiMsg = {
-                role: msg.role,
-                content: msg.content
-            };
-            if (msg.attachments)
-                apiMsg.attachments = msg.attachments;
-            if (msg.functionCall)
-                apiMsg.functionCall = msg.functionCall;
-            if (msg.geminiParts)
-                apiMsg.geminiParts = msg.geminiParts;
-            if (msg.name)
-                apiMsg.name = msg.name;
-            messages.push(apiMsg);
-        }
-
-        // Build body — always use streaming
-        let body = currentStrategy.getStreamBody(messages, currentModel, systemTools);
-
-        // Reset streaming buffer
-        responseBuffer = "";
-
-        // Add placeholder assistant message for streaming
-        let streamChat = Array.from(currentChat);
-        streamChat.push({
+        let assistantMessage = appendMessage({
             role: "assistant",
             content: "",
-            model: currentModel ? currentModel.name : "Unknown"
-        });
-        currentChat = streamChat;
+            model: requestModel.name
+        }, { done: false, thinking: true });
+        if (!assistantMessage)
+            return;
 
-        writeTempBody(JSON.stringify(body), headers, endpoint);
+        requestGeneration++;
+        let request = {
+            generation: requestGeneration,
+            chatId: currentChatId,
+            messageId: assistantMessage.messageId,
+            modelId: requestModel.model,
+            provider: requestModel.provider,
+            strategy: requestStrategy,
+            toolCalls: ({}),
+            finished: false
+        };
+        activeRequest = request;
+        isLoading = true;
+        responseBuffer = "";
+        pendingDisplayBuffer = "";
+        if (requestStrategy.resetStream)
+            requestStrategy.resetStream();
+
+        let headers = requestModel.provider === "hermes"
+            ? hermesStrategy.getHeadersForSession(apiKey, currentChatId)
+            : requestStrategy.getHeaders(apiKey);
+        let body = requestStrategy.getStreamBody(messages, requestModel, systemTools);
+        let customCurl = requestModel.customCurlTemplate || KeyStore.getCustomCurl(requestModel.provider) || "";
+        writeTempBody(JSON.stringify(body), headers, endpoint, request, apiKey, customCurl);
     }
 
-    function writeTempBody(jsonBody, headers, endpoint) {
-        requestProcess.command = ["/usr/bin/mkdir", "-p", tmpDir];
-        requestProcess.step = "mkdir";
-        requestProcess.payload = {
+    function isRequestCurrent(request) {
+        return request !== null && activeRequest !== null
+            && request.generation === requestGeneration
+            && activeRequest.generation === request.generation
+            && request.chatId === currentChatId
+            && activeRequest.modelId === request.modelId
+            && activeRequest.provider === request.provider
+            && activeRequest.strategy === request.strategy
+            && messageForId(request.messageId) !== null;
+    }
+
+    function flushStream(request) {
+        if (!isRequestCurrent(request) || pendingDisplayBuffer === "")
+            return;
+        let message = messageForId(request.messageId);
+        if (!message)
+            return;
+        message.rawContent = responseBuffer;
+        message.content = Markdown.displayContent(responseBuffer);
+        pendingDisplayBuffer = "";
+        streamFlushCount++;
+    }
+
+    function accumulateToolCalls(request, deltas) {
+        if (!deltas)
+            return;
+        for (let i = 0; i < deltas.length; i++) {
+            let delta = deltas[i];
+            let index = delta.index === undefined ? i : delta.index;
+            let key = index.toString();
+            let current = request.toolCalls[key] || { name: "", arguments: "" };
+            if (delta.function) {
+                if (delta.function.name)
+                    current.name += delta.function.name;
+                if (delta.function.arguments)
+                    current.arguments += delta.function.arguments;
+            }
+            request.toolCalls[key] = current;
+        }
+    }
+
+    function applyToolCall(request) {
+        let keys = Object.keys(request.toolCalls || {}).sort();
+        if (keys.length === 0)
+            return;
+        let buffered = request.toolCalls[keys[0]];
+        if (!buffered || !buffered.name)
+            return;
+        let args = ({});
+        try {
+            args = buffered.arguments ? JSON.parse(buffered.arguments) : ({});
+        } catch (e) {
+            args = { raw: buffered.arguments };
+        }
+        let message = messageForId(request.messageId);
+        if (message) {
+            message.functionCall = { name: buffered.name, args: args };
+            message.functionPending = true;
+            message.functionApproved = false;
+        }
+    }
+
+    function finishRequest(request, exitCode, stderrText, explicitError) {
+        if (!isRequestCurrent(request) || request.finished)
+            return false;
+        request.finished = true;
+        streamFlushTimer.stop();
+        flushStream(request);
+        applyToolCall(request);
+
+        let message = messageForId(request.messageId);
+        let errorText = explicitError || (exitCode !== 0 ? stderrText : "");
+        if (errorText) {
+            lastError = exitCode !== 0 ? "Network Request Failed: " + errorText : errorText;
+            if (message && message.content === "") {
+                message.content = "Error: " + lastError;
+                message.rawContent = message.content;
+            }
+        } else if (message && message.content === "" && !message.functionCall) {
+            message.content = "No response received from the API.";
+            message.rawContent = message.content;
+        }
+        if (message) {
+            message.done = true;
+            message.thinking = false;
+            message.toolStatus = "";
+        }
+        isLoading = false;
+        activeRequest = null;
+        responseBuffer = "";
+        pendingDisplayBuffer = "";
+        requestFinishCount++;
+        saveCurrentChat(request.chatId);
+        return true;
+    }
+
+    function cancelActiveRequest(preservePartial) {
+        let request = activeRequest;
+        if (request && isRequestCurrent(request)) {
+            streamFlushTimer.stop();
+            if (preservePartial) {
+                flushStream(request);
+                let message = messageForId(request.messageId);
+                if (message) {
+                    message.done = true;
+                    message.thinking = false;
+                    message.toolStatus = "";
+                }
+                saveCurrentChat(request.chatId);
+            }
+        }
+        requestGeneration++;
+        activeRequest = null;
+        pendingRequestPayload = null;
+        responseBuffer = "";
+        pendingDisplayBuffer = "";
+        streamFlushTimer.stop();
+        isLoading = false;
+        if (requestProcess.running)
+            requestProcess.running = false;
+        if (curlProcess.running)
+            curlProcess.running = false;
+    }
+
+    function writeTempBody(jsonBody, headers, endpoint, request, apiKey, customCurl) {
+        pendingRequestPayload = {
             body: jsonBody,
             headers: headers,
-            endpoint: endpoint
+            endpoint: endpoint,
+            request: request,
+            apiKey: apiKey,
+            customCurl: customCurl,
+            bodyPath: tmpDir + "/body-" + request.generation + ".json"
         };
-        requestProcess.running = true;
+        tryStartPendingRequest();
     }
 
     function executeRequest(payload) {
-        let bodyPath = tmpDir + "/body.json";
-        bodyFileView.path = bodyPath;
+        if (!isRequestCurrent(payload.request))
+            return;
+        bodyFileView.path = payload.bodyPath;
         bodyFileView.setText(payload.body);
         Qt.callLater(() => runCurl(payload));
     }
 
+    function tryStartPendingRequest() {
+        if (!pendingRequestPayload || requestProcessBusy || curlProcessBusy)
+            return;
+        let payload = pendingRequestPayload;
+        if (!isRequestCurrent(payload.request)) {
+            pendingRequestPayload = null;
+            return;
+        }
+        pendingRequestPayload = null;
+        requestProcess.payload = payload;
+        requestProcess.command = ["/usr/bin/mkdir", "-p", tmpDir];
+        requestProcessBusy = true;
+        requestProcess.running = true;
+    }
+
     function runCurl(payload) {
-        let bodyPath = tmpDir + "/body.json";
-        let headerArgs = payload.headers.map(h => "-H \"" + h + "\"").join(" ");
-
-        // Check for custom curl template
-        let customCurl = "";
-        if (currentModel && currentModel.customCurlTemplate) {
-            customCurl = currentModel.customCurlTemplate;
-        } else if (currentModel && KeyStore.getCustomCurl(currentModel.provider)) {
-            customCurl = KeyStore.getCustomCurl(currentModel.provider);
-        }
-
-        let curlCmd;
-        if (customCurl) {
-            // Replace placeholders in custom curl
-            curlCmd = customCurl
-                .replace("{{BODY_PATH}}", bodyPath)
+        if (!isRequestCurrent(payload.request))
+            return;
+        let command = [];
+        if (payload.customCurl) {
+            let curlCmd = payload.customCurl
+                .split("{{BODY_PATH}}").join(payload.bodyPath)
                 .replace("{{ENDPOINT}}", payload.endpoint)
-                .replace("{{API_KEY}}", getApiKey(currentModel));
+                .replace("{{API_KEY}}", payload.apiKey);
+            command = ["/usr/bin/bash", "-c", curlCmd];
         } else {
-            curlCmd = "curl -s --no-buffer -N -X POST \"" + payload.endpoint + "\" " + headerArgs + " -d @" + bodyPath;
+            command = ["curl", "-sS", "--no-buffer", "-N", "-X", "POST", payload.endpoint];
+            for (let i = 0; i < payload.headers.length; i++)
+                command.push("-H", payload.headers[i]);
+            command.push("--data-binary", "@" + payload.bodyPath);
         }
-
-        curlProcess.command = ["/usr/bin/bash", "-c", curlCmd];
+        curlProcess.generation = payload.request.generation;
+        curlProcess.request = payload.request;
+        curlProcess.strategy = payload.request.strategy;
+        curlProcess.command = command;
+        curlProcessBusy = true;
         curlProcess.running = true;
     }
 
@@ -461,60 +766,67 @@ Singleton {
 
     Process {
         id: requestProcess
-        property string step: ""
         property var payload: ({})
 
         onExited: exitCode => {
-            if (exitCode === 0 && step === "mkdir") {
-                executeRequest(payload);
-            } else if (exitCode !== 0) {
-                root.lastError = "Failed to create temp directory";
-                root.isLoading = false;
+            let completedPayload = payload;
+            root.requestProcessBusy = false;
+            if (root.isRequestCurrent(completedPayload.request)) {
+                if (exitCode === 0)
+                    root.executeRequest(completedPayload);
+                else
+                    root.finishRequest(completedPayload.request, exitCode, "Failed to create temp directory", "Failed to create temp directory");
             }
-        }
-    }
-
-    Process {
-        id: writeBodyProcess
-        property var payload: ({})
-        stderr: StdioCollector {
-            id: writeBodyStderr
-        }
-
-        onExited: exitCode => {
-            if (exitCode === 0) {
-                runCurl(payload);
-            } else {
-                root.lastError = "Failed to write request body: " + writeBodyStderr.text;
-                root.isLoading = false;
-            }
+            Qt.callLater(() => root.tryStartPendingRequest());
         }
     }
 
     Process {
         id: curlProcess
+        property int generation: -1
+        property var request: null
+        property var strategy: null
 
-        // Use SplitParser for streaming — emits onRead per line
         stdout: SplitParser {
             onRead: data => {
-                let result = root.currentStrategy.parseStreamChunk(data);
-
+                let request = curlProcess.request;
+                if (!root.isRequestCurrent(request) || curlProcess.generation !== request.generation)
+                    return;
+                let result = curlProcess.strategy.parseStreamChunk(data);
                 if (result.error) {
-                    root.lastError = result.error;
+                    root.finishRequest(request, 0, "", result.error);
                     return;
                 }
-
                 if (result.content) {
                     root.responseBuffer += result.content;
-                    // Update the last message in currentChat with accumulated text
-                    let newChat = Array.from(root.currentChat);
-                    if (newChat.length > 0) {
-                        newChat[newChat.length - 1].content = root.responseBuffer;
-                        root.currentChat = newChat;
+                    root.pendingDisplayBuffer += result.content;
+                    root.streamChunkCount++;
+                    let message = root.messageForId(request.messageId);
+                    if (message)
+                        message.thinking = false;
+                    if (!streamFlushTimer.running)
+                        streamFlushTimer.start();
+                }
+                if (result.toolStatus) {
+                    let message = root.messageForId(request.messageId);
+                    if (message) {
+                        message.toolStatus = result.toolStatus;
+                        message.thinking = true;
                     }
                 }
-
-                // Note: done is handled in onExited
+                if (result.toolCallDelta)
+                    root.accumulateToolCalls(request, result.toolCallDelta);
+                if (result.functionCall) {
+                    let message = root.messageForId(request.messageId);
+                    if (message) {
+                        message.functionCall = result.functionCall;
+                        message.functionPending = true;
+                        if (result.geminiParts)
+                            message.geminiParts = result.geminiParts;
+                    }
+                }
+                if (result.done)
+                    root.finishRequest(request, 0, "", result.error || "");
             }
         }
 
@@ -523,40 +835,17 @@ Singleton {
         }
 
         onExited: exitCode => {
-            root.isLoading = false;
-
-            if (exitCode === 0) {
-                // Check if we got any content during streaming
-                if (root.responseBuffer === "" && root.currentChat.length > 0) {
-                    // No streaming data received — might be non-streaming response or error
-                    // The last message is our placeholder, leave as is
-                    let lastMsg = root.currentChat[root.currentChat.length - 1];
-                    if (!lastMsg.content) {
-                        let newChat = Array.from(root.currentChat);
-                        newChat[newChat.length - 1].content = "No response received from the API.";
-                        root.currentChat = newChat;
-                    }
-                }
-
-                root.saveCurrentChat();
-            } else {
-                root.lastError = "Network Request Failed: " + curlStderr.text;
-
-                // Update the placeholder message with error
-                let errChat = Array.from(root.currentChat);
-                if (errChat.length > 0) {
-                    errChat[errChat.length - 1].content = "Error: " + root.lastError;
-                }
-                root.currentChat = errChat;
-            }
-
-            root.responseBuffer = "";
+            let completedRequest = request;
+            root.curlProcessBusy = false;
+            root.finishRequest(completedRequest, exitCode, curlStderr.text.trim(), "");
+            Qt.callLater(() => root.tryStartPendingRequest());
         }
     }
 
     Process {
         id: commandExecutionProc
-        property int targetIndex: -1
+        property string targetMessageId: ""
+        property string targetChatId: ""
 
         stdout: StdioCollector {
             id: cmdStdout
@@ -566,20 +855,19 @@ Singleton {
         }
 
         onExited: exitCode => {
+            if (targetChatId !== root.currentChatId)
+                return;
             let output = cmdStdout.text + "\n" + cmdStderr.text;
             if (output.trim() === "")
                 output = "Command executed successfully (no output).";
-
-            let msg = currentChat[targetIndex];
-            let newChat = Array.from(currentChat);
-
-            newChat.push({
+            let message = root.messageForId(targetMessageId);
+            if (!message || !message.functionCall)
+                return;
+            root.appendMessage({
                 role: "function",
-                name: msg.functionCall.name,
+                name: message.functionCall.name,
                 content: output
             });
-
-            root.currentChat = newChat;
             root.saveCurrentChat();
             root.makeRequest();
         }
@@ -590,20 +878,29 @@ Singleton {
     // ============================================
 
     function createNewChat() {
-        currentChat = [];
+        cancelActiveRequest(false);
+        cancelPendingLoad();
+        clearChat();
         currentChatId = Date.now().toString();
-        chatModelChanged();
     }
 
-    function saveCurrentChat() {
-        if (currentChat.length === 0)
+    function saveCurrentChat(capturedChatId) {
+        let chatId = capturedChatId || currentChatId;
+        if (chatId !== currentChatId || messageIDs.length === 0)
             return;
+        saveQueue = saveQueue.concat([{
+            chatId: chatId,
+            filePath: chatDir + "/" + chatId + ".json",
+            data: JSON.stringify(serializeCurrentChat(), null, 2)
+        }]);
+        startNextSave();
+    }
 
-        let filename = chatDir + "/" + currentChatId + ".json";
-        let data = JSON.stringify(currentChat, null, 2);
-
-        saveChatProcess.filePath = filename;
-        saveChatProcess.data = data;
+    function startNextSave() {
+        if (activeSave || saveChatProcess.running || saveQueue.length === 0)
+            return;
+        activeSave = saveQueue[0];
+        saveQueue = saveQueue.slice(1);
         saveChatProcess.command = ["/usr/bin/mkdir", "-p", chatDir];
         saveChatProcess.running = true;
     }
@@ -632,26 +929,48 @@ for f in files:
     }
 
     function loadChat(id) {
-        let filename = chatDir + "/" + id + ".json";
+        cancelActiveRequest(false);
+        let wasBusy = loadProcessBusy;
+        cancelPendingLoad();
+        pendingLoadId = id;
+        if (!wasBusy)
+            tryStartPendingLoad();
+    }
+
+    function cancelPendingLoad() {
+        loadGeneration++;
+        pendingLoadId = "";
+        if (loadChatProcess.running)
+            loadChatProcess.running = false;
+    }
+
+    function tryStartPendingLoad() {
+        if (loadProcessBusy || pendingLoadId === "")
+            return;
+        let id = pendingLoadId;
+        pendingLoadId = "";
         loadChatProcess.targetId = id;
-        loadChatProcess.command = ["cat", filename];
+        loadChatProcess.generation = loadGeneration;
+        loadChatProcess.command = ["cat", chatDir + "/" + id + ".json"];
+        loadProcessBusy = true;
         loadChatProcess.running = true;
     }
 
     Process {
         id: saveChatProcess
-        property string filePath: ""
-        property string data: ""
         onExited: exitCode => {
+            let completedSave = root.activeSave;
+            root.activeSave = null;
             if (exitCode === 0) {
-                if (filePath.length > 0)
-                    chatFileView.path = filePath;
-                if (data.length > 0)
-                    chatFileView.setText(data);
-                reloadHistory();
+                if (completedSave && completedSave.filePath.length > 0) {
+                    chatFileView.path = completedSave.filePath;
+                    chatFileView.setText(completedSave.data);
+                    reloadHistory();
+                }
             } else {
                 console.warn("Failed to create chat directory");
             }
+            Qt.callLater(() => root.startNextSave());
         }
     }
 
@@ -691,19 +1010,28 @@ for f in files:
     Process {
         id: loadChatProcess
         property string targetId: ""
+        property int generation: -1
         stdout: StdioCollector {
             id: loadChatStdout
         }
         onExited: exitCode => {
-            if (exitCode === 0) {
+            let completedGeneration = generation;
+            let completedTargetId = targetId;
+            root.loadProcessBusy = false;
+            if (exitCode === 0 && completedGeneration === root.loadGeneration) {
                 try {
-                    root.currentChat = JSON.parse(loadChatStdout.text);
-                    root.currentChatId = targetId;
-                    root.chatModelChanged();
+                    let messages = JSON.parse(loadChatStdout.text);
+                    Qt.callLater(() => {
+                        if (completedGeneration !== root.loadGeneration)
+                            return;
+                        root.currentChatId = completedTargetId;
+                        root.replaceChat(messages);
+                    });
                 } catch (e) {
                     console.log("Error loading chat: " + e);
                 }
             }
+            Qt.callLater(() => root.tryStartPendingLoad());
         }
     }
 
@@ -776,6 +1104,20 @@ for f in files:
             pendingFetches++;
             fetchProcessMiniMax.command = ["bash", "-c", "echo 'done'"];
             fetchProcessMiniMax.running = true;
+        }
+
+        // Hermes Agent (OpenAI-compatible local/remote gateway)
+        let hermesKey = KeyStore.getKey("hermes");
+        if (hermesKey) {
+            pendingFetches++;
+            let hermesEndpoint = (Config.ai.hermesEndpoint || "http://127.0.0.1:8642/v1").replace(/\/+$/, "");
+            fetchProcessHermes.command = [
+                "curl", "-sS", "--fail", hermesEndpoint + "/models",
+                "-H", "Authorization: Bearer " + hermesKey
+            ];
+            fetchProcessHermes.running = true;
+        } else {
+            replaceProviderModels([], "hermes");
         }
 
         if (pendingFetches === 0) {
@@ -1047,6 +1389,52 @@ for f in files:
         }
     }
 
+    Process {
+        id: fetchProcessHermes
+        stdout: StdioCollector {
+            id: fetchHermesOut
+        }
+        onExited: exitCode => {
+            let discovered = [];
+            if (exitCode === 0) {
+                try {
+                    let data = JSON.parse(fetchHermesOut.text);
+                    if (data.data && data.data.length > 0) {
+                        for (let i = 0; i < data.data.length; i++) {
+                            let item = data.data[i];
+                            if (item.id)
+                                discovered.push(item.id);
+                        }
+                    }
+                } catch (e) {
+                    console.log("Hermes model fetch error: " + e);
+                }
+            }
+            if (discovered.length === 0)
+                discovered.push("hermes-agent");
+
+            let newModels = [];
+            let endpoint = Config.ai.hermesEndpoint || "http://127.0.0.1:8642/v1";
+            for (let i = 0; i < discovered.length; i++) {
+                let id = discovered[i];
+                let model = aiModelFactory.createObject(root, {
+                    name: id,
+                    icon: Qt.resolvedUrl("../../../assets/aiproviders/openai.svg"),
+                    description: "Hermes Agent",
+                    endpoint: endpoint,
+                    model: id,
+                    provider: "hermes",
+                    requires_key: true,
+                    key_id: "API_SERVER_KEY"
+                });
+                if (model)
+                    newModels.push(model);
+            }
+            replaceProviderModels(newModels, "hermes");
+            checkFetchCompletion();
+        }
+    }
+
 
     function checkFetchCompletion() {
         pendingFetches--;
@@ -1089,6 +1477,28 @@ for f in files:
             tryRestore();
     }
 
+    function replaceProviderModels(newModels, provider) {
+        let updatedList = [];
+        let removed = [];
+        for (let i = 0; i < models.length; i++) {
+            if (models[i].provider === provider)
+                removed.push(models[i]);
+            else
+                updatedList.push(models[i]);
+        }
+        for (let i = 0; i < newModels.length; i++)
+            updatedList.push(newModels[i]);
+
+        let currentRemoved = currentModel && currentModel.provider === provider;
+        models = updatedList;
+        if (currentRemoved)
+            currentModel = updatedList.length > 0 ? updatedList[0] : null;
+        for (let i = 0; i < removed.length; i++)
+            removed[i].destroy();
+        if (!isRestored)
+            tryRestore();
+    }
+
     // Signals
     signal chatModelChanged
     signal historyModelChanged
@@ -1097,5 +1507,10 @@ for f in files:
     Component {
         id: aiModelFactory
         AiModel {}
+    }
+
+    Component {
+        id: aiMessageFactory
+        AiMessageData {}
     }
 }

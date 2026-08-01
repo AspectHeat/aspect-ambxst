@@ -39,7 +39,7 @@ Item {
 
             // Providers
             Repeater {
-                model: ["gemini", "openai", "anthropic", "mistral", "groq", "ollama", "minimax"]
+                model: ["gemini", "openai", "anthropic", "mistral", "groq", "ollama", "minimax", "hermes"]
                 delegate: StyledRect {
                     required property string modelData
                     Layout.fillWidth: true
@@ -170,6 +170,43 @@ Item {
                                         anchors.bottomMargin: clearButton.bottomPadding
                                     }
                                 }
+                            }
+                        }
+
+                        Text {
+                            visible: modelData === "hermes"
+                            text: "Hermes API Endpoint"
+                            font.family: Config.theme.font
+                            font.pixelSize: 12
+                            color: Colors.outline
+                        }
+
+                        TextField {
+                            id: hermesEndpointInput
+                            visible: modelData === "hermes"
+                            Layout.fillWidth: true
+                            text: modelData === "hermes" ? Config.ai.hermesEndpoint : ""
+                            placeholderText: "http://127.0.0.1:8642/v1"
+                            font.family: Config.theme.font
+                            color: Colors.overSurface
+                            padding: 6
+
+                            onEditingFinished: {
+                                let normalized = text.trim().replace(/\/+$/, "");
+                                Config.ai.hermesEndpoint = normalized || "http://127.0.0.1:8642/v1";
+                                Ai.fetchAvailableModels();
+                            }
+
+                            background: StyledRect {
+                                variant: "internalbg"
+                                radius: Styling.radius(4)
+                                border.width: hermesEndpointInput.activeFocus ? 2 : 0
+                                border.color: Styling.srItem("primary")
+                                anchors.fill: parent
+                                anchors.leftMargin: -parent.padding
+                                anchors.rightMargin: -parent.padding
+                                anchors.topMargin: -parent.padding
+                                anchors.bottomMargin: -parent.padding
                             }
                         }
                     }
@@ -333,17 +370,13 @@ Item {
                     TextField {
                         id: endpointInput
                         Layout.fillWidth: true
-                        text: Config.ai.customEndpoint !== undefined ? Config.ai.customEndpoint : ""
+                        text: Config.ai.customEndpoint
                         placeholderText: "e.g. https://api.example.com/v1/chat/completions"
                         font.family: Config.theme.font
                         color: Colors.overSurface
                         padding: 6
                         
-                        onTextChanged: {
-                            if (Config.ai.customEndpoint !== undefined) {
-                                Config.ai.customEndpoint = text;
-                            }
-                        }
+                        onEditingFinished: Config.ai.customEndpoint = text.trim()
                         
                         background: StyledRect {
                             variant: "internalbg"
@@ -376,17 +409,13 @@ Item {
                     TextField {
                         id: curlInput
                         Layout.fillWidth: true
-                        text: Config.ai.customCurlTemplate !== undefined ? Config.ai.customCurlTemplate : ""
+                        text: Config.ai.customCurlTemplate
                         placeholderText: "curl -X POST {{ENDPOINT}} -H 'Authorization: Bearer {{API_KEY}}' -d @{{BODY_PATH}}"
                         font.family: "Monospace"
                         color: Colors.overSurface
                         padding: 6
                         
-                        onTextChanged: {
-                            if (Config.ai.customCurlTemplate !== undefined) {
-                                Config.ai.customCurlTemplate = text;
-                            }
-                        }
+                        onEditingFinished: Config.ai.customCurlTemplate = text
                         
                         background: StyledRect {
                             variant: "internalbg"

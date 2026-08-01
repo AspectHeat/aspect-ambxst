@@ -160,12 +160,21 @@ ApiStrategy {
                 let content = json.candidates[0].content;
                 if (content && content.parts) {
                     let text = "";
+                    let functionCall = null;
                     for (let i = 0; i < content.parts.length; i++) {
                         if (content.parts[i].text)
                             text += content.parts[i].text;
+                        if (content.parts[i].functionCall)
+                            functionCall = content.parts[i].functionCall;
                     }
                     let done = json.candidates[0].finishReason === "STOP";
-                    return { content: text, done: done, error: null };
+                    return {
+                        content: text,
+                        done: done,
+                        error: null,
+                        functionCall: functionCall,
+                        geminiParts: functionCall ? content.parts : undefined
+                    };
                 }
             }
             return { content: "", done: false, error: null };

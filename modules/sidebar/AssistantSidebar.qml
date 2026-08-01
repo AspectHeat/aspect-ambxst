@@ -637,7 +637,7 @@ Item {
                                 }
                             }
                         }
-                        property bool isWelcome: Ai.currentChat.length === 0
+                        property bool isWelcome: Ai.messageIDs.length === 0
 
                         ColumnLayout {
                             anchors.bottom: inputContainer.top
@@ -682,12 +682,26 @@ Item {
 
                             ListView {
                                 id: chatView
+                                property bool followTail: true
+
+                                function nearTail() {
+                                    return atYEnd || contentY + height >= contentHeight + bottomMargin - 48;
+                                }
+
+                                function enableFollow() {
+                                    followTail = true;
+                                    Qt.callLater(() => positionViewAtEnd());
+                                }
+
                                 visible: !mainChatArea.isWelcome
-                                cacheBuffer: 1000
+                                cacheBuffer: 240
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 clip: true
-                                model: Ai.currentChat
+                                model: Ai.messageIDs.filter(messageId => {
+                                    let message = Ai.messageForId(messageId);
+                                    return message && message.visibleToUser;
+                                })
                                 spacing: 16
                                 displayMarginBeginning: 40
                                 displayMarginEnd: 40
@@ -695,23 +709,32 @@ Item {
                                 bottomMargin: mainChatArea.isWelcome ? 0 : inputContainer.height
 
                                 onCountChanged: {
-                                    Qt.callLater(() => {
-                                        positionViewAtEnd();
-                                    });
+                                    if (followTail)
+                                        Qt.callLater(() => positionViewAtEnd());
                                 }
+
+                                onContentHeightChanged: {
+                                    if (followTail)
+                                        Qt.callLater(() => positionViewAtEnd());
+                                }
+
+                                onMovementStarted: followTail = false
+                                onMovementEnded: followTail = nearTail()
 
                                 delegate: Item {
                                     id: messageDelegate
-                                    required property var modelData
+                                    required property string modelData
                                     required property int index
 
-                                    property bool isUser: modelData.role === "user"
-                                    property bool isSystem: modelData.role === "system" || modelData.role === "function"
+                                    property var message: Ai.messageForId(modelData)
+                                    property int messageIndex: Ai.messageIDs.indexOf(modelData)
+                                    property bool isUser: message && message.role === "user"
+                                    property bool isSystem: message && (message.role === "system" || message.role === "function")
                                     property bool isEditing: false
                                     property bool retryMode: false
 
                                     width: ListView.view.width
-                                    height: bubbleArea.height + 8
+                                    height: message ? bubbleArea.height + 8 : 0
 
                                     Row {
                                         anchors.left: parent.left
@@ -809,7 +832,7 @@ Item {
 
                                                     onClicked: {
                                                         if (messageDelegate.isEditing) {
-                                                            Ai.updateMessage(index, bubbleContentText.text);
+                                                            Ai.updateMessage(messageDelegate.messageIndex, bubbleContentText.text);
                                                             messageDelegate.isEditing = false;
                                                         } else {
                                                             messageDelegate.isEditing = true;
@@ -842,8 +865,8 @@ Item {
                                                     }
 
                                                     onClicked: {
-                                                        let p = Qt.createQmlObject('import Quickshell; import Quickshell.Io; Process { command: ["wl-copy", "' + modelData.content.replace(/"/g, '\\"') + '"] }', parent);
-                                                        p.running = true;
+                                                        if (messageDelegate.message)
+                                                            Quickshell.clipboardText = messageDelegate.message.content;
                                                     }
                                                 }
 
@@ -869,7 +892,10 @@ Item {
                                                         radius: Styling.radius(4)
                                                     }
 
-                                                    onClicked: Ai.regenerateResponse(index)
+                                                    onClicked: {
+                                                        chatView.enableFollow();
+                                                        Ai.regenerateResponse(messageDelegate.messageIndex);
+                                                    }
                                                 }
                                             }
 
@@ -894,44 +920,17 @@ Item {
 
                                                     ColumnLayout {
                                                         Layout.fillWidth: true
-                                                        visible: !messageDelegate.isEditing && !bubbleContentText.visible
+                                                        visible: !messageDelegate.isEditing
                                                         spacing: 8
 
                                                         Repeater {
-                                                            model: {
-                                                                let txt = modelData.content || "";
-                                                                let parts = [];
-                                                                let regex = /```(\w*)\n([\s\S]*?)```/g;
-                                                                let lastIndex = 0;
-                                                                let match;
-                                                                while ((match = regex.exec(txt)) !== null) {
-                                                                    if (match.index > lastIndex) {
-                                                                        parts.push({
-                                                                            type: "text",
-                                                                            content: txt.substring(lastIndex, match.index),
-                                                                            language: ""
-                                                                        });
-                                                                    }
-                                                                    parts.push({
-                                                                        type: "code",
-                                                                        content: match[2].trim(),
-                                                                        language: match[1] || "text"
-                                                                    });
-                                                                    lastIndex = regex.lastIndex;
-                                                                }
-                                                                if (lastIndex < txt.length) {
-                                                                    parts.push({
-                                                                        type: "text",
-                                                                        content: txt.substring(lastIndex),
-                                                                        language: ""
-                                                                    });
-                                                                }
-                                                                return parts;
-                                                            }
+                                                            model: messageDelegate.message ? messageDelegate.message.blocks : []
 
                                                             delegate: Loader {
                                                                 Layout.fillWidth: true
-                                                                sourceComponent: modelData.type === 'code' ? codeComponent : textComponent
+                                                                sourceComponent: segment.type === "code"
+                                                                    ? codeComponent
+                                                                    : (segment.type === "think" ? thinkComponent : textComponent)
 
                                                                 property var segment: modelData
 
@@ -958,16 +957,39 @@ Item {
                                                                         width: bubbleContent.width
                                                                         code: segment.content
                                                                         language: segment.language
+                                                                        highlightEnabled: messageDelegate.message && messageDelegate.message.done
+                                                                    }
+                                                                }
+
+                                                                Component {
+                                                                    id: thinkComponent
+                                                                    MessageThinkBlock {
+                                                                        width: bubbleContent.width
+                                                                        content: segment.content
+                                                                        unfinished: segment.unfinished
                                                                     }
                                                                 }
                                                             }
                                                         }
                                                     }
 
+                                                    Text {
+                                                        Layout.fillWidth: true
+                                                        visible: messageDelegate.message
+                                                            && (messageDelegate.message.toolStatus !== "" || messageDelegate.message.thinking)
+                                                        text: messageDelegate.message && messageDelegate.message.toolStatus !== ""
+                                                            ? messageDelegate.message.toolStatus
+                                                            : "Thinking…"
+                                                        color: Colors.outline
+                                                        font.family: Config.theme.font
+                                                        font.pixelSize: 12
+                                                        wrapMode: Text.Wrap
+                                                    }
+
                                                     TextEdit {
                                                         id: bubbleContentText
                                                         Layout.fillWidth: true
-                                                        text: modelData.content || ""
+                                                        text: messageDelegate.message ? messageDelegate.message.content : ""
                                                         textFormat: Text.PlainText
                                                         color: isSystem ? Colors.outline : (isUser ? Styling.srItem("primary") : Styling.srItem("secondary"))
                                                         font.family: Config.theme.font
@@ -979,7 +1001,9 @@ Item {
                                                     }
 
                                                     ColumnLayout {
-                                                        visible: modelData.functionCall !== undefined
+                                                        visible: messageDelegate.message
+                                                            && messageDelegate.message.functionCall !== undefined
+                                                            && messageDelegate.message.functionCall !== null
                                                         Layout.fillWidth: true
                                                         spacing: 4
 
@@ -1007,7 +1031,9 @@ Item {
                                                             TextEdit {
                                                                 padding: 8
                                                                 width: parent.width
-                                                                text: modelData.functionCall ? modelData.functionCall.args.command : ""
+                                                                text: messageDelegate.message && messageDelegate.message.functionCall
+                                                                    && messageDelegate.message.functionCall.args
+                                                                    ? (messageDelegate.message.functionCall.args.command || "") : ""
                                                                 font.family: "Monospace"
                                                                 color: Colors.overSurface
                                                                 readOnly: true
@@ -1016,7 +1042,7 @@ Item {
                                                         }
 
                                                         RowLayout {
-                                                            visible: modelData.functionPending === true
+                                                            visible: messageDelegate.message && messageDelegate.message.functionPending === true
                                                             Layout.alignment: Qt.AlignRight
                                                             spacing: 8
 
@@ -1024,7 +1050,7 @@ Item {
                                                                 text: "Reject"
                                                                 highlighted: true
                                                                 flat: true
-                                                                onClicked: Ai.rejectCommand(index)
+                                                                onClicked: Ai.rejectCommand(messageDelegate.messageIndex)
 
                                                                 background: StyledRect {
                                                                     variant: "error"
@@ -1045,7 +1071,7 @@ Item {
                                                                 text: "Approve"
                                                                 highlighted: true
                                                                 flat: true
-                                                                onClicked: Ai.approveCommand(index)
+                                                                onClicked: Ai.approveCommand(messageDelegate.messageIndex)
 
                                                                 background: StyledRect {
                                                                     variant: "primary"
@@ -1064,14 +1090,16 @@ Item {
                                                         }
 
                                                         Text {
-                                                            visible: modelData.functionApproved === true
+                                                            visible: messageDelegate.message && messageDelegate.message.functionApproved === true
                                                             text: "Command Approved"
                                                             color: Colors.success
                                                             font.pixelSize: 12
                                                         }
 
                                                         Text {
-                                                            visible: modelData.functionApproved === false && !modelData.functionPending
+                                                            visible: messageDelegate.message
+                                                                && messageDelegate.message.functionApproved === false
+                                                                && !messageDelegate.message.functionPending
                                                             text: "Command Rejected"
                                                             color: Colors.error
                                                             font.pixelSize: 12
@@ -1082,8 +1110,8 @@ Item {
 
                                             Text {
                                                 id: modelIndicator
-                                                visible: !isUser && !isSystem && (modelData.model ? true : false)
-                                                text: retryMode ? "Retry with another model " + Icons.caretRight : (modelData.model || "")
+                                                visible: messageDelegate.message && !isUser && !isSystem && messageDelegate.message.model !== ""
+                                                text: retryMode ? "Retry with another model " + Icons.caretRight : (messageDelegate.message ? messageDelegate.message.model : "")
                                                 color: Colors.outline
                                                 font.family: Config.theme.font
                                                 font.pixelSize: Styling.fontSize(-2)
@@ -1100,7 +1128,7 @@ Item {
 
                                                     onClicked: {
                                                         if (retryMode) {
-                                                            mainChatArea.retryIndex = index;
+                                                            mainChatArea.retryIndex = messageDelegate.messageIndex;
                                                             modelSelector.open();
                                                             retryMode = false;
                                                         } else {
@@ -1174,6 +1202,7 @@ Item {
 
                             onModelSelected: {
                                 if (mainChatArea.retryIndex > -1) {
+                                    chatView.enableFollow();
                                     Ai.regenerateResponse(mainChatArea.retryIndex);
                                     mainChatArea.retryIndex = -1;
                                 }
@@ -1466,6 +1495,7 @@ Item {
                                                 }
                                                 if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && !(event.modifiers & Qt.ShiftModifier)) {
                                                     if (text.trim().length > 0 || mainChatArea.pendingAttachments.length > 0) {
+                                                        chatView.enableFollow();
                                                         Ai.sendMessage(text.trim(), mainChatArea.pendingAttachments.length > 0 ? mainChatArea.pendingAttachments : undefined);
                                                         text = "";
                                                         mainChatArea.clearAttachments();
@@ -1523,6 +1553,7 @@ Item {
 
                                         onClicked: {
                                             if (inputField.text.trim().length > 0 || mainChatArea.pendingAttachments.length > 0) {
+                                                chatView.enableFollow();
                                                 Ai.sendMessage(inputField.text.trim(), mainChatArea.pendingAttachments.length > 0 ? mainChatArea.pendingAttachments : undefined);
                                                 inputField.text = "";
                                                 mainChatArea.clearAttachments();

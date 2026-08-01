@@ -20,9 +20,31 @@ ApiStrategy {
 
     function _formatMessages(messages) {
         let formatted = [];
+        let lastToolCallId = "";
         for (let i = 0; i < messages.length; i++) {
             let msg = messages[i];
-            if (msg.attachments && msg.attachments.length > 0) {
+            if (msg.functionCall) {
+                lastToolCallId = "call_ambxst_" + i;
+                formatted.push({
+                    role: "assistant",
+                    content: msg.content || "",
+                    tool_calls: [{
+                        id: lastToolCallId,
+                        type: "function",
+                        function: {
+                            name: msg.functionCall.name,
+                            arguments: JSON.stringify(msg.functionCall.args || {})
+                        }
+                    }]
+                });
+            } else if (msg.role === "function") {
+                formatted.push({
+                    role: "tool",
+                    tool_call_id: lastToolCallId || ("call_ambxst_" + i),
+                    name: msg.name || "tool",
+                    content: msg.content || ""
+                });
+            } else if (msg.attachments && msg.attachments.length > 0) {
                 let contentParts = [{type: "text", text: msg.content}];
                 for (let j = 0; j < msg.attachments.length; j++) {
                     let att = msg.attachments[j];
@@ -90,7 +112,7 @@ ApiStrategy {
         }
     }
 
-    function parseStreamChunk(line) {
+    function parseOpenAiStreamChunk(line) {
         let trimmed = line.trim();
         if (trimmed === "" || trimmed.startsWith("event:"))
             return { content: "", done: false, error: null };
@@ -124,5 +146,9 @@ ApiStrategy {
         } catch (e) {
             return { content: "", done: false, error: null };
         }
+    }
+
+    function parseStreamChunk(line) {
+        return parseOpenAiStreamChunk(line);
     }
 }

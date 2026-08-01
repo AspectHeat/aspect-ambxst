@@ -12,6 +12,7 @@ ColumnLayout {
     id: root
     property string code: ""
     property string language: "txt"
+    property bool highlightEnabled: true
     property alias implicitWidth: root.width
 
     spacing: 0
@@ -68,9 +69,7 @@ ColumnLayout {
                 background: null
 
                 onClicked: {
-                    let p = Qt.createQmlObject('import Quickshell; import Quickshell.Io; Process { command: ["wl-copy", "' + root.code.replace(/"/g, '\\"') + '"] }', parent);
-                    p.running = true;
-                    // Optional: Show "Copied" feedback
+                    Quickshell.clipboardText = root.code;
                     copyFeedback.visible = true;
                     copyFeedbackTimer.restart();
                 }
@@ -121,11 +120,16 @@ ColumnLayout {
             wrapMode: TextEdit.Wrap
             textFormat: TextEdit.PlainText
 
-            SyntaxHighlighter {
-                textEdit: codeText
-                repository: Repository
-                definition: Repository.definitionForName(root.language)
-                theme: Repository.theme("Breeze Dark")
+            Loader {
+                active: root.highlightEnabled
+                sourceComponent: Component {
+                    SyntaxHighlighter {
+                        textEdit: codeText
+                        repository: Repository
+                        definition: Repository.definitionForName(root.language)
+                        theme: Repository.theme("Breeze Dark")
+                    }
+                }
             }
         }
     }

@@ -1205,6 +1205,9 @@ Singleton {
             property string tool: "none"
             property list<var> extraModels: []
             property string defaultModel: "gemini-2.0-flash"
+            property string hermesEndpoint: "http://127.0.0.1:8642/v1"
+            property string customEndpoint: ""
+            property string customCurlTemplate: ""
             property int sidebarWidth: 400
             property string sidebarPosition: "right"
             property bool sidebarPinnedOnStartup: false
