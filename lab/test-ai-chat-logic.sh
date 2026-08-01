@@ -160,6 +160,7 @@ event = Hermes.parseLine('data: {"choices":[]}', "");
 check("normal SSE delegated", event.handled === false && event.pendingEvent === "");
 
 const aiSource = fs.readFileSync("modules/services/Ai.qml", "utf8");
+const configSource = fs.readFileSync("config/Config.qml", "utf8");
 const sidebarSource = fs.readFileSync("modules/sidebar/AssistantSidebar.qml", "utf8");
 const codeSource = fs.readFileSync("modules/sidebar/CodeBlock.qml", "utf8");
 check("no raw currentChat model remains", !/\bcurrentChat\b/.test(aiSource));
@@ -176,10 +177,12 @@ check("Hermes fallback publishes before discovery",
 check("overlapping model refreshes are queued",
     /if\s*\(fetchingModels\)\s*\{[\s\S]*?modelRefreshPending\s*=\s*true/.test(aiSource));
 check("curl waits for request body save",
-    /id:\s*bodyFileView[\s\S]*?onSaved:[\s\S]*?root\.runCurl\(completedPayload\)/.test(aiSource)
-    && !/bodyFileView\.setText\(payload\.body\);\s*Qt\.callLater\(\(\)\s*=>\s*runCurl/.test(aiSource));
-check("request queue waits for body writer",
-    /requestProcessBusy\s*\|\|\s*bodyWriteBusy\s*\|\|\s*curlProcessBusy/.test(aiSource));
+    /id:\s*requestBodyFileFactory[\s\S]*?onSaved:\s*root\.completeBodyWrite/.test(aiSource));
+check("each request gets an isolated body writer",
+    /requestBodyFileFactory\.createObject\(root,[\s\S]*?path:\s*payload\.bodyPath[\s\S]*?writer\.setText\(payload\.body\)/.test(aiSource));
+check("missing AI config uses enum and retries after mkdir",
+    /error\s*===\s*FileViewError\.FileNotFound[\s\S]*?aiLoader\.setText/.test(configSource)
+    && /id:\s*ensureConfigDir[\s\S]*?onExited:[\s\S]*?aiLoader\.reload/.test(configSource));
 
 if (failures.length > 0) {
     console.error(`AI chat logic: ${passed} passed, ${failures.length} failed`);

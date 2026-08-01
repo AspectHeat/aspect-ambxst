@@ -40,6 +40,7 @@ Singleton {
     property string presetDir: Qt.resolvedUrl("../assets/presets/Ambxst Default").toString().replace("file://", "")
 
     property bool pauseAutoSave: false
+    property bool configDirReady: false
 
     // Module init status
     property bool themeReady: false
@@ -89,6 +90,11 @@ Singleton {
             "cp -n '" + root.presetDir + "/system.json' '" + root.configDir + "/system.json' 2>/dev/null || true; " +
             "echo 'Preset files copied if missing'"
         ]
+        onExited: {
+            root.configDirReady = true;
+            if (!root.aiReady)
+                aiLoader.reload();
+        }
     }
 
     // Auto-migrate hyprland.json → compositor.json for existing users
@@ -1181,11 +1187,11 @@ Singleton {
                 });
             }
         }
-        onLoadFailed: {
-            if (error.toString().includes("FileNotFound") && !root.aiReady) {
-                handleMissingConfig("ai", aiLoader, AiDefaults.data, () => {
-                    root.aiReady = true;
-                });
+        onLoadFailed: error => {
+            if (error === FileViewError.FileNotFound && root.configDirReady && !root.aiReady) {
+                console.log("ai.json not found, creating default...");
+                aiLoader.setText(JSON.stringify(AiDefaults.data, null, 2));
+                root.aiReady = true;
             }
         }
         onFileChanged: {

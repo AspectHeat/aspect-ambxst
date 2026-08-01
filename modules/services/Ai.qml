@@ -152,8 +152,6 @@ Singleton {
     property var activeRequest: null
     property var pendingRequestPayload: null
     property bool requestProcessBusy: false
-    property bool bodyWriteBusy: false
-    property var bodyWritePayload: null
     property bool curlProcessBusy: false
     property int streamChunkCount: 0
     property int streamFlushCount: 0
@@ -171,31 +169,6 @@ Singleton {
     FileView {
         id: chatFileView
         printErrors: false
-    }
-
-    FileView {
-        id: bodyFileView
-        printErrors: false
-
-        onSaved: {
-            let completedPayload = root.bodyWritePayload;
-            root.bodyWritePayload = null;
-            root.bodyWriteBusy = false;
-            if (completedPayload && root.isRequestCurrent(completedPayload.request))
-                root.runCurl(completedPayload);
-            else
-                Qt.callLater(() => root.tryStartPendingRequest());
-        }
-
-        onSaveFailed: error => {
-            let completedPayload = root.bodyWritePayload;
-            root.bodyWritePayload = null;
-            root.bodyWriteBusy = false;
-            let errorText = "Failed to write request body: " + error;
-            if (completedPayload)
-                root.finishRequest(completedPayload.request, 1, errorText, errorText);
-            Qt.callLater(() => root.tryStartPendingRequest());
-        }
     }
 
     Timer {
@@ -738,14 +711,37 @@ Singleton {
     function executeRequest(payload) {
         if (!isRequestCurrent(payload.request))
             return;
-        bodyWritePayload = payload;
-        bodyWriteBusy = true;
-        bodyFileView.path = payload.bodyPath;
-        bodyFileView.setText(payload.body);
+        let writer = requestBodyFileFactory.createObject(root, {
+            path: payload.bodyPath,
+            payload: payload
+        });
+        if (!writer) {
+            let errorText = "Failed to create request body writer";
+            finishRequest(payload.request, 1, errorText, errorText);
+            return;
+        }
+        writer.setText(payload.body);
+    }
+
+    function completeBodyWrite(writer, errorText) {
+        if (!writer || writer.completed)
+            return;
+        writer.completed = true;
+        let payload = writer.payload;
+        if (errorText !== "") {
+            if (payload)
+                finishRequest(payload.request, 1, errorText, errorText);
+        } else if (payload && isRequestCurrent(payload.request)) {
+            runCurl(payload);
+        }
+        Qt.callLater(() => {
+            writer.destroy();
+            tryStartPendingRequest();
+        });
     }
 
     function tryStartPendingRequest() {
-        if (!pendingRequestPayload || requestProcessBusy || bodyWriteBusy || curlProcessBusy)
+        if (!pendingRequestPayload || requestProcessBusy || curlProcessBusy)
             return;
         let payload = pendingRequestPayload;
         if (!isRequestCurrent(payload.request)) {
@@ -1571,5 +1567,17 @@ for f in files:
     Component {
         id: aiMessageFactory
         AiMessageData {}
+    }
+
+    Component {
+        id: requestBodyFileFactory
+        FileView {
+            id: requestBodyFile
+            required property var payload
+            property bool completed: false
+            printErrors: false
+            onSaved: root.completeBodyWrite(requestBodyFile, "")
+            onSaveFailed: error => root.completeBodyWrite(requestBodyFile, "Failed to write request body: " + error)
+        }
     }
 }
