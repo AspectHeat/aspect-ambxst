@@ -15,7 +15,8 @@ var data = {
         "showInBar": false,
         "pollInterval": 20,
         "preferredMode": "standard",
-        "preferredCountry": ""
+        "preferredCountry": "",
+        "favoriteCountries": []
     },
     "vpn": {
         "handoffPolicy": "confirm"

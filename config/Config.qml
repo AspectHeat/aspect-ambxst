@@ -1023,6 +1023,9 @@ Singleton {
                 // standard rather than comparing against "standard" exactly.
                 property string preferredMode: "standard"
                 property string preferredCountry: ""
+                // NordVPN CLI country tokens, e.g. "United_States". Tokens are both the
+                // stable country identity and valid connect targets.
+                property list<string> favoriteCountries: []
             }
             property JsonObject vpn: JsonObject {
                 // "confirm" | "immediate" - whether switching providers asks first.

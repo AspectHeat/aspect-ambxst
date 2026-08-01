@@ -135,6 +135,43 @@ Item {
                 color: Styling.srItem("overprimary")
             }
 
+            // Persistent favorite toggle. Kept immediately beside the city affordance so
+            // both country-level actions live at the row's trailing edge. This is config-only
+            // and remains available while a network mutation is busy.
+            Button {
+                id: favoriteButton
+
+                flat: true
+                implicitWidth: 28
+                implicitHeight: 28
+
+                readonly property bool selected: NordVpnService.isFavorite(
+                    root.country?.token ?? "")
+
+                background: StyledRect {
+                    variant: favoriteButton.hovered ? "focus" : "common"
+                    radius: Styling.radius(-4)
+                }
+
+                contentItem: Text {
+                    text: favoriteButton.selected ? "★" : "☆"
+                    font.family: Config.theme.font
+                    font.pixelSize: Styling.fontSize(1)
+                    color: favoriteButton.selected
+                        ? Styling.srItem("overprimary") : Colors.overSurfaceVariant
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
+
+                onClicked: NordVpnService.toggleFavorite(root.country?.token ?? "")
+
+                StyledToolTip {
+                    visible: favoriteButton.hovered
+                    tooltipText: favoriteButton.selected
+                        ? "Remove from favorites" : "Add to favorites"
+                }
+            }
+
             // City drill-down. Hidden entirely when the CLI gave us no cities, per the
             // section 3 degradation rule.
             Button {

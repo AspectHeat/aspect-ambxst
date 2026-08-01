@@ -93,6 +93,93 @@ ColumnLayout {
         wrapMode: Text.Wrap
     }
 
+    // ------------------------------------------------------------ favorites
+    Button {
+        id: favoritesButton
+
+        Layout.fillWidth: true
+        flat: true
+        implicitHeight: 32
+        leftPadding: 12
+        rightPadding: 12
+
+        background: StyledRect {
+            variant: favoritesButton.hovered ? "focus" : "common"
+            radius: Styling.radius(-2)
+        }
+
+        contentItem: RowLayout {
+            spacing: 6
+
+            Text {
+                text: "Favorites"
+                font.family: Config.theme.font
+                font.pixelSize: Styling.fontSize(-1)
+                color: Colors.overBackground
+            }
+
+            Text {
+                visible: NordVpnService.favoriteCountries.length > 0
+                text: String(NordVpnService.favoriteCountries.length)
+                font.family: Config.theme.font
+                font.pixelSize: Styling.fontSize(-3)
+                color: Colors.overSurfaceVariant
+            }
+
+            Item {
+                Layout.fillWidth: true
+            }
+
+            Text {
+                text: favoritesButton.checked ? Icons.caretUp : Icons.caretDown
+                font.family: Icons.font
+                font.pixelSize: Styling.fontSize(-1)
+                color: Colors.overSurfaceVariant
+            }
+        }
+
+        checkable: true
+    }
+
+    StyledRect {
+        Layout.fillWidth: true
+        visible: favoritesButton.checked
+        implicitHeight: favoritesColumn.implicitHeight + 20
+        variant: "internalbg"
+        radius: Styling.radius(4)
+
+        ColumnLayout {
+            id: favoritesColumn
+
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.margins: 10
+            spacing: 6
+
+            Text {
+                Layout.fillWidth: true
+                visible: NordVpnService.favoriteCountries.length === 0
+                text: "Star a country below to add it here."
+                font.family: Config.theme.font
+                font.pixelSize: Styling.fontSize(-2)
+                color: Colors.overSurfaceVariant
+                wrapMode: Text.Wrap
+            }
+
+            Repeater {
+                model: NordVpnService.favoriteCountries
+
+                delegate: NordVpnCountryItem {
+                    required property var modelData
+
+                    Layout.fillWidth: true
+                    country: modelData
+                }
+            }
+        }
+    }
+
     NordVpnAdvancedCard {
         id: advancedCard
 

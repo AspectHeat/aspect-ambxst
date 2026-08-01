@@ -101,6 +101,28 @@ Singleton {
     readonly property list<NordVpnCountry> countries: []
     property list<var> sortedCountries: []
     readonly property int countryCount: root.countries.length
+    readonly property list<string> favoriteTokens: Config.system.nordvpn.favoriteCountries
+        ?? []
+    readonly property var favoriteCountries: root.sortedCountries.filter(country =>
+        root.favoriteTokens.includes(country.token))
+
+    function isFavorite(token): bool {
+        return root.favoriteTokens.includes(String(token ?? ""));
+    }
+
+    function toggleFavorite(token): void {
+        const normalized = String(token ?? "");
+        if (normalized === "")
+            return;
+
+        const next = [...root.favoriteTokens];
+        const index = next.indexOf(normalized);
+        if (index >= 0)
+            next.splice(index, 1);
+        else
+            next.push(normalized);
+        Config.system.nordvpn.favoriteCountries = next;
+    }
 
     // What the user last asked to connect to, so feedback can say "Connecting to Japan..."
     // instead of a bare spinner. Cleared on disconnect.
