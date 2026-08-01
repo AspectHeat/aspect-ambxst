@@ -69,8 +69,11 @@ Item {
     }
 
     function positionAtBeginning(): void {
-        countryList.contentY = countryList.headerItem
-            ? countryList.headerItem.y : countryList.originY;
+        // Let ListView resolve its own origin. With an inline header, headerItem.y can track
+        // the viewport after the header changes height; assigning that value back to contentY
+        // is then a no-op. positionViewAtBeginning() accounts for the newly expanded header
+        // and returns to its actual leading edge.
+        countryList.positionViewAtBeginning();
     }
 
     function focusSearchInput(): void {
