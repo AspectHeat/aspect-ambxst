@@ -130,16 +130,17 @@ Item {
                 StyledRect {
                     Layout.preferredWidth: 32
                     Layout.preferredHeight: 32
-                    variant: NordVpnService.connected ? "primary" : "internalbg"
+                    variant: "internalbg"
                     radius: Styling.radius(2)
 
-                    Text {
+                    Image {
                         anchors.centerIn: parent
-                        text: Icons.vpn
-                        font.family: Icons.font
-                        font.pixelSize: Styling.fontSize(2)
-                        color: NordVpnService.connected
-                            ? Styling.srItem("primary") : Colors.overBackground
+                        width: 28
+                        height: 28
+                        source: Qt.resolvedUrl("../../../../assets/nordvpn/nordvpn.svg")
+                        sourceSize: Qt.size(56, 56)
+                        smooth: true
+                        mipmap: true
                     }
                 }
 
@@ -218,13 +219,13 @@ Item {
 
     }
 
-    // Floating, and a sibling of BOTH the hub column and the provider Loader, because a
+    // Floating, and a sibling of BOTH the hub column and the provider Loaders, because a
     // handoff can be started from the hub or from either provider page - all three render
     // inside this item. When the confirm controls lived in the hub column (hidden whenever
     // currentSection !== ""), confirming a switch from a provider page was impossible.
     VpnHandoffCard {
-        // Above the provider Loader. Declaration order alone is not enough: the Loader is
-        // declared later and fills the panel, so with default z it painted OVER this card and
+        // Above the provider Loaders. Declaration order alone is not enough: they fill the
+        // panel, so with default z they painted OVER this card and
         // a confirmation started from a provider page was still unanswerable.
         z: 1
         anchors.bottom: parent.bottom
@@ -237,12 +238,33 @@ Item {
     // Preserves an in-flight or awaiting-confirmation handoff (see VpnService.clearTransient).
     Component.onCompleted: VpnService.clearTransient()
 
+    // Compile both provider pages in the background as soon as the hub mounts, then retain
+    // them. The previous single Loader started only after a provider click and destroyed its
+    // item on every switch, so the user watched Tailscale construct itself in stages and lost
+    // local scroll/expanded state. Visibility changes are now navigation-only.
     Loader {
-        id: providerLoader
+        id: tailscaleLoader
         anchors.fill: parent
-        active: root.currentSection === "tailscale" || root.currentSection === "nordvpn"
-        source: root.currentSection === "tailscale" ? "TailscalePanel.qml"
-            : (root.currentSection === "nordvpn" ? "NordVpnPanel.qml" : "")
+        active: true
+        visible: root.currentSection === "tailscale"
+        source: "TailscalePanel.qml"
+        asynchronous: true
+
+        onLoaded: {
+            if (item) {
+                item.maxContentWidth = root.maxContentWidth;
+                item.showBackButton = true;
+                Qt.callLater(() => item.positionAtBeginning());
+            }
+        }
+    }
+
+    Loader {
+        id: nordVpnLoader
+        anchors.fill: parent
+        active: true
+        visible: root.currentSection === "nordvpn"
+        source: "NordVpnPanel.qml"
         asynchronous: true
 
         onLoaded: {
@@ -255,7 +277,16 @@ Item {
     }
 
     Connections {
-        target: providerLoader.item
+        target: tailscaleLoader.item
+        ignoreUnknownSignals: true
+
+        function onBackRequested() {
+            root.currentSection = "";
+        }
+    }
+
+    Connections {
+        target: nordVpnLoader.item
         ignoreUnknownSignals: true
 
         function onBackRequested() {
