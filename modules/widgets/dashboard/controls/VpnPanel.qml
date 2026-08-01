@@ -280,7 +280,9 @@ Item {
         active: true
         visible: root.currentSection === "tailscale"
         source: "TailscalePanel.qml"
-        asynchronous: true
+        // Background preload stays asynchronous. Selecting this provider flips the Loader
+        // synchronous, forcing any in-progress incubation to finish before it is shown.
+        asynchronous: root.currentSection !== "tailscale"
 
         onLoaded: {
             if (item) {
@@ -298,7 +300,7 @@ Item {
         active: true
         visible: root.currentSection === "nordvpn"
         source: "NordVpnPanel.qml"
-        asynchronous: true
+        asynchronous: root.currentSection !== "nordvpn"
 
         onLoaded: {
             if (item) {

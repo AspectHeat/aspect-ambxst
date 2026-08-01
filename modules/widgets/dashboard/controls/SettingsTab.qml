@@ -686,7 +686,11 @@ Rectangle {
             Loader {
                 id: panelLoader
                 anchors.fill: parent
-                asynchronous: true
+                // Direct routes (settings search, tray shortcuts, provider deep links) carry
+                // a requested subsection. Loading their outer panel asynchronously creates a
+                // visible two-stage chain: SettingsTab -> VpnPanel -> provider. Complete the
+                // requested panel in this frame; ordinary sidebar navigation remains async.
+                asynchronous: GlobalStates.settingsRequestedSubSection === ""
                 source: contentArea.panelComponents[root.currentSection]?.component ?? ""
 
                 // Fade in animation
