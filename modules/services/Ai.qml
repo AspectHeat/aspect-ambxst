@@ -80,7 +80,7 @@ Singleton {
     Connections {
         target: KeyStore
         function onKeysChanged() {
-            fetchAvailableModels();
+            Qt.callLater(() => fetchAvailableModels());
         }
     }
 
@@ -855,21 +855,25 @@ Singleton {
         }
 
         onExited: exitCode => {
-            if (targetChatId !== root.currentChatId)
-                return;
+            let completedChatId = targetChatId;
+            let completedMessageId = targetMessageId;
             let output = cmdStdout.text + "\n" + cmdStderr.text;
             if (output.trim() === "")
                 output = "Command executed successfully (no output).";
-            let message = root.messageForId(targetMessageId);
-            if (!message || !message.functionCall)
-                return;
-            root.appendMessage({
-                role: "function",
-                name: message.functionCall.name,
-                content: output
+            Qt.callLater(() => {
+                if (completedChatId !== root.currentChatId)
+                    return;
+                let message = root.messageForId(completedMessageId);
+                if (!message || !message.functionCall)
+                    return;
+                root.appendMessage({
+                    role: "function",
+                    name: message.functionCall.name,
+                    content: output
+                });
+                root.saveCurrentChat();
+                root.makeRequest();
             });
-            root.saveCurrentChat();
-            root.makeRequest();
         }
     }
 
@@ -1041,11 +1045,13 @@ for f in files:
 
     property bool fetchingModels: false
     property int pendingFetches: 0
+    property bool modelRefreshPending: false
 
     function fetchAvailableModels() {
-        fetchingModels = false; // Force refresh
-        if (fetchingModels)
+        if (fetchingModels) {
+            modelRefreshPending = true;
             return;
+        }
 
         fetchingModels = true;
         pendingFetches = 0;
@@ -1109,10 +1115,14 @@ for f in files:
         // Hermes Agent (OpenAI-compatible local/remote gateway)
         let hermesKey = KeyStore.getKey("hermes");
         if (hermesKey) {
+            // Keep Hermes selectable while discovery is slow or unavailable.
+            // The discovered catalog replaces this fallback when the request exits.
+            publishHermesModels(["hermes-agent"]);
             pendingFetches++;
             let hermesEndpoint = (Config.ai.hermesEndpoint || "http://127.0.0.1:8642/v1").replace(/\/+$/, "");
             fetchProcessHermes.command = [
-                "curl", "-sS", "--fail", hermesEndpoint + "/models",
+                "curl", "-sS", "--fail", "--connect-timeout", "3", "--max-time", "8",
+                hermesEndpoint + "/models",
                 "-H", "Authorization: Bearer " + hermesKey
             ];
             fetchProcessHermes.running = true;
@@ -1122,7 +1132,38 @@ for f in files:
 
         if (pendingFetches === 0) {
             fetchingModels = false;
+            runPendingModelRefresh();
         }
+    }
+
+    function createHermesModel(modelId) {
+        return aiModelFactory.createObject(root, {
+            name: modelId,
+            icon: Qt.resolvedUrl("../../../assets/aiproviders/openai.svg"),
+            description: "Hermes Agent",
+            endpoint: Config.ai.hermesEndpoint || "http://127.0.0.1:8642/v1",
+            model: modelId,
+            provider: "hermes",
+            requires_key: true,
+            key_id: "API_SERVER_KEY"
+        });
+    }
+
+    function publishHermesModels(modelIds) {
+        let newModels = [];
+        for (let i = 0; i < modelIds.length; i++) {
+            let model = createHermesModel(modelIds[i]);
+            if (model)
+                newModels.push(model);
+        }
+        replaceProviderModels(newModels, "hermes");
+    }
+
+    function runPendingModelRefresh() {
+        if (!modelRefreshPending)
+            return;
+        modelRefreshPending = false;
+        Qt.callLater(() => fetchAvailableModels());
     }
 
     Process {
@@ -1412,26 +1453,10 @@ for f in files:
             }
             if (discovered.length === 0)
                 discovered.push("hermes-agent");
-
-            let newModels = [];
-            let endpoint = Config.ai.hermesEndpoint || "http://127.0.0.1:8642/v1";
-            for (let i = 0; i < discovered.length; i++) {
-                let id = discovered[i];
-                let model = aiModelFactory.createObject(root, {
-                    name: id,
-                    icon: Qt.resolvedUrl("../../../assets/aiproviders/openai.svg"),
-                    description: "Hermes Agent",
-                    endpoint: endpoint,
-                    model: id,
-                    provider: "hermes",
-                    requires_key: true,
-                    key_id: "API_SERVER_KEY"
-                });
-                if (model)
-                    newModels.push(model);
-            }
-            replaceProviderModels(newModels, "hermes");
-            checkFetchCompletion();
+            Qt.callLater(() => {
+                publishHermesModels(discovered);
+                checkFetchCompletion();
+            });
         }
     }
 
@@ -1450,6 +1475,7 @@ for f in files:
             } else if (!isRestored && currentModel) {
                 isRestored = true;
             }
+            runPendingModelRefresh();
         }
     }
 
@@ -1490,9 +1516,19 @@ for f in files:
             updatedList.push(newModels[i]);
 
         let currentRemoved = currentModel && currentModel.provider === provider;
+        let previousModelId = currentRemoved ? currentModel.model : "";
         models = updatedList;
-        if (currentRemoved)
-            currentModel = updatedList.length > 0 ? updatedList[0] : null;
+        if (currentRemoved) {
+            let replacement = null;
+            for (let i = 0; i < newModels.length; i++) {
+                if (newModels[i].model === previousModelId) {
+                    replacement = newModels[i];
+                    break;
+                }
+            }
+            currentModel = replacement || (newModels.length > 0 ? newModels[0]
+                : (updatedList.length > 0 ? updatedList[0] : null));
+        }
         for (let i = 0; i < removed.length; i++)
             removed[i].destroy();
         if (!isRestored)

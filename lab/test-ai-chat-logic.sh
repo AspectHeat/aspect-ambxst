@@ -169,6 +169,12 @@ check("sidebar models stable IDs", /model:\s*Ai\.messageIDs\.filter/.test(sideba
 check("sidebar consumes message blocks", /message\.blocks/.test(sidebarSource));
 check("clipboard avoids generated Process", !/Qt\.createQmlObject/.test(codeSource));
 check("highlighter is completion gated", /active:\s*root\.highlightEnabled/.test(codeSource));
+check("tool callback defers structural mutation",
+    /id:\s*commandExecutionProc[\s\S]*?onExited:[\s\S]*?Qt\.callLater\(\(\)\s*=>\s*\{[\s\S]*?appendMessage/.test(aiSource));
+check("Hermes fallback publishes before discovery",
+    /publishHermesModels\(\["hermes-agent"\]\)[\s\S]*?fetchProcessHermes\.running\s*=\s*true/.test(aiSource));
+check("overlapping model refreshes are queued",
+    /if\s*\(fetchingModels\)\s*\{[\s\S]*?modelRefreshPending\s*=\s*true/.test(aiSource));
 
 if (failures.length > 0) {
     console.error(`AI chat logic: ${passed} passed, ${failures.length} failed`);
