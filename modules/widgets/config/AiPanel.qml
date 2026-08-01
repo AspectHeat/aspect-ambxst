@@ -69,7 +69,7 @@ Item {
                                 text: KeyStore.hasKey(modelData) ? "Key Configured" : "Not Configured"
                                 font.family: Config.theme.font
                                 font.pixelSize: 12
-                                color: KeyStore.hasKey(modelData) ? Colors.success : Colors.outline
+                                color: KeyStore.hasKey(modelData) ? Colors.success : Colors.overSurfaceVariant
                             }
                         }
 
@@ -85,6 +85,9 @@ Item {
                                 echoMode: TextInput.Password
                                 font.family: Config.theme.font
                                 color: Colors.overSurface
+                                placeholderTextColor: Colors.overSurfaceVariant
+                                selectionColor: Colors.primary
+                                selectedTextColor: Colors.overPrimary
                                 padding: 6
                                 
                                 background: StyledRect {
@@ -178,7 +181,7 @@ Item {
                             text: "Hermes API Endpoint"
                             font.family: Config.theme.font
                             font.pixelSize: 12
-                            color: Colors.outline
+                            color: Colors.overSurfaceVariant
                         }
 
                         TextField {
@@ -189,6 +192,9 @@ Item {
                             placeholderText: "http://127.0.0.1:8642/v1"
                             font.family: Config.theme.font
                             color: Colors.overSurface
+                            placeholderTextColor: Colors.overSurfaceVariant
+                            selectionColor: Colors.primary
+                            selectedTextColor: Colors.overPrimary
                             padding: 6
 
                             onEditingFinished: {
@@ -251,7 +257,7 @@ Item {
                             text: KeyStore.hasKey("custom") ? "Key Configured" : "Not Configured"
                             font.family: Config.theme.font
                             font.pixelSize: 12
-                            color: KeyStore.hasKey("custom") ? Colors.success : Colors.outline
+                            color: KeyStore.hasKey("custom") ? Colors.success : Colors.overSurfaceVariant
                         }
                     }
 
@@ -266,6 +272,9 @@ Item {
                             echoMode: TextInput.Password
                             font.family: Config.theme.font
                             color: Colors.overSurface
+                            placeholderTextColor: Colors.overSurfaceVariant
+                            selectionColor: Colors.primary
+                            selectedTextColor: Colors.overPrimary
                             padding: 6
                             
                             background: StyledRect {
@@ -374,6 +383,9 @@ Item {
                         placeholderText: "e.g. https://api.example.com/v1/chat/completions"
                         font.family: Config.theme.font
                         color: Colors.overSurface
+                        placeholderTextColor: Colors.overSurfaceVariant
+                        selectionColor: Colors.primary
+                        selectedTextColor: Colors.overPrimary
                         padding: 6
                         
                         onEditingFinished: Config.ai.customEndpoint = text.trim()
@@ -403,7 +415,7 @@ Item {
                         text: "Placeholders: {{ENDPOINT}}, {{API_KEY}}, {{BODY_PATH}}"
                         font.family: Config.theme.font
                         font.pixelSize: 12
-                        color: Colors.outline
+                        color: Colors.overSurfaceVariant
                     }
                     
                     TextField {
@@ -413,6 +425,9 @@ Item {
                         placeholderText: "curl -X POST {{ENDPOINT}} -H 'Authorization: Bearer {{API_KEY}}' -d @{{BODY_PATH}}"
                         font.family: "Monospace"
                         color: Colors.overSurface
+                        placeholderTextColor: Colors.overSurfaceVariant
+                        selectionColor: Colors.primary
+                        selectedTextColor: Colors.overPrimary
                         padding: 6
                         
                         onEditingFinished: Config.ai.customCurlTemplate = text
