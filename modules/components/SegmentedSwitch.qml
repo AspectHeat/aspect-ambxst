@@ -60,20 +60,21 @@ StyledRect {
             z: 0
             radius: Styling.radius(-6)
 
-            // itemAt() is a function call, NOT a reactive binding: it is evaluated once when
-            // this rect is created, and at that moment the Repeater has not instantiated its
-            // buttons yet, so it returned null and the highlight fell back to `buttonSize` -
-            // a stub covering the first icon and part of the first label. It then only
-            // re-evaluated when currentIndex changed, which is why clicking a segment
-            // "fixed" it. Depending on repeater.count (a real property) makes the expression
-            // re-run as soon as the items exist; width/x below are genuine bindings on the
-            // item, so they track layout from then on.
-            property Item activeItem: repeater.count > root.currentIndex
-                ? repeater.itemAt(root.currentIndex)
-                : null
-            width: activeItem ? activeItem.width : root.buttonSize
+            // Segment geometry is uniform and already derived from the control's available
+            // width, so derive the highlight from that same geometry. Looking up a Repeater
+            // item here leaves a startup race: count can change before itemAt() returns a
+            // fully laid-out button, and no reactive dependency makes the lookup run again.
+            // The result was a buttonSize-wide stub until currentIndex changed on first click.
+            readonly property real segmentSpan: repeater.count > 0
+                ? (parent.width - (repeater.count - 1) * root.spacing) / repeater.count
+                : 0
+            readonly property int boundedIndex: repeater.count > 0
+                ? Math.max(0, Math.min(root.currentIndex, repeater.count - 1))
+                : 0
+
+            width: segmentSpan
             height: parent.height
-            x: activeItem ? activeItem.x : 0
+            x: boundedIndex * (segmentSpan + root.spacing)
 
             Behavior on x {
                 enabled: Config.animDuration > 0
