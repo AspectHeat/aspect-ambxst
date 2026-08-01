@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Effects
 import QtQuick.Layouts
 import qs.config
 import qs.modules.components
@@ -45,29 +46,51 @@ Item {
 
             RowLayout {
                 anchors.fill: parent
-                anchors.margins: 16
-                spacing: 16
+                anchors.margins: 12
+                spacing: 12
 
-                RowLayout {
+                StyledRect {
+                    Layout.preferredWidth: 32
+                    Layout.preferredHeight: 32
+                    variant: TailscaleService.connected ? "primary" : "internalbg"
+                    radius: Styling.radius(2)
+
+                    Image {
+                        anchors.centerIn: parent
+                        width: 20
+                        height: 20
+                        source: Qt.resolvedUrl("../../../../assets/tailscale/tailscale-icon-white.svg")
+                        sourceSize: Qt.size(40, 40)
+                        smooth: true
+
+                        layer.enabled: true
+                        layer.effect: MultiEffect {
+                            colorization: 1
+                            colorizationColor: TailscaleService.connected
+                                ? Styling.srItem("primary") : Colors.overBackground
+                        }
+                    }
+                }
+
+                Text {
+                    text: "Tailscale"
+                    font.family: Config.theme.font
+                    font.pixelSize: Styling.fontSize(0)
+                    font.bold: true
+                    color: Colors.overBackground
+                }
+
+                Text {
+                    // "Connected" alone is misleading: mesh access is not egress.
+                    text: !TailscaleService.connected ? "Off"
+                        : (VpnService.routeOwner === "tailscale" ? "Exit node" : "Mesh only")
+                    font.family: Config.theme.font
+                    font.pixelSize: Styling.fontSize(-2)
+                    color: TailscaleService.connected ? Styling.srItem("overprimary") : Colors.overSurfaceVariant
+                }
+
+                Item {
                     Layout.fillWidth: true
-                    spacing: 8
-
-                    Text {
-                        text: "Tailscale"
-                        font.family: Config.theme.font
-                        font.pixelSize: Styling.fontSize(0)
-                        font.bold: true
-                        color: Colors.overBackground
-                    }
-
-                    Text {
-                        // "Connected" alone is misleading: mesh access is not egress.
-                        text: !TailscaleService.connected ? "Off"
-                            : (VpnService.routeOwner === "tailscale" ? "Exit node" : "Mesh only")
-                        font.family: Config.theme.font
-                        font.pixelSize: Styling.fontSize(-2)
-                        color: TailscaleService.connected ? Styling.srItem("overprimary") : Colors.overSurfaceVariant
-                    }
                 }
 
                 Text {
@@ -101,38 +124,53 @@ Item {
 
             RowLayout {
                 anchors.fill: parent
-                anchors.margins: 16
-                spacing: 16
+                anchors.margins: 12
+                spacing: 12
 
-                RowLayout {
+                StyledRect {
+                    Layout.preferredWidth: 32
+                    Layout.preferredHeight: 32
+                    variant: NordVpnService.connected ? "primary" : "internalbg"
+                    radius: Styling.radius(2)
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: Icons.vpn
+                        font.family: Icons.font
+                        font.pixelSize: Styling.fontSize(2)
+                        color: NordVpnService.connected
+                            ? Styling.srItem("primary") : Colors.overBackground
+                    }
+                }
+
+                Text {
+                    text: "NordVPN"
+                    font.family: Config.theme.font
+                    font.pixelSize: Styling.fontSize(0)
+                    font.bold: true
+                    color: Colors.overBackground
+                }
+
+                Text {
+                    // Mirrors the provider page's state vocabulary.
+                    text: !NordVpnService.available ? "Not installed"
+                        : NordVpnService.permissionDenied ? "Permission denied"
+                        : !NordVpnService.daemonReachable ? "Daemon unavailable"
+                        : NordVpnService.needsLogin ? "Login required"
+                        : NordVpnService.connecting ? "Connecting…"
+                        : NordVpnService.disconnecting ? "Disconnecting…"
+                        : NordVpnService.connected ? "Connected" : "Off"
+                    font.family: Config.theme.font
+                    font.pixelSize: Styling.fontSize(-2)
+                    color: NordVpnService.connected ? Styling.srItem("overprimary")
+                        : (!NordVpnService.available || NordVpnService.needsLogin
+                            || NordVpnService.permissionDenied
+                            || !NordVpnService.daemonReachable
+                            ? Colors.warning : Colors.overSurfaceVariant)
+                }
+
+                Item {
                     Layout.fillWidth: true
-                    spacing: 8
-
-                    Text {
-                        text: "NordVPN"
-                        font.family: Config.theme.font
-                        font.pixelSize: Styling.fontSize(0)
-                        font.bold: true
-                        color: Colors.overBackground
-                    }
-
-                    Text {
-                        // Mirrors the provider page's state vocabulary.
-                        text: !NordVpnService.available ? "Not installed"
-                            : NordVpnService.permissionDenied ? "Permission denied"
-                            : !NordVpnService.daemonReachable ? "Daemon unavailable"
-                            : NordVpnService.needsLogin ? "Login required"
-                            : NordVpnService.connecting ? "Connecting…"
-                            : NordVpnService.disconnecting ? "Disconnecting…"
-                            : NordVpnService.connected ? "Connected" : "Off"
-                        font.family: Config.theme.font
-                        font.pixelSize: Styling.fontSize(-2)
-                        color: NordVpnService.connected ? Styling.srItem("overprimary")
-                            : (!NordVpnService.available || NordVpnService.needsLogin
-                                || NordVpnService.permissionDenied
-                                || !NordVpnService.daemonReachable
-                                ? Colors.warning : Colors.overSurfaceVariant)
-                    }
                 }
 
                 Text {
