@@ -101,41 +101,51 @@ Item {
         // was taking focus off the search field after each character. Keeping both out of the
         // view also means the back button and the filter stay reachable while scrolling 149
         // countries, which is better for a list this long anyway.
-        PanelTitlebar {
-            Layout.preferredWidth: root.contentWidth
-            Layout.alignment: Qt.AlignHCenter
-            title: "NordVPN"
-            statusText: root.statusText
-            statusColor: root.statusColor
-            showToggle: NordVpnService.available && !NordVpnService.needsLogin
-                && !NordVpnService.permissionDenied
-            toggleChecked: NordVpnService.connected
-            toggleEnabled: !NordVpnService.isMutating && !VpnService.busy
-                && !VpnService.awaitingConfirmation
+        // PanelTitlebar declares Layout.fillWidth for use inside a bounded header column.
+        // Mounting it directly in this full-width column let that hint override the requested
+        // contentWidth, spreading the title and toggle across the whole dashboard. Tailscale
+        // contains it in a content-width header; this wrapper gives NordVPN the same contract.
+        Item {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 36
 
-            actions: (root.showBackButton ? [{
-                icon: Icons.caretLeft,
-                tooltip: "Back to VPN providers",
-                onClicked: function () {
-                    root.backRequested();
-                }
-            }] : []).concat([{
-                icon: Icons.sync,
-                tooltip: "Refresh NordVPN state",
-                loading: NordVpnService.isUpdating,
-                enabled: NordVpnService.available,
-                onClicked: function () {
-                    NordVpnService.refreshCountries();
-                    NordVpnService.refresh();
-                }
-            }])
+            PanelTitlebar {
+                width: root.contentWidth
+                height: parent.height
+                anchors.horizontalCenter: parent.horizontalCenter
+                title: "NordVPN"
+                statusText: root.statusText
+                statusColor: root.statusColor
+                showToggle: NordVpnService.available && !NordVpnService.needsLogin
+                    && !NordVpnService.permissionDenied
+                toggleChecked: NordVpnService.connected
+                toggleEnabled: !NordVpnService.isMutating && !VpnService.busy
+                    && !VpnService.awaitingConfirmation
 
-            onToggleChanged: checked => {
-                if (checked)
-                    VpnService.requestProvider("nordvpn", Config.system.nordvpn.preferredCountry,
-                        NordVpnService.p2pPreferred);
-                else
-                    NordVpnService.disconnect();
+                actions: (root.showBackButton ? [{
+                    icon: Icons.caretLeft,
+                    tooltip: "Back to VPN providers",
+                    onClicked: function () {
+                        root.backRequested();
+                    }
+                }] : []).concat([{
+                    icon: Icons.sync,
+                    tooltip: "Refresh NordVPN state",
+                    loading: NordVpnService.isUpdating,
+                    enabled: NordVpnService.available,
+                    onClicked: function () {
+                        NordVpnService.refreshCountries();
+                        NordVpnService.refresh();
+                    }
+                }])
+
+                onToggleChanged: checked => {
+                    if (checked)
+                        VpnService.requestProvider("nordvpn", Config.system.nordvpn.preferredCountry,
+                            NordVpnService.p2pPreferred);
+                    else
+                        NordVpnService.disconnect();
+                }
             }
         }
 
@@ -178,6 +188,14 @@ Item {
                     width: root.contentWidth
                     anchors.horizontalCenter: parent.horizontalCenter
                     contentWidth: root.contentWidth
+
+                    // Expanding a ListView header changes its height below the current
+                    // viewport. Return to the header origin after relayout so the protocol
+                    // and setting controls open from their beginning instead of being clipped.
+                    onAdvancedExpandedChanged: expanded => {
+                        if (expanded)
+                            Qt.callLater(() => root.positionAtBeginning());
+                    }
                 }
             }
 

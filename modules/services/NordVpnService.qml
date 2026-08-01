@@ -450,13 +450,39 @@ Singleton {
     function setTechnology(value): void {
         if (!["NordLynx", "OpenVPN"].includes(value))
             return;
-        root.runMutation(["nordvpn", "set", "technology", value]);
+        if (!root.runMutation(["nordvpn", "set", "technology", value]))
+            return;
+
+        // Keep the service-backed control on the accepted selection while the CLI command
+        // and verification read run. Without this, the control's external value remained
+        // stale and its reconciliation path visibly bounced old -> new after every click.
+        root.technology = value;
+        root.settings = Object.assign({}, root.settings, { technology: value });
     }
 
     function setBoolSetting(key, value): void {
         if (!key)
             return;
-        root.runMutation(["nordvpn", "set", key, value ? "on" : "off"]);
+        if (!root.runMutation(["nordvpn", "set", key, value ? "on" : "off"]))
+            return;
+
+        // CLI spelling -> normalized parser/service property. Optimistically update only
+        // after runMutation accepts the command; its mandatory refresh remains authoritative
+        // and rolls this snapshot back if the command fails.
+        const propertyForKey = {
+            "killswitch": "killSwitch",
+            "autoconnect": "autoConnect",
+            "lan-discovery": "lanDiscovery",
+            "threatprotectionlite": "threatProtection",
+            "virtual-location": "virtualLocation",
+            "post-quantum": "postQuantum"
+        };
+        const propertyName = propertyForKey[key];
+        if (propertyName) {
+            const nextSettings = Object.assign({}, root.settings);
+            nextSettings[propertyName] = value;
+            root.settings = nextSettings;
+        }
     }
 
     // ---------------------------------------------------------------- timers

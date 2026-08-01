@@ -209,7 +209,6 @@ ColumnLayout {
                     const wanted = index === 1 ? "OpenVPN" : "NordLynx";
                     if (wanted !== NordVpnService.technology)
                         NordVpnService.setTechnology(wanted);
-                    protocolResync.restart();
                 }
 
                 // SegmentedSwitch assigns currentIndex imperatively on click, destroying the
@@ -220,13 +219,6 @@ ColumnLayout {
                     const want = NordVpnService.technology === "OpenVPN" ? 1 : 0;
                     if (protocolSwitch.currentIndex !== want)
                         protocolSwitch.currentIndex = want;
-                }
-
-                Timer {
-                    id: protocolResync
-                    interval: 400
-                    repeat: false
-                    onTriggered: protocolSwitch.syncFromService()
                 }
 
                 Connections {
