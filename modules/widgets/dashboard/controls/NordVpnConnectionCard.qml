@@ -74,6 +74,11 @@ StyledRect {
             id: disconnectButton
             Layout.topMargin: 4
             Layout.fillWidth: true
+            // The detail text keeps the card's 12px reading inset, while the primary action
+            // reaches slightly farther toward the card edges to align with the wider controls
+            // below it.
+            Layout.leftMargin: -6
+            Layout.rightMargin: -6
             flat: true
             implicitHeight: 32
             // Disabled during a handoff as well as a local mutation, so the user cannot

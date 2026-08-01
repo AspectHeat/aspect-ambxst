@@ -131,7 +131,7 @@ ColumnLayout {
             }
 
             Text {
-                text: favoritesButton.checked ? Icons.caretUp : Icons.caretDown
+                text: favoritesButton.checked ? Icons.caretDown : Icons.caretRight
                 font.family: Icons.font
                 font.pixelSize: Styling.fontSize(-1)
                 color: Colors.overSurfaceVariant

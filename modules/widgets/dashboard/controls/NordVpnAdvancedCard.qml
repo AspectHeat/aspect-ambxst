@@ -152,7 +152,7 @@ ColumnLayout {
             }
 
             Text {
-                text: root.expanded ? Icons.caretUp : Icons.caretDown
+                text: root.expanded ? Icons.caretDown : Icons.caretRight
                 font.family: Icons.font
                 font.pixelSize: Styling.fontSize(-1)
                 color: Colors.overSurfaceVariant
