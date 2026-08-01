@@ -4,6 +4,7 @@ import QtQuick.Controls
 import Quickshell
 import Quickshell.Services.SystemTray
 import Quickshell.Widgets
+import qs.modules.globals
 import qs.modules.theme
 import qs.modules.services
 import qs.modules.components
@@ -16,6 +17,13 @@ MouseArea {
     required property SystemTrayItem item
     property int trayItemSize: 20
     property bool isHovered: false
+    readonly property bool isNordVpn: root.item.id === "NordVPN"
+
+    function openNordVpnSettings(): void {
+        GlobalStates.settingsRequestedSubSection = "nordvpn";
+        if (!GlobalStates.settingsWindowVisible)
+            GlobalShortcuts.toggleSettings();
+    }
 
     acceptedButtons: Qt.LeftButton | Qt.RightButton
     Layout.fillHeight: bar.orientation === "horizontal"
@@ -26,7 +34,14 @@ MouseArea {
     onClicked: event => {
         switch (event.button) {
         case Qt.LeftButton:
-            item.activate();
+            // NordVPN's live StatusNotifier identity is exactly `NordVPN`. Its native tray
+            // menu remains available on right-click; left-click becomes the Ambxst-native
+            // shortcut to the provider page instead of modifying package-owned DBus/menu
+            // definitions or /usr/share files.
+            if (root.isNordVpn)
+                root.openNordVpnSettings();
+            else
+                item.activate();
             break;
         case Qt.RightButton:
             if (item.hasMenu) {
