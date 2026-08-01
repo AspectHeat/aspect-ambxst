@@ -232,6 +232,30 @@ own `update` command in this clone. After any sync, re-run the shell under
 
 7. Three krfoss CachyOS mirrors are commented out after repeated signature 404s
    (backups at `/etc/pacman.d/*.bak-20260726`).
+10. **`hyprctl dispatch` does not work on Bostrom.** The CachyOS Lua config wraps every
+    command as `hl.dispatch(<args>)`, so `hyprctl dispatch dpms on` fails with
+    `')' expected near 'on'` — a Lua syntax error, not a Hyprland error. Writing to
+    Hyprland's IPC socket directly fails the same way, because the wrapper sits under
+    that too; the socket's own hint is that it wants `hl.dsp.*` style dispatchers.
+    Use `axctl` instead, or the `ambxst` verbs that wrap it:
+    ```bash
+    ambxst screen on          # works: goes through axctl, no Lua layer
+    axctl monitor list        # JSON, useful for scripting
+    hyprctl monitors -j       # QUERIES are fine; only `dispatch` is wrapped
+    ```
+    This matters most in an emergency, when `hyprctl dispatch` is the reflex.
+11. **A black screen over Moonlight is usually DPMS, not a broken shell.** Check
+    `hyprctl monitors -j` for `"dpmsStatus": false` before suspecting a QML change —
+    Ambxst's own idle listeners power the display down, and Sunshine faithfully streams
+    the result. Also check `"scale"` before reading anything into layer geometry: at
+    scale 1.5 a correct full-screen layer reads `1280x720` on a 1920x1080 monitor, which
+    looks alarming and is not.
+    Bostrom's idle listeners are currently **all disabled** in the sandboxed config at
+    `~/.local/share/ambxst-lab/home/.config/ambxst/config/system.json` (timestamped
+    backups sit beside it), because the 330 s screen-off and 1800 s suspend both broke
+    remote sessions — suspend takes SSH and Tailscale with it. Do not "helpfully" restore
+    them. Note this is the live machine config, not `config/defaults/system.js`; the
+    shipped defaults still carry the listeners, which is correct for other users.
 
 ## Conventions worth restating
 
