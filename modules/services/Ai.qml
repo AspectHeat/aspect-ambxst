@@ -152,6 +152,8 @@ Singleton {
     property var activeRequest: null
     property var pendingRequestPayload: null
     property bool requestProcessBusy: false
+    property bool bodyWriteBusy: false
+    property var bodyWritePayload: null
     property bool curlProcessBusy: false
     property int streamChunkCount: 0
     property int streamFlushCount: 0
@@ -174,6 +176,26 @@ Singleton {
     FileView {
         id: bodyFileView
         printErrors: false
+
+        onSaved: {
+            let completedPayload = root.bodyWritePayload;
+            root.bodyWritePayload = null;
+            root.bodyWriteBusy = false;
+            if (completedPayload && root.isRequestCurrent(completedPayload.request))
+                root.runCurl(completedPayload);
+            else
+                Qt.callLater(() => root.tryStartPendingRequest());
+        }
+
+        onSaveFailed: error => {
+            let completedPayload = root.bodyWritePayload;
+            root.bodyWritePayload = null;
+            root.bodyWriteBusy = false;
+            let errorText = "Failed to write request body: " + error;
+            if (completedPayload)
+                root.finishRequest(completedPayload.request, 1, errorText, errorText);
+            Qt.callLater(() => root.tryStartPendingRequest());
+        }
     }
 
     Timer {
@@ -716,13 +738,14 @@ Singleton {
     function executeRequest(payload) {
         if (!isRequestCurrent(payload.request))
             return;
+        bodyWritePayload = payload;
+        bodyWriteBusy = true;
         bodyFileView.path = payload.bodyPath;
         bodyFileView.setText(payload.body);
-        Qt.callLater(() => runCurl(payload));
     }
 
     function tryStartPendingRequest() {
-        if (!pendingRequestPayload || requestProcessBusy || curlProcessBusy)
+        if (!pendingRequestPayload || requestProcessBusy || bodyWriteBusy || curlProcessBusy)
             return;
         let payload = pendingRequestPayload;
         if (!isRequestCurrent(payload.request)) {

@@ -175,6 +175,11 @@ check("Hermes fallback publishes before discovery",
     /publishHermesModels\(\["hermes-agent"\]\)[\s\S]*?fetchProcessHermes\.running\s*=\s*true/.test(aiSource));
 check("overlapping model refreshes are queued",
     /if\s*\(fetchingModels\)\s*\{[\s\S]*?modelRefreshPending\s*=\s*true/.test(aiSource));
+check("curl waits for request body save",
+    /id:\s*bodyFileView[\s\S]*?onSaved:[\s\S]*?root\.runCurl\(completedPayload\)/.test(aiSource)
+    && !/bodyFileView\.setText\(payload\.body\);\s*Qt\.callLater\(\(\)\s*=>\s*runCurl/.test(aiSource));
+check("request queue waits for body writer",
+    /requestProcessBusy\s*\|\|\s*bodyWriteBusy\s*\|\|\s*curlProcessBusy/.test(aiSource));
 
 if (failures.length > 0) {
     console.error(`AI chat logic: ${passed} passed, ${failures.length} failed`);
