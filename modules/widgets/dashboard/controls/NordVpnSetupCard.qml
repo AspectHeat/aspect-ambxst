@@ -41,9 +41,10 @@ StyledRect {
         && NordVpnService.daemonReachable
         && !NordVpnService.permissionDenied
 
-    // Manual completion, disclosed rather than shown by default: the one-click flow works on a
-    // healthy desktop, and leading with "paste a link" would make it look like it never does.
-    property bool showManualLogin: false
+    // Manual completion appears only after an automatic attempt has run its course without
+    // succeeding - never on a healthy desktop, where leading with "paste a link" would make
+    // the ordinary one-click flow look unreliable. The service owns that judgement.
+    readonly property bool showManualLogin: root.canLogIn && NordVpnService.loginNeedsManual
 
     visible: root.blocked
     implicitHeight: contentColumn.implicitHeight + 20
@@ -115,33 +116,15 @@ StyledRect {
         // widget and it does fail: on Bostrom nordvpn.desktop declares Terminal=true and GLib
         // would not launch it, so the browser's "open this link" prompt was accepted and
         // nothing happened. Without this affordance that dead end is unescapable from the UI.
-        Button {
-            id: manualToggle
-            visible: root.canLogIn
-            Layout.topMargin: 2
-            flat: true
-            implicitHeight: 22
-            leftPadding: 0
-
-            background: null
-
-            contentItem: Text {
-                text: (root.showManualLogin ? Icons.caretDown : Icons.caretRight)
-                    + "  Browser didn't bring you back?"
-                font.family: Config.theme.font
-                font.pixelSize: Styling.fontSize(-3)
-                color: manualToggle.hovered ? Colors.overBackground : Colors.overSurfaceVariant
-                verticalAlignment: Text.AlignVCenter
-            }
-
-            onClicked: root.showManualLogin = !root.showManualLogin
-        }
-
+        //
+        // Gated on NordVpnService.loginNeedsManual, so none of this exists until an automatic
+        // attempt has actually failed.
         Text {
             Layout.fillWidth: true
-            visible: root.canLogIn && root.showManualLogin
-            text: "In the browser, right-click the “Continue” button, copy the link, and paste "
-                + "it here. It starts with nordvpn://"
+            Layout.topMargin: 4
+            visible: root.showManualLogin
+            text: "That login never came back. In the browser, right-click the “Continue” "
+                + "button, copy the link, and paste it here."
             font.family: Config.theme.font
             font.pixelSize: Styling.fontSize(-3)
             color: Colors.overSurfaceVariant
@@ -153,7 +136,7 @@ StyledRect {
         SearchInput {
             id: callbackInput
             Layout.fillWidth: true
-            visible: root.canLogIn && root.showManualLogin
+            visible: root.showManualLogin
             implicitHeight: 36
             variant: "common"
             placeholderText: "Paste the nordvpn:// link"
@@ -169,7 +152,7 @@ StyledRect {
 
         Button {
             id: callbackSubmit
-            visible: root.canLogIn && root.showManualLogin
+            visible: root.showManualLogin
             Layout.fillWidth: true
             flat: true
             implicitHeight: 28

@@ -63,6 +63,19 @@ Singleton {
     // Without it the detached browser flow looks like a click that did nothing.
     property bool loginPending: false
 
+    // True once an automatic login attempt has run its full course without the account
+    // becoming logged in. This is what gates the manual paste path in the setup card.
+    //
+    // Offering that path up front made the ordinary one-click flow look unreliable, but it
+    // cannot be absent either: the browser's nordvpn:// hand-back is outside this widget and
+    // when it breaks the UI is otherwise a dead end. Showing it exactly when the automatic
+    // flow has demonstrably not worked is the honest middle - invisible on a healthy desktop,
+    // present the moment it is needed. Set only on the poll ceiling, because that is the one
+    // failure the manual link can actually repair: the user reached the browser, finished
+    // signing in, and the reply never arrived. A `nordvpn login` that errors outright never
+    // produced a Continue button to copy, so pasting cannot help there.
+    property bool loginNeedsManual: false
+
     // Set when lastError came from a mutation. A mutation failure triggers an immediate
     // refresh, and the successful status read that follows would otherwise clear the error
     // within ~200ms - before VpnService's 500ms handoff tick ever observed it, leaving the
@@ -363,8 +376,10 @@ Singleton {
             return;
 
         root.loginPending = true;
-        // A failed earlier attempt must not keep its error on screen while a new one runs.
+        // A failed earlier attempt must not keep its error, or its manual fallback, on screen
+        // while a fresh one is still in its own window.
         root.lastError = "";
+        root.loginNeedsManual = false;
         loginPollTimer.restart();
 
         root.runAsync(["nordvpn", "login"]).then(output => {
@@ -514,25 +529,38 @@ Singleton {
     // later. Bounded so a login the user abandoned does not poll forever.
     Timer {
         id: loginPollTimer
-        interval: 2000
         repeat: true
         running: root.loginPending && root.available && root.enabled
-        property int ticks: 0
+
+        // Elapsed time, not a tick count, because the interval changes partway through.
+        property int elapsedMs: 0
+
+        // Two-phase on purpose. A flat 2 s for the full five minutes would be 150 refresh
+        // bursts of three CLI calls each, sustained, for a window that is mostly the user
+        // reading an email. Fast while they are plausibly still on our screen, then relaxed.
+        readonly property int fastPhaseMs: 30000
+        interval: loginPollTimer.elapsedMs < loginPollTimer.fastPhaseMs ? 2000 : 5000
+
+        // Five minutes. The old 60 s ceiling assumed the only thing worth bounding was a
+        // false "Waiting..." after an abandoned login, but a real login routinely takes
+        // longer than that - 2FA, or fetching a code out of email - and giving up mid-flow
+        // reverted the card to "Log in required" while the browser was still open, which
+        // reads as a second failure. The button stays live for a retry throughout either way.
+        readonly property int ceilingMs: 300000
 
         onTriggered: {
-            ticks++;
-            // 60 s, not 3 minutes: we cannot observe the user closing the browser, so the
-            // ceiling is the only exit. Three minutes of a false "Waiting..." is worse than
-            // giving up early - the Log in button stays live for a retry either way.
-            if (ticks > 30) {
+            loginPollTimer.elapsedMs += loginPollTimer.interval;
+            if (loginPollTimer.elapsedMs >= loginPollTimer.ceilingMs) {
                 root.loginPending = false;
-                ticks = 0;
+                // The browser flow was opened and never came back. This is the one failure the
+                // manual callback link can repair, so reveal it now.
+                root.loginNeedsManual = true;
                 return;
             }
             root.refresh();
         }
 
-        onRunningChanged: if (!running) ticks = 0
+        onRunningChanged: if (!running) loginPollTimer.elapsedMs = 0
     }
 
     // Tunnel state is routinely stale across resume; neither VPN service handled this in v1.
@@ -687,8 +715,12 @@ Singleton {
             root.loggedIn = parsed.loggedIn;
             if (!parsed.daemonReachable)
                 root.daemonReachable = false;
-            if (parsed.loggedIn)
+            if (parsed.loggedIn) {
                 root.loginPending = false;
+                // Cleared on success so a later logout starts from the plain card rather than
+                // inheriting the previous session's fallback.
+                root.loginNeedsManual = false;
+            }
             root.finishRefreshPart();
         }
     }
