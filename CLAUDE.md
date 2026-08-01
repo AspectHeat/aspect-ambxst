@@ -209,8 +209,79 @@ own `update` command in this clone. After any sync, re-run the shell under
 6. **`mpvpaper` is not installed** — it needs a `luajit` build no longer on any
    mirror, so it requires a full `pacman -Syu` plus reboot. Only affects video
    wallpapers; Ambxst logs a killed-mpvpaper line and continues.
+8. **Adding a new `.qml` file needs a shell restart, not a hot reload.** Quickshell
+   hot-reloads edits to existing files fine, but a newly *added* type is not
+   registered into the directory's implicit module by a reload. The symptom is
+   misleading: `Failed to load configuration ... <NewType> is not a type`, pointing
+   at the file that *uses* it rather than the new file itself. The config is fine — a
+   fresh start picks it up. Verify with an offscreen load before restarting the
+   primary shell:
+   ```bash
+   QT_QPA_PLATFORM=offscreen qs -p /path/to/clone/shell.qml   # exercises QML type
+                                                              # resolution, creates
+                                                              # no real surfaces
+   ```
+   Quickshell rejects a bad reload and keeps the previous scene, so a failed reload
+   does not cost the desktop — but it does leave the checkout on a config that will
+   not load on the *next* cold start. Revert the checkout or fix it before walking away.
+9. **`qmllint` cannot resolve `qs.*` imports**, so it catches syntax errors only.
+   `lab/check-qml-syntax.sh` wraps it and filters the unresolvable-import noise. For
+   real type and binding checks, instantiate the component under
+   `QT_QPA_PLATFORM=offscreen` as above — that surfaces `ReferenceError`s and bad
+   property names that `qmllint` silently passes.
+
 7. Three krfoss CachyOS mirrors are commented out after repeated signature 404s
    (backups at `/etc/pacman.d/*.bak-20260726`).
+10. **`hyprctl dispatch` does not work on Bostrom.** The CachyOS Lua config wraps every
+    command as `hl.dispatch(<args>)`, so `hyprctl dispatch dpms on` fails with
+    `')' expected near 'on'` — a Lua syntax error, not a Hyprland error. Writing to
+    Hyprland's IPC socket directly fails the same way, because the wrapper sits under
+    that too; the socket's own hint is that it wants `hl.dsp.*` style dispatchers.
+    Use `axctl` instead, or the `ambxst` verbs that wrap it:
+    ```bash
+    ambxst screen on          # works: goes through axctl, no Lua layer
+    axctl monitor list        # JSON, useful for scripting
+    hyprctl monitors -j       # QUERIES are fine; only `dispatch` is wrapped
+    ```
+    This matters most in an emergency, when `hyprctl dispatch` is the reflex.
+11. **A black screen over Moonlight is usually DPMS, not a broken shell.** Check
+    `hyprctl monitors -j` for `"dpmsStatus": false` before suspecting a QML change —
+    Ambxst's own idle listeners power the display down, and Sunshine faithfully streams
+    the result. Also check `"scale"` before reading anything into layer geometry: at
+    scale 1.5 a correct full-screen layer reads `1280x720` on a 1920x1080 monitor, which
+    looks alarming and is not.
+    Bostrom's idle listeners are currently **all disabled** in the sandboxed config at
+    `~/.local/share/ambxst-lab/home/.config/ambxst/config/system.json` (timestamped
+    backups sit beside it), because the 330 s screen-off and 1800 s suspend both broke
+    remote sessions — suspend takes SSH and Tailscale with it. Do not "helpfully" restore
+    them. Note this is the live machine config, not `config/defaults/system.js`; the
+    shipped defaults still carry the listeners, which is correct for other users.
+12. **A `Terminal=true` desktop file cannot be launched on Bostrom at all.** GLib only
+    launches terminal applications through a terminal it recognizes, and its built-in
+    list (`xdg-terminal-exec`, `gnome-terminal`, `xterm`, …) matches nothing here —
+    Bostrom has only kitty and alacritty, and `$TERMINAL` is unset. `gio launch` fails
+    with *"Unable to find terminal required for application"*.
+
+    This bit NordVPN login, and the failure is silent in the worst way: browser login
+    ends by handing `nordvpn://login?…&exchange_token=…` back to the desktop for
+    `nordvpn click`, and `/usr/share/applications/nordvpn.desktop` ships
+    `Terminal=true`. The browser shows its "open this link" prompt, reports success, and
+    the user stays logged out with nothing in any log. Fixed with `Terminal=false`
+    overrides in **both** data homes — the real one and the lab sandbox's, because
+    `run-isolated.sh` repoints `XDG_DATA_HOME` and a browser the shell spawns inherits
+    it:
+    ```bash
+    for d in ~/.local/share ~/.local/share/ambxst-lab/home/.local/share; do
+        mkdir -p "$d/applications"
+        sed 's/^Terminal=true/Terminal=false/' /usr/share/applications/nordvpn.desktop \
+            > "$d/applications/nordvpn.desktop"
+        update-desktop-database "$d/applications"
+    done
+    ```
+    `lab/check-prereqs.sh` now checks both homes for this. A package update to
+    `nordvpn` will not clobber the overrides, but suspect them first if login regresses.
+    Generalize the lesson: any URI-handler hand-off we rely on needs `gio launch`
+    tested explicitly, because every layer above it reports success.
 
 ## Conventions worth restating
 

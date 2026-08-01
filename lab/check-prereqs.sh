@@ -101,6 +101,61 @@ else
 fi
 
 say
+say '=== NordVPN login hand-back ==='
+# Logging in is a two-hop flow and only the first hop is ours. The widget runs
+# `nordvpn login` and opens the printed URL; the BROWSER finishes by handing
+# nordvpn://login?...&exchange_token=... back to the desktop, which must route it
+# to `nordvpn click`. If that second hop cannot launch, the browser still shows
+# its "open this link" prompt and reports success, and the user simply stays
+# logged out with nothing in any log. That was the state on Bostrom.
+#
+# The failure is `Terminal=true` in nordvpn.desktop: GLib refuses to launch a
+# terminal application unless it recognizes an installed terminal, and its list
+# does not include kitty or alacritty. Verified with `gio launch`, which answered
+# "Unable to find terminal required for application".
+#
+# XDG_DATA_HOME matters twice over. run-isolated.sh points it into the sandbox,
+# so a browser the shell spawns resolves handlers from the SANDBOX data home, not
+# the real one - the override has to exist in both to cover a cold start.
+nordvpn_handler_check() {
+    local data_home="$1" label="$2" dir found=""
+    for dir in "$data_home" /usr/local/share /usr/share; do
+        if [[ -f "$dir/applications/nordvpn.desktop" ]]; then
+            found="$dir/applications/nordvpn.desktop"
+            break
+        fi
+    done
+
+    if [[ -z "$found" ]]; then
+        warn "no nordvpn.desktop resolvable from $label; the browser hand-back has nowhere to go"
+        return
+    fi
+
+    if grep -qiE '^\s*Terminal\s*=\s*true\s*$' "$found"; then
+        warn "$label resolves nordvpn:// to $found, which declares Terminal=true -- \
+GLib cannot launch it, so browser login silently fails. Remedy: install a \
+Terminal=false override with
+            mkdir -p '$data_home/applications'
+            sed 's/^Terminal=true/Terminal=false/' /usr/share/applications/nordvpn.desktop \\
+                > '$data_home/applications/nordvpn.desktop'
+            update-desktop-database '$data_home/applications'
+          The widget's \"Browser didn't bring you back?\" paste field works regardless."
+    else
+        ok "$label resolves nordvpn:// to a launchable handler ($found)"
+    fi
+}
+
+if command -v nordvpn >/dev/null 2>&1; then
+    ok "nordvpn -> $(command -v nordvpn) ($(nordvpn --version 2>/dev/null || echo 'version unknown'))"
+    nordvpn_handler_check "${XDG_DATA_HOME:-$REAL_HOME/.local/share}" 'real data home'
+    nordvpn_handler_check "$LAB_HOME/.local/share" 'lab sandbox data home'
+else
+    # Not a failure: the panel's setup card explains the install, and every other
+    # part of the shell works without it.
+    warn 'nordvpn CLI absent; the NordVPN panel will show its "not installed" setup card'
+fi
+
+say
 say '=== recovery path ==='
 # There is no fallback shell by design. Bare Hyprland must still get a terminal.
 BINDS_LUA="${XDG_CONFIG_HOME:-$HOME/.config}/hypr/config/binds.lua"

@@ -1,0 +1,1 @@
+{ "parser": "account", "exitCode": 1, "expectExact": { "loggedIn": false, "daemonReachable": true } }

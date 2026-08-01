@@ -1,0 +1,1 @@
+{ "parser": "status", "expect": { "state": "error", "unknownStatus": "wibble" } }

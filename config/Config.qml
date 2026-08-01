@@ -1018,8 +1018,18 @@ Singleton {
                 property bool enabled: true
                 property bool showInBar: false
                 property int pollInterval: 20
-                property string preferredMode: "fastest"
+                // "standard" | "p2p". A persisted config may still hold the v1 value
+                // "fastest", so consumers must treat anything that is not "p2p" as
+                // standard rather than comparing against "standard" exactly.
+                property string preferredMode: "standard"
                 property string preferredCountry: ""
+                // NordVPN CLI country tokens, e.g. "United_States". Tokens are both the
+                // stable country identity and valid connect targets.
+                property list<string> favoriteCountries: []
+            }
+            property JsonObject vpn: JsonObject {
+                // "confirm" | "immediate" - whether switching providers asks first.
+                property string handoffPolicy: "confirm"
             }
             property JsonObject idle: JsonObject {
                 property JsonObject general: JsonObject {

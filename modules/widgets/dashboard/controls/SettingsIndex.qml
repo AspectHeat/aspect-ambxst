@@ -17,17 +17,21 @@ QtObject {
     
     property var dynamicItems: []
     readonly property var vpnItems: (Config.system.tailscale.enabled || Config.system.nordvpn.enabled) ? [
-        { label: "VPN", keywords: "virtual private network providers", section: 10, subSection: "", subLabel: "", icon: Icons.vpn, isIcon: true }
+        { label: "VPN", keywords: "virtual private network providers", section: 10, subSection: "", subLabel: "", icon: Icons.network, isIcon: true }
     ].concat(Config.system.tailscale.enabled ? [
-        { label: "Tailscale", keywords: "vpn mesh tailnet wireguard remote", section: 10, subSection: "tailscale", subLabel: "VPN", icon: Icons.vpn, isIcon: true },
+        { label: "Tailscale", keywords: "vpn mesh tailnet wireguard remote", section: 10, subSection: "tailscale", subLabel: "VPN", icon: Icons.network, isIcon: true },
         { label: "Tailscale IP", keywords: "copy address ip magicdns dns", section: 10, subSection: "tailscale", subLabel: "VPN > Tailscale", icon: Icons.copy, isIcon: true },
         { label: "Exit Node", keywords: "route traffic vpn egress exit", section: 10, subSection: "tailscale", subLabel: "VPN > Tailscale", icon: Icons.globe, isIcon: true },
         { label: "Tailnet Profile", keywords: "account switch login profile", section: 10, subSection: "tailscale", subLabel: "VPN > Tailscale", icon: Icons.user, isIcon: true }
     ] : []).concat(Config.system.nordvpn.enabled ? [
-        { label: "NordVPN", keywords: "vpn privacy commercial nordlynx wireguard", section: 10, subSection: "nordvpn", subLabel: "VPN", icon: Icons.vpn, isIcon: true },
-        { label: "Live VPN Servers", keywords: "location load flag server country region", section: 10, subSection: "nordvpn", subLabel: "VPN > NordVPN", icon: Icons.globe, isIcon: true },
-        { label: "P2P VPN", keywords: "peer torrent speed optimized server", section: 10, subSection: "nordvpn", subLabel: "VPN > NordVPN", icon: Icons.lightning, isIcon: true },
-        { label: "Quick Connect", keywords: "fastest recommended nordvpn server", section: 10, subSection: "nordvpn", subLabel: "VPN > NordVPN", icon: Icons.lightning, isIcon: true }
+        { label: "NordVPN", keywords: "vpn privacy commercial nordlynx wireguard", section: 10, subSection: "nordvpn", subLabel: "VPN", icon: Icons.network, isIcon: true },
+        // Renamed from "Live VPN Servers". There is no per-server browsing and no load
+        // metric, so the old label and its "load" keyword advertised a feature that does not
+        // exist. Countries and cities are what this page actually offers.
+        { label: "VPN Locations", keywords: "country city location flag region server", section: 10, subSection: "nordvpn", subLabel: "VPN > NordVPN", icon: Icons.globe, isIcon: true },
+        { label: "P2P VPN", keywords: "peer torrent speed optimized group", section: 10, subSection: "nordvpn", subLabel: "VPN > NordVPN", icon: Icons.lightning, isIcon: true },
+        { label: "Quick Connect", keywords: "recommended nordvpn connect fastest", section: 10, subSection: "nordvpn", subLabel: "VPN > NordVPN", icon: Icons.lightning, isIcon: true },
+        { label: "Switch VPN Provider", keywords: "handoff swap between tailscale nordvpn route egress", section: 10, subSection: "", subLabel: "VPN", icon: Icons.network, isIcon: true }
     ] : []) : []
 
     readonly property var staticItems: [

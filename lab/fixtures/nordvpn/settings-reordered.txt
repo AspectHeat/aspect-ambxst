@@ -1,0 +1,4 @@
+KILL SWITCH: enabled
+technology: OPENVPN
+Auto-Connect: enabled
+LAN discovery: enabled

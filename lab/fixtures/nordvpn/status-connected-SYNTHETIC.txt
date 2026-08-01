@@ -1,0 +1,9 @@
+Status: Connected
+Hostname: xx000.nordvpn.com
+IP: 203.0.113.1
+Country: Japan
+City: Tokyo
+Current technology: NORDLYNX
+Current protocol: UDP
+Transfer: 12.34 MiB received, 5.67 MiB sent
+Uptime: 3 minutes 21 seconds

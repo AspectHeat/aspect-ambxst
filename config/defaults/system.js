@@ -14,8 +14,12 @@ var data = {
         "enabled": true,
         "showInBar": false,
         "pollInterval": 20,
-        "preferredMode": "fastest",
-        "preferredCountry": ""
+        "preferredMode": "standard",
+        "preferredCountry": "",
+        "favoriteCountries": []
+    },
+    "vpn": {
+        "handoffPolicy": "confirm"
     },
     "idle": {
         "general": {

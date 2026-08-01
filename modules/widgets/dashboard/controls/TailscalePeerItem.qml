@@ -391,7 +391,14 @@ Item {
                     flat: true
                     implicitWidth: 112
                     implicitHeight: 32
-                    enabled: !TailscaleService.operatorMissing && !TailscaleService.isUpdating
+                    // Same egress rule as the exit-node row in TailscalePanel: choosing an
+                    // exit node IS a default-route change, so allowing it while NordVPN owns
+                    // the route bypasses VpnService's confirmation and leaves two providers
+                    // claiming egress. Gating only the panel row left this path wide open.
+                    // isMutating, not isUpdating, so a background read never disables it.
+                    enabled: !TailscaleService.operatorMissing && !TailscaleService.isMutating
+                        && VpnService.routeOwner !== "nordvpn"
+                        && !VpnService.busy && !VpnService.awaitingConfirmation
 
                     background: StyledRect {
                         variant: root.activeExitNode ? "internalbg" : "primary"
@@ -412,6 +419,13 @@ Item {
                             TailscaleService.clearExitNode();
                         else
                             TailscaleService.setExitNode(root.peer.nodeId);
+                    }
+
+                    // A disabled control with no explanation is its own usability bug.
+                    StyledToolTip {
+                        visible: exitNodeButton.hovered && !exitNodeButton.enabled
+                            && VpnService.routeOwner === "nordvpn"
+                        tooltipText: "Disconnect NordVPN first — it currently carries your internet traffic"
                     }
                 }
             }

@@ -298,6 +298,13 @@ ShellRoot {
         onTriggered: {
             let _ = NightLightService.active;
             _ = GameModeService.toggled;
+            // VPN services belong in this tier, not the immediate one: no VPN surface is on
+            // the critical startup path, and eager init would begin CLI polling before the
+            // user has opened anything. Registering them here satisfies
+            // modules/services/AGENTS.md:40, which lists unregistered services as an
+            // anti-pattern. Reading a property is what forces singleton construction.
+            _ = NordVpnService.available;
+            _ = VpnService.routeOwner;
         }
     }
 }
