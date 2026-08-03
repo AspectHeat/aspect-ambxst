@@ -203,6 +203,9 @@ check("tail following cannot feed back through layout height",
     && /id:\s*tailPositionTimer[\s\S]*?positionViewAtEnd\(\)/.test(sidebarSource));
 check("avatar loading is limited to user delegates",
     /source:\s*isUser\s*\?\s*"file:\/\/"/.test(sidebarSource));
+check("assistant replies use the available sidebar width",
+    /assistantReplyWidth:\s*Math\.max\(180,\s*chatView\.width\s*-\s*80\)/.test(sidebarSource)
+    && /isUser[\s\S]*?bubbleContent\.implicitWidth[\s\S]*?:\s*assistantReplyWidth/.test(sidebarSource));
 check("lab recovery removes only its axctl daemon and socket",
     /function\s+stop_lab_axctl|stop_lab_axctl\(\)/.test(labRunnerSource)
     && /\[a\]xctl -c \$AXCTL_CONFIG daemon/.test(labRunnerSource)

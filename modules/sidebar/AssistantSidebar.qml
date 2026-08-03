@@ -929,7 +929,12 @@ Item {
 
                                             StyledRect {
                                                 id: bubble
-                                                width: Math.min(Math.max(bubbleContent.implicitWidth + 32, 100), chatView.width * (isSystem ? 0.9 : 0.7))
+                                                readonly property real assistantReplyWidth: Math.max(180, chatView.width - 80)
+                                                width: isSystem
+                                                    ? chatView.width * 0.9
+                                                    : (isUser
+                                                        ? Math.min(Math.max(bubbleContent.implicitWidth + 32, 100), chatView.width * 0.7)
+                                                        : assistantReplyWidth)
                                                 height: bubbleContent.implicitHeight + 24
 
                                                 anchors.right: isUser ? parent.right : undefined
