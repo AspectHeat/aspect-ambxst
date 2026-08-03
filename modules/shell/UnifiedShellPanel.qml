@@ -31,6 +31,9 @@ PanelWindow {
     // Dynamic keyboard focus: Exclusive when a notch module is open (so text fields work),
     // None otherwise (so compositor receives normal input).
     WlrLayershell.keyboardFocus: {
+        if (unifiedPanel.externalPickerActive) {
+            return WlrKeyboardFocus.None;
+        }
         if (notchContent.screenNotchOpen) {
             return WlrKeyboardFocus.Exclusive;
         }
@@ -43,9 +46,13 @@ PanelWindow {
     WlrLayershell.layer: WlrLayer.Overlay
     exclusionMode: ExclusionMode.Ignore
 
+    // External dialogs must receive both keyboard and pointer input without the
+    // overlay layer competing for either one.
+    readonly property bool externalPickerActive: assistantSidebar.active && assistantSidebar.attachmentPickerActive
+
     // Whether we need to capture full-screen input for click-outside detection.
     // True when notch modules are open OR any FocusGrab is active (e.g., BarPopups).
-    readonly property bool needsFullScreenInput: notchContent.screenNotchOpen || FocusGrabManager.hasActiveGrab || (assistantSidebar.active && assistantSidebar.wantsFocus)
+    readonly property bool needsFullScreenInput: !externalPickerActive && (notchContent.screenNotchOpen || FocusGrabManager.hasActiveGrab || (assistantSidebar.active && assistantSidebar.wantsFocus))
 
     readonly property bool barEnabled: {
         if (!Config.barReady) return false;
@@ -152,17 +159,17 @@ PanelWindow {
         item: unifiedPanel.needsFullScreenInput ? fullScreenMask : null
         regions: [
             Region {
-                item: barContent.visible ? barContent.barHitbox : null
+                item: !unifiedPanel.externalPickerActive && barContent.visible ? barContent.barHitbox : null
             },
             Region {
-                item: notchContent.notchHitbox
+                item: !unifiedPanel.externalPickerActive ? notchContent.notchHitbox : null
             },
             Region {
                 // Only include the dock hitbox if the dock is actually enabled and visible on this screen.
-                item: dockContent.visible ? dockContent.dockHitbox : null
+                item: !unifiedPanel.externalPickerActive && dockContent.visible ? dockContent.dockHitbox : null
             },
             Region {
-                item: (assistantSidebar.active || assistantSidebar.hitbox.visible) ? assistantSidebar.hitbox : null
+                item: !unifiedPanel.externalPickerActive && (assistantSidebar.active || assistantSidebar.hitbox.visible) ? assistantSidebar.hitbox : null
             }
         ]
     }

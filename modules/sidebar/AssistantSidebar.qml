@@ -24,6 +24,8 @@ Item {
     readonly property bool frameWrapped: frameEnabled && GlobalStates.assistantPinned
     readonly property int sidebarMargin: frameWrapped ? 0 : 4
     property bool wantsFocus: false
+    property bool attachmentPickerActive: false
+    property int attachmentPickerGeneration: 0
     property bool menuExpanded: false
     property real menuWidth: 250
     property var slashCommands: [
@@ -58,6 +60,9 @@ Item {
         function onAssistantFocusRequested(wasAlreadyOpen) {
             if (targetScreen.name === GlobalStates.assistantScreenName) {
                 Qt.callLater(() => {
+                    if (root.attachmentPickerActive)
+                        return;
+
                     if (wasAlreadyOpen) {
                         // It was already open. If it currently has focus, close it. Otherwise, regain focus.
                         if (root.active && root.wantsFocus && inputField.activeFocus) {
@@ -77,10 +82,11 @@ Item {
     }
 
     onActiveChanged: {
-        if (active) {
+        if (active && !root.attachmentPickerActive) {
             root.wantsFocus = true;
             Qt.callLater(() => {
-                focusSearchInput();
+                if (root.active && !root.attachmentPickerActive)
+                    focusSearchInput();
             });
         } else {
             root.wantsFocus = false;
@@ -92,7 +98,7 @@ Item {
         propagateComposedEvents: true
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         onPressed: mouse => {
-            if (!root.wantsFocus)
+            if (!root.attachmentPickerActive && !root.wantsFocus)
                 root.wantsFocus = true;
             mouse.accepted = false;
         }
@@ -324,6 +330,50 @@ Item {
 
                         property var pendingAttachments: []
 
+                        function openAttachmentPicker() {
+                            if (root.attachmentPickerActive || zenityProcess.running)
+                                return;
+
+                            root.attachmentPickerGeneration++;
+                            let generation = root.attachmentPickerGeneration;
+                            root.attachmentPickerActive = true;
+
+                            // Let the external picker receive keyboard focus instead of
+                            // competing with this layer surface's exclusive focus.
+                            root.wantsFocus = false;
+                            inputField.focus = false;
+                            Qt.callLater(() => {
+                                if (generation !== root.attachmentPickerGeneration || !root.attachmentPickerActive)
+                                    return;
+                                if (!root.active) {
+                                    root.attachmentPickerActive = false;
+                                    return;
+                                }
+                                if (!zenityProcess.running) {
+                                    zenityProcess.launchGeneration = generation;
+                                    zenityProcess.startedSuccessfully = false;
+                                    zenityProcess.running = true;
+                                }
+                            });
+                        }
+
+                        function finishAttachmentPicker(generation) {
+                            if (generation !== root.attachmentPickerGeneration)
+                                return;
+
+                            root.attachmentPickerActive = false;
+                            Qt.callLater(() => {
+                                if (!root.active || generation !== root.attachmentPickerGeneration || root.attachmentPickerActive)
+                                    return;
+
+                                root.wantsFocus = true;
+                                Qt.callLater(() => {
+                                    if (root.active && generation === root.attachmentPickerGeneration && !root.attachmentPickerActive)
+                                        root.focusSearchInput();
+                                });
+                            });
+                        }
+
                         function addAttachment(mimeType, base64Data, fileName) {
                             let list = pendingAttachments.slice();
                             list.push({
@@ -517,12 +567,22 @@ Item {
 
                         Process {
                             id: zenityProcess
-                            command: ["zenity", "--file-selection", "--file-filter=Images | *.png *.jpg *.jpeg *.gif *.webp *.bmp", "--file-filter=All files | *"]
+                            property int launchGeneration: 0
+                            property bool startedSuccessfully: false
+                            command: ["zenity", "--file-selection", "--title=Attach an image", "--file-filter=Images | *.png *.jpg *.jpeg *.gif *.webp *.bmp", "--file-filter=All files | *"]
+                            onStarted: startedSuccessfully = true
                             stdout: StdioCollector {
                                 onStreamFinished: {
                                     let filePath = text.trim();
                                     if (filePath.length > 0)
                                         mainChatArea.addAttachmentFromFile(filePath);
+                                }
+                            }
+                            onExited: mainChatArea.finishAttachmentPicker(launchGeneration)
+                            onRunningChanged: {
+                                if (!running && !startedSuccessfully && root.attachmentPickerActive
+                                        && launchGeneration === root.attachmentPickerGeneration) {
+                                    mainChatArea.finishAttachmentPicker(launchGeneration);
                                 }
                             }
                         }
@@ -1664,7 +1724,7 @@ Item {
                                             radius: 16
                                         }
 
-                                        onClicked: zenityProcess.running = true
+                                        onClicked: mainChatArea.openAttachmentPicker()
                                     }
                                     Button {
                                         Layout.preferredWidth: 32

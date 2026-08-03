@@ -190,6 +190,7 @@ const aiSource = fs.readFileSync("modules/services/Ai.qml", "utf8");
 const configSource = fs.readFileSync("config/Config.qml", "utf8");
 const aiPanelSource = fs.readFileSync("modules/widgets/config/AiPanel.qml", "utf8");
 const sidebarSource = fs.readFileSync("modules/sidebar/AssistantSidebar.qml", "utf8");
+const shellPanelSource = fs.readFileSync("modules/shell/UnifiedShellPanel.qml", "utf8");
 const messageDataSource = fs.readFileSync("modules/services/ai/AiMessageData.qml", "utf8");
 const codeSource = fs.readFileSync("modules/sidebar/CodeBlock.qml", "utf8");
 const labRunnerSource = fs.readFileSync("lab/run-isolated.sh", "utf8");
@@ -241,6 +242,21 @@ check("chat uses full-width content-height message cards",
     && /id:\s*roleBadge[\s\S]*?text:\s*isUser[\s\S]*?"You"[\s\S]*?messageDelegate\.message\.model/.test(sidebarSource)
     && !/assistantReplyWidth/.test(sidebarSource)
     && !/bubbleContent\.implicitWidth\s*\+/.test(sidebarSource));
+check("attachment picker releases and restores keyboard focus",
+    /property\s+bool\s+attachmentPickerActive:\s*false/.test(sidebarSource)
+    && /property\s+int\s+attachmentPickerGeneration:\s*0/.test(sidebarSource)
+    && /function\s+openAttachmentPicker\(\)[\s\S]*?attachmentPickerGeneration\+\+[\s\S]*?attachmentPickerActive\s*=\s*true[\s\S]*?root\.wantsFocus\s*=\s*false[\s\S]*?inputField\.focus\s*=\s*false[\s\S]*?generation\s*!==\s*root\.attachmentPickerGeneration[\s\S]*?zenityProcess\.running\s*=\s*true/.test(sidebarSource)
+    && /function\s+finishAttachmentPicker\(generation\)[\s\S]*?generation\s*!==\s*root\.attachmentPickerGeneration[\s\S]*?attachmentPickerActive\s*=\s*false[\s\S]*?root\.wantsFocus\s*=\s*true[\s\S]*?Qt\.callLater\([\s\S]*?root\.focusSearchInput\(\)/.test(sidebarSource)
+    && /function\s+onAssistantFocusRequested\(wasAlreadyOpen\)[\s\S]*?if\s*\(root\.attachmentPickerActive\)\s*\n\s*return/.test(sidebarSource)
+    && /onPressed:\s*mouse\s*=>\s*\{[\s\S]*?if\s*\(!root\.attachmentPickerActive\s*&&\s*!root\.wantsFocus\)/.test(sidebarSource)
+    && /id:\s*zenityProcess[\s\S]*?property\s+int\s+launchGeneration:\s*0[\s\S]*?property\s+bool\s+startedSuccessfully:\s*false[\s\S]*?onStarted:\s*startedSuccessfully\s*=\s*true[\s\S]*?onExited:\s*mainChatArea\.finishAttachmentPicker\(launchGeneration\)[\s\S]*?onRunningChanged:[\s\S]*?!running\s*&&\s*!startedSuccessfully[\s\S]*?finishAttachmentPicker\(launchGeneration\)/.test(sidebarSource)
+    && /onClicked:\s*mainChatArea\.openAttachmentPicker\(\)/.test(sidebarSource)
+    && !/onClicked:\s*zenityProcess\.running\s*=\s*true/.test(sidebarSource));
+check("attachment picker overrides competing layer input",
+    /readonly\s+property\s+bool\s+externalPickerActive:\s*assistantSidebar\.active\s*&&\s*assistantSidebar\.attachmentPickerActive/.test(shellPanelSource)
+    && /WlrLayershell\.keyboardFocus:\s*\{[\s\S]*?if\s*\(unifiedPanel\.externalPickerActive\)[\s\S]*?return\s+WlrKeyboardFocus\.None[\s\S]*?if\s*\(notchContent\.screenNotchOpen\)/.test(shellPanelSource)
+    && /readonly\s+property\s+bool\s+needsFullScreenInput:\s*!externalPickerActive\s*&&/.test(shellPanelSource)
+    && (shellPanelSource.match(/item:\s*!unifiedPanel\.externalPickerActive/g) || []).length === 4);
 check("message cards avoid avatar filesystem probes",
     !/\.face\.icon/.test(sidebarSource));
 check("lab recovery removes only its axctl daemon and socket",
