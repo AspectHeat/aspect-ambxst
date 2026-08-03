@@ -188,7 +188,9 @@ check("AI settings render explicit legible hints",
     /component\s+LegibleTextField:\s*TextField/.test(aiPanelSource)
     && /placeholderText:\s*""/.test(aiPanelSource)
     && /z:\s*10[\s\S]*?color:\s*Colors\.overSurfaceVariant/.test(aiPanelSource)
-    && (aiPanelSource.match(/hintText:/g) || []).length === 6);
+    && (aiPanelSource.match(/hintText:/g) || []).length === 6
+    && /Accessible\.name:\s*accessibleName/.test(aiPanelSource)
+    && (aiPanelSource.match(/accessibleName:/g) || []).length === 6);
 
 if (failures.length > 0) {
     console.error(`AI chat logic: ${passed} passed, ${failures.length} failed`);

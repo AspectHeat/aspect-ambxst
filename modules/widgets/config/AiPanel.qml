@@ -18,6 +18,7 @@ Item {
         id: field
 
         property string hintText: ""
+        property string accessibleName: hintText
 
         placeholderText: ""
         color: Colors.overSurface
@@ -27,6 +28,7 @@ Item {
         palette.placeholderText: Colors.overSurfaceVariant
         palette.highlight: Colors.primary
         palette.highlightedText: Colors.overPrimary
+        Accessible.name: accessibleName
         Accessible.description: hintText
 
         Text {
@@ -113,6 +115,7 @@ Item {
                                 id: keyInput
                                 Layout.fillWidth: true
                                 hintText: "Enter API Key..."
+                                accessibleName: modelData.charAt(0).toUpperCase() + modelData.slice(1) + " API key"
                                 echoMode: TextInput.Password
                                 font.family: Config.theme.font
                                 padding: 6
@@ -217,6 +220,7 @@ Item {
                             Layout.fillWidth: true
                             text: modelData === "hermes" ? Config.ai.hermesEndpoint : ""
                             hintText: "http://127.0.0.1:8642/v1"
+                            accessibleName: "Hermes API endpoint"
                             font.family: Config.theme.font
                             padding: 6
 
@@ -292,6 +296,7 @@ Item {
                             id: customKeyInput
                             Layout.fillWidth: true
                             hintText: "Enter API Key..."
+                            accessibleName: "Custom provider API key"
                             echoMode: TextInput.Password
                             font.family: Config.theme.font
                             padding: 6
@@ -400,6 +405,7 @@ Item {
                         Layout.fillWidth: true
                         text: Config.ai.customEndpoint
                         hintText: "e.g. https://api.example.com/v1/chat/completions"
+                        accessibleName: "Custom provider endpoint"
                         font.family: Config.theme.font
                         padding: 6
                         
@@ -438,6 +444,7 @@ Item {
                         Layout.fillWidth: true
                         text: Config.ai.customCurlTemplate
                         hintText: "curl -X POST {{ENDPOINT}} -H 'Authorization: Bearer {{API_KEY}}' -d @{{BODY_PATH}}"
+                        accessibleName: "Custom provider cURL template"
                         font.family: "Monospace"
                         padding: 6
                         
