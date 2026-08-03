@@ -128,6 +128,8 @@ function splitMarkdownBlocks(value) {
 
 function displayContent(value) {
     let text = value === undefined || value === null ? "" : String(value);
+    if (text.indexOf("<think>") === -1)
+        return text;
     let parsed = splitMarkdownBlocks(text);
     let hasThinking = parsed.some(block => block.type === "think");
     if (!hasThinking)

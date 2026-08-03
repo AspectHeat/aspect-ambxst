@@ -693,11 +693,10 @@ Item {
                                     requestTailPosition();
                                 }
 
-                                // Position from semantic chat events only. Watching
-                                // contentHeight here creates a feedback loop with
-                                // variable-height delegate layout: positionViewAtEnd()
-                                // can change contentHeight and continuously recreate
-                                // delegates until Quickshell runs out of memory.
+                                // Full ListView positioning is reserved for bounded
+                                // structural changes, completion, and explicit follow.
+                                // Calling it for every streamed text flush reconstructs
+                                // off-screen variable-height delegates.
                                 function requestTailPosition() {
                                     if (followTail && count > 0)
                                         tailPositionTimer.restart();
@@ -716,11 +715,12 @@ Item {
                                 Connections {
                                     target: Ai
 
-                                    function onStreamFlushCountChanged() {
-                                        chatView.requestTailPosition();
+                                    function onIsLoadingChanged() {
+                                        if (!Ai.isLoading)
+                                            chatView.requestTailPosition();
                                     }
 
-                                    function onIsLoadingChanged() {
+                                    function onChatModelChanged() {
                                         chatView.requestTailPosition();
                                     }
                                 }
@@ -730,10 +730,7 @@ Item {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 clip: true
-                                model: Ai.messageIDs.filter(messageId => {
-                                    let message = Ai.messageForId(messageId);
-                                    return message && message.visibleToUser;
-                                })
+                                model: Ai.visibleMessageIDs
                                 spacing: 16
                                 displayMarginBeginning: 40
                                 displayMarginEnd: 40
@@ -954,6 +951,8 @@ Item {
                                                     ColumnLayout {
                                                         Layout.fillWidth: true
                                                         visible: !messageDelegate.isEditing
+                                                            && messageDelegate.message
+                                                            && messageDelegate.message.done
                                                         spacing: 8
 
                                                         Repeater {
@@ -1004,6 +1003,26 @@ Item {
                                                                 }
                                                             }
                                                         }
+                                                    }
+
+                                                    TextEdit {
+                                                        Layout.fillWidth: true
+                                                        visible: !messageDelegate.isEditing
+                                                            && messageDelegate.message
+                                                            && !messageDelegate.message.done
+                                                        text: messageDelegate.message ? messageDelegate.message.content : ""
+                                                        // Keep the growing stream cheap and stable. The
+                                                        // completed state below builds rich Markdown/code/
+                                                        // think blocks once after done flips true.
+                                                        textFormat: Text.PlainText
+                                                        color: isSystem ? Colors.outline : (isUser ? Styling.srItem("primary") : Styling.srItem("secondary"))
+                                                        font.family: Config.theme.font
+                                                        font.pixelSize: 14
+                                                        wrapMode: Text.Wrap
+                                                        readOnly: true
+                                                        selectByMouse: true
+
+                                                        onLinkActivated: link => Qt.openUrlExternally(link)
                                                     }
 
                                                     Text {

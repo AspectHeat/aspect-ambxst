@@ -85,6 +85,7 @@ check("stray think close is prose", same(blocks("A</think>B"), [
     {type: "text", content: "A</think>B", language: "", unfinished: false}
 ]));
 check("display content removes think section", Markdown.displayContent("A<think>secret</think>B") === "AB");
+check("think-only display remains empty", Markdown.displayContent("<think>still working") === "");
 check("display content preserves ordinary markdown exactly", Markdown.displayContent("**A**\n```c++\nx++;\n```") === "**A**\n```c++\nx++;\n```");
 
 const legacy = {
@@ -189,18 +190,33 @@ const aiSource = fs.readFileSync("modules/services/Ai.qml", "utf8");
 const configSource = fs.readFileSync("config/Config.qml", "utf8");
 const aiPanelSource = fs.readFileSync("modules/widgets/config/AiPanel.qml", "utf8");
 const sidebarSource = fs.readFileSync("modules/sidebar/AssistantSidebar.qml", "utf8");
+const messageDataSource = fs.readFileSync("modules/services/ai/AiMessageData.qml", "utf8");
 const codeSource = fs.readFileSync("modules/sidebar/CodeBlock.qml", "utf8");
 const labRunnerSource = fs.readFileSync("lab/run-isolated.sh", "utf8");
 check("no raw currentChat model remains", !/\bcurrentChat\b/.test(aiSource));
 check("stream timer is bounded", /interval:\s*50\b/.test(aiSource));
-check("stream callback mutates live object", /message\.content\s*=\s*Markdown\.displayContent\(responseBuffer\)/.test(aiSource));
-check("sidebar models stable IDs", /model:\s*Ai\.messageIDs\.filter/.test(sidebarSource));
+check("stream callback mutates live object", /let\s+displayContent\s*=\s*Markdown\.displayContent\(responseBuffer\)[\s\S]*?message\.content\s*=\s*displayContent/.test(aiSource));
+check("think-leading streams retain progress feedback",
+    /message\.thinking\s*=\s*displayContent\.trim\(\)\s*===\s*""/.test(aiSource));
+check("sidebar models a structurally published stable ID list",
+    /property\s+var\s+visibleMessageIDs:\s*\[\]/.test(aiSource)
+    && /model:\s*Ai\.visibleMessageIDs/.test(sidebarSource)
+    && !/model:\s*Ai\.messageIDs\.filter/.test(sidebarSource));
 check("sidebar consumes message blocks", /message\.blocks/.test(sidebarSource));
+check("streaming uses one persistent text surface before rich blocks",
+    /property\s+var\s+blocks:\s*done\s*\?/.test(messageDataSource)
+    && /visible:\s*!messageDelegate\.isEditing[\s\S]*?messageDelegate\.message\.done[\s\S]*?Repeater\s*\{[\s\S]*?model:\s*messageDelegate\.message\s*\?\s*messageDelegate\.message\.blocks/.test(sidebarSource)
+    && /visible:\s*!messageDelegate\.isEditing[\s\S]*?!messageDelegate\.message\.done[\s\S]*?text:\s*messageDelegate\.message\s*\?\s*messageDelegate\.message\.content[\s\S]*?textFormat:\s*Text\.PlainText/.test(sidebarSource));
 check("tail following cannot feed back through layout height",
     !/onContentHeightChanged\s*:/.test(sidebarSource)
     && /function\s+requestTailPosition\(\)/.test(sidebarSource)
-    && /onStreamFlushCountChanged\(\)[\s\S]*?requestTailPosition/.test(sidebarSource)
+    && !/onStreamFlushCountChanged\s*\(/.test(sidebarSource)
+    && /onChatModelChanged\(\)[\s\S]*?requestTailPosition\(\)/.test(sidebarSource)
+    && /onIsLoadingChanged\(\)[\s\S]*?if\s*\(!Ai\.isLoading\)[\s\S]*?requestTailPosition\(\)/.test(sidebarSource)
     && /id:\s*tailPositionTimer[\s\S]*?positionViewAtEnd\(\)/.test(sidebarSource));
+check("ordinary streaming text bypasses block parsing",
+    /function\s+displayContent\(value\)[\s\S]*?indexOf\("<think>"\)\s*===\s*-1[\s\S]*?return\s+text;/.test(
+        fs.readFileSync("modules/services/ai/markdown.js", "utf8")));
 check("avatar loading is limited to user delegates",
     /source:\s*isUser\s*\?\s*"file:\/\/"/.test(sidebarSource));
 check("assistant replies use the available sidebar width",

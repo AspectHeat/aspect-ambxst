@@ -149,6 +149,10 @@ Singleton {
     // Runtime chat state. The array contains stable IDs only; message objects are
     // reactive QtObjects and are never replaced while a response streams.
     property var messageIDs: []
+    // Publish the filtered model only when chat structure changes. Binding a
+    // ListView to messageIDs.filter(...) creates a fresh JavaScript array every
+    // time QML reevaluates the expression, which can reset every delegate.
+    property var visibleMessageIDs: []
     property var messageByID: ({})
     property string currentChatId: ""
     property int nextMessageSerial: 0
@@ -248,6 +252,8 @@ Singleton {
         nextMap[message.messageId] = message;
         messageByID = nextMap;
         messageIDs = messageIDs.concat([message.messageId]);
+        if (message.visibleToUser)
+            visibleMessageIDs = visibleMessageIDs.concat([message.messageId]);
         chatModelChanged();
         return message;
     }
@@ -264,6 +270,10 @@ Singleton {
             return;
         let removedIds = messageIDs.slice(index);
         messageIDs = messageIDs.slice(0, index);
+        visibleMessageIDs = messageIDs.filter(messageId => {
+            let message = messageByID[messageId];
+            return message && message.visibleToUser;
+        });
         chatModelChanged();
         let nextMap = Object.assign({}, messageByID);
         let removedMessages = [];
@@ -281,6 +291,7 @@ Singleton {
         let oldMap = messageByID;
         let oldIds = messageIDs.slice();
         messageIDs = [];
+        visibleMessageIDs = [];
         chatModelChanged();
         messageByID = ({});
         for (let i = 0; i < oldIds.length; i++)
@@ -293,15 +304,19 @@ Singleton {
         let oldIds = messageIDs.slice();
         let nextMap = ({});
         let nextIds = [];
+        let nextVisibleIds = [];
         for (let i = 0; i < source.length; i++) {
             let message = createMessage(source[i], { done: true });
             if (!message)
                 continue;
             nextMap[message.messageId] = message;
             nextIds.push(message.messageId);
+            if (message.visibleToUser)
+                nextVisibleIds.push(message.messageId);
         }
         messageByID = nextMap;
         messageIDs = nextIds;
+        visibleMessageIDs = nextVisibleIds;
         chatModelChanged();
         for (let i = 0; i < oldIds.length; i++)
             destroyMessage(oldMap[oldIds[i]]);
@@ -593,8 +608,13 @@ Singleton {
         let message = messageForId(request.messageId);
         if (!message)
             return;
+        let displayContent = Markdown.displayContent(responseBuffer);
         message.rawContent = responseBuffer;
-        message.content = Markdown.displayContent(responseBuffer);
+        message.content = displayContent;
+        // A think-leading stream intentionally has no display text yet. Keep
+        // the lightweight progress indicator visible until user-facing text
+        // arrives; rich think blocks are created once the message completes.
+        message.thinking = displayContent.trim() === "";
         pendingDisplayBuffer = "";
         streamFlushCount++;
     }
@@ -825,9 +845,6 @@ Singleton {
                     root.responseBuffer += result.content;
                     root.pendingDisplayBuffer += result.content;
                     root.streamChunkCount++;
-                    let message = root.messageForId(request.messageId);
-                    if (message)
-                        message.thinking = false;
                     if (!streamFlushTimer.running)
                         streamFlushTimer.start();
                 }

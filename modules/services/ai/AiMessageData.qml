@@ -26,5 +26,11 @@ QtObject {
     property bool visibleToUser: true
     property string toolStatus: ""
     property var sourceData: ({})
-    property var blocks: Markdown.splitMarkdownBlocks(rawContent !== "" ? rawContent : content)
+    // Streaming text changes at up to 20 Hz. Replacing the block array on every
+    // flush tears down and recreates the entire Loader tree in the sidebar.
+    // Build rich blocks once the response is complete (and again only for later
+    // edits to a completed message).
+    property var blocks: done
+        ? Markdown.splitMarkdownBlocks(rawContent !== "" ? rawContent : content)
+        : []
 }
