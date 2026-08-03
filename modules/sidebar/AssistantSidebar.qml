@@ -869,75 +869,22 @@ Item {
                                                 anchors.left: parent.left
                                                 anchors.right: parent.right
                                                 anchors.margins: 10
-                                                layoutDirection: (isUser && !isSystem) ? Qt.RightToLeft : Qt.LeftToRight
-                                                spacing: 12
-
-                                                Item {
-                                                    width: 32
-                                                    height: 32
-                                                    visible: !isSystem
-
-                                                    StyledRect {
-                                                        anchors.fill: parent
-                                                        radius: Styling.radius(16)
-                                                        variant: "primary"
-                                                        visible: !isUser
-
-                                                        Text {
-                                                            anchors.centerIn: parent
-                                                            text: Icons.robot
-                                                            font.family: Icons.font
-                                                            color: Colors.overPrimary
-                                                            font.pixelSize: 20
-                                                        }
-                                                    }
-
-                                                    ClippingRectangle {
-                                                        anchors.fill: parent
-                                                        radius: Styling.radius(16)
-                                                        color: Colors.surfaceDim
-                                                        visible: isUser
-
-                                                        Image {
-                                                            mipmap: true
-                                                            anchors.fill: parent
-                                                            // Assistant/system delegates do not use this
-                                                            // avatar and must not probe the filesystem.
-                                                            source: isUser ? "file://" + Quickshell.env("HOME") + "/.face.icon" : ""
-                                                            fillMode: Image.PreserveAspectCrop
-
-                                                            onStatusChanged: {
-                                                                if (status === Image.Error) {
-                                                                    source = "";
-                                                                }
-                                                            }
-
-                                                            Text {
-                                                                anchors.centerIn: parent
-                                                                text: Icons.user
-                                                                font.family: Icons.font
-                                                                color: Colors.overPrimary
-                                                                visible: parent.status !== Image.Ready
-                                                            }
-                                                        }
-                                                    }
-                                                }
 
                                                 MouseArea {
                                                     id: bubbleArea
                                                     width: parent.width
-                                                    height: Math.max(bubble.height, 32) + (modelIndicator.visible ? modelIndicator.implicitHeight + 4 : 0)
+                                                    height: Math.max(bubble.height, 32)
                                                     hoverEnabled: true
                                                     acceptedButtons: Qt.NoButton
 
                                                     Row {
-                                                        anchors.verticalCenter: bubble.verticalCenter
-                                                        anchors.left: isUser ? undefined : bubble.right
-                                                        anchors.right: isUser ? bubble.left : undefined
-                                                        anchors.leftMargin: 8
+                                                        anchors.top: bubble.top
+                                                        anchors.right: bubble.right
+                                                        anchors.topMargin: 7
                                                         anchors.rightMargin: 8
                                                         spacing: 4
                                                         visible: bubbleArea.containsMouse || messageDelegate.isEditing
+                                                        z: 2
 
                                                         Button {
                                                             width: 24
@@ -1033,27 +980,83 @@ Item {
 
                                                     StyledRect {
                                                         id: bubble
-                                                        readonly property real assistantReplyWidth: Math.max(180, chatView.width - 80)
-                                                        width: isSystem
-                                                            ? chatView.width * 0.9
-                                                            : (isUser
-                                                                ? Math.min(Math.max(bubbleContent.implicitWidth + 32, 100), chatView.width * 0.7)
-                                                                : assistantReplyWidth)
-                                                        height: bubbleContent.implicitHeight + 24
+                                                        readonly property color cardTextColor: Styling.srItem("pane")
+                                                        width: bubbleArea.width
+                                                        height: bubbleContent.implicitHeight + 28
 
-                                                        anchors.right: isUser ? parent.right : undefined
-                                                        anchors.left: isUser ? undefined : parent.left
+                                                        anchors.left: parent.left
 
-                                                        variant: isSystem ? "surface" : (isUser ? "primary" : "secondary")
-                                                        radius: Styling.radius(4)
-                                                        border.width: isSystem || messageDelegate.isEditing ? 1 : 0
-                                                        border.color: messageDelegate.isEditing ? Styling.srItem("overprimary") : Colors.surfaceDim
+                                                        variant: "pane"
+                                                        radius: Styling.radius(0)
+                                                        border.width: 1
+                                                        border.color: messageDelegate.isEditing ? Styling.srItem("overprimary") : Colors.outline
 
                                                         ColumnLayout {
                                                             id: bubbleContent
                                                             anchors.centerIn: parent
                                                             width: parent.width - 32
                                                             spacing: 8
+
+                                                            RowLayout {
+                                                                Layout.fillWidth: true
+                                                                visible: !isSystem
+                                                                spacing: 8
+
+                                                                StyledRect {
+                                                                    id: roleBadge
+                                                                    Layout.preferredWidth: Math.min(roleLabel.implicitWidth + 20, bubbleContent.width * 0.7)
+                                                                    Layout.preferredHeight: 26
+                                                                    variant: isUser ? "primary" : "secondary"
+                                                                    radius: Styling.radius(-4)
+
+                                                                    Text {
+                                                                        id: roleLabel
+                                                                        anchors.centerIn: parent
+                                                                        width: Math.min(implicitWidth, roleBadge.width - 12)
+                                                                        text: isUser
+                                                                            ? "You"
+                                                                            : (retryMode
+                                                                                ? "Retry with another model " + Icons.caretRight
+                                                                                : (messageDelegate.message && messageDelegate.message.model !== ""
+                                                                                    ? messageDelegate.message.model
+                                                                                    : "Assistant"))
+                                                                        color: Styling.srItem(roleBadge.variant)
+                                                                        font.family: Config.theme.font
+                                                                        font.pixelSize: Styling.fontSize(-2)
+                                                                        font.weight: Font.DemiBold
+                                                                        elide: Text.ElideRight
+                                                                        horizontalAlignment: Text.AlignHCenter
+                                                                    }
+
+                                                                    MouseArea {
+                                                                        anchors.fill: parent
+                                                                        enabled: !isUser
+                                                                        cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+
+                                                                        onClicked: {
+                                                                            if (retryMode) {
+                                                                                mainChatArea.retryIndex = messageDelegate.messageIndex;
+                                                                                modelSelector.open();
+                                                                                retryMode = false;
+                                                                            } else {
+                                                                                retryMode = true;
+                                                                                retryTimer.start();
+                                                                            }
+                                                                        }
+                                                                    }
+
+                                                                    Timer {
+                                                                        id: retryTimer
+                                                                        interval: 5000
+                                                                        onTriggered: retryMode = false
+                                                                    }
+                                                                }
+
+                                                                Item {
+                                                                    Layout.fillWidth: true
+                                                                    Layout.preferredHeight: 1
+                                                                }
+                                                            }
 
                                                             ColumnLayout {
                                                                 Layout.fillWidth: true
@@ -1079,7 +1082,7 @@ Item {
                                                                                 width: bubbleContent.width
                                                                                 text: segment.content
                                                                                 textFormat: Text.MarkdownText
-                                                                                color: isSystem ? Colors.outline : (isUser ? Styling.srItem("primary") : Styling.srItem("secondary"))
+                                                                                color: bubble.cardTextColor
                                                                                 font.family: Config.theme.font
                                                                                 font.pixelSize: 14
                                                                                 wrapMode: Text.Wrap
@@ -1122,7 +1125,7 @@ Item {
                                                                 // completed state below builds rich Markdown/code/
                                                                 // think blocks once after done flips true.
                                                                 textFormat: Text.PlainText
-                                                                color: isSystem ? Colors.outline : (isUser ? Styling.srItem("primary") : Styling.srItem("secondary"))
+                                                                color: bubble.cardTextColor
                                                                 font.family: Config.theme.font
                                                                 font.pixelSize: 14
                                                                 wrapMode: Text.Wrap
@@ -1150,7 +1153,7 @@ Item {
                                                                 Layout.fillWidth: true
                                                                 text: messageDelegate.message ? messageDelegate.message.content : ""
                                                                 textFormat: Text.PlainText
-                                                                color: isSystem ? Colors.outline : (isUser ? Styling.srItem("primary") : Styling.srItem("secondary"))
+                                                                color: bubble.cardTextColor
                                                                 font.family: Config.theme.font
                                                                 font.pixelSize: 14
                                                                 wrapMode: Text.Wrap
@@ -1175,7 +1178,7 @@ Item {
 
                                                                 Text {
                                                                     text: "Run Command"
-                                                                    color: Styling.srItem("overprimary")
+                                                                    color: bubble.cardTextColor
                                                                     font.family: Config.theme.font
                                                                     font.weight: Font.Bold
                                                                     font.pixelSize: 12
@@ -1267,42 +1270,6 @@ Item {
                                                         }
                                                     }
 
-                                                    Text {
-                                                        id: modelIndicator
-                                                        visible: messageDelegate.message && !isUser && !isSystem && messageDelegate.message.model !== ""
-                                                        text: retryMode ? "Retry with another model " + Icons.caretRight : (messageDelegate.message ? messageDelegate.message.model : "")
-                                                        color: Colors.outline
-                                                        font.family: Config.theme.font
-                                                        font.pixelSize: Styling.fontSize(-2)
-                                                        font.weight: Font.Medium
-
-                                                        anchors.top: bubble.bottom
-                                                        anchors.topMargin: 4
-                                                        anchors.left: bubble.left
-                                                        anchors.leftMargin: 4
-
-                                                        MouseArea {
-                                                            anchors.fill: parent
-                                                            cursorShape: Qt.PointingHandCursor
-
-                                                            onClicked: {
-                                                                if (retryMode) {
-                                                                    mainChatArea.retryIndex = messageDelegate.messageIndex;
-                                                                    modelSelector.open();
-                                                                    retryMode = false;
-                                                                } else {
-                                                                    retryMode = true;
-                                                                    retryTimer.start();
-                                                                }
-                                                            }
-                                                        }
-
-                                                        Timer {
-                                                            id: retryTimer
-                                                            interval: 5000
-                                                            onTriggered: retryMode = false
-                                                        }
-                                                    }
                                                 }
                                             }
                                         }

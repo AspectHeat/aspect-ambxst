@@ -235,11 +235,14 @@ check("tail following cannot feed back through layout height",
 check("ordinary streaming text bypasses block parsing",
     /function\s+displayContent\(value\)[\s\S]*?indexOf\("<think>"\)\s*===\s*-1[\s\S]*?return\s+text;/.test(
         fs.readFileSync("modules/services/ai/markdown.js", "utf8")));
-check("avatar loading is limited to user delegates",
-    /source:\s*isUser\s*\?\s*"file:\/\/"/.test(sidebarSource));
-check("assistant replies use the available sidebar width",
-    /assistantReplyWidth:\s*Math\.max\(180,\s*chatView\.width\s*-\s*80\)/.test(sidebarSource)
-    && /isUser[\s\S]*?bubbleContent\.implicitWidth[\s\S]*?:\s*assistantReplyWidth/.test(sidebarSource));
+check("chat uses full-width content-height message cards",
+    /id:\s*bubble[\s\S]*?width:\s*bubbleArea\.width[\s\S]*?height:\s*bubbleContent\.implicitHeight\s*\+\s*28/.test(sidebarSource)
+    && /variant:\s*"pane"[\s\S]*?radius:\s*Styling\.radius\(0\)/.test(sidebarSource)
+    && /id:\s*roleBadge[\s\S]*?text:\s*isUser[\s\S]*?"You"[\s\S]*?messageDelegate\.message\.model/.test(sidebarSource)
+    && !/assistantReplyWidth/.test(sidebarSource)
+    && !/bubbleContent\.implicitWidth\s*\+/.test(sidebarSource));
+check("message cards avoid avatar filesystem probes",
+    !/\.face\.icon/.test(sidebarSource));
 check("lab recovery removes only its axctl daemon and socket",
     /function\s+stop_lab_axctl|stop_lab_axctl\(\)/.test(labRunnerSource)
     && /\[a\]xctl -c \$AXCTL_CONFIG daemon/.test(labRunnerSource)
