@@ -1068,6 +1068,9 @@ for f in files:
     property bool modelRefreshPending: false
     property string hermesConnectionState: "unconfigured"
     property string hermesConnectionMessage: "Enter the gateway API key to connect"
+    property bool hermesFetchCountsTowardRefresh: false
+    property int hermesFetchGeneration: 0
+    property int hermesRunningGeneration: 0
 
     function normalizeHermesEndpoint(endpoint) {
         return HermesConfig.normalizeEndpoint(endpoint);
@@ -1086,7 +1089,30 @@ for f in files:
         }
         hermesConnectionState = "checking";
         hermesConnectionMessage = "Checking Hermes gateway…";
-        fetchAvailableModels();
+        startHermesModelFetch(false);
+    }
+
+    function startHermesModelFetch(countsTowardRefresh) {
+        let hermesKey = KeyStore.getKey("hermes");
+        if (!hermesKey || fetchProcessHermes.running)
+            return false;
+
+        // Keep Hermes selectable while discovery is slow or unavailable.
+        publishHermesModels(["hermes-agent"]);
+        hermesConnectionState = "checking";
+        hermesConnectionMessage = "Checking Hermes gateway…";
+        hermesFetchCountsTowardRefresh = countsTowardRefresh;
+        hermesFetchGeneration++;
+        hermesRunningGeneration = hermesFetchGeneration;
+
+        let hermesEndpoint = normalizeHermesEndpoint(Config.ai.hermesEndpoint);
+        fetchProcessHermes.command = [
+            "curl", "-sS", "--fail-with-body", "--connect-timeout", "3", "--max-time", "8",
+            hermesEndpoint + "/models",
+            "-H", "Authorization: Bearer " + hermesKey
+        ];
+        fetchProcessHermes.running = true;
+        return true;
     }
 
     function fetchAvailableModels() {
@@ -1157,20 +1183,10 @@ for f in files:
         // Hermes Agent (OpenAI-compatible local/remote gateway)
         let hermesKey = KeyStore.getKey("hermes");
         if (hermesKey) {
-            // Keep Hermes selectable while discovery is slow or unavailable.
-            // The discovered catalog replaces this fallback when the request exits.
-            publishHermesModels(["hermes-agent"]);
-            pendingFetches++;
-            hermesConnectionState = "checking";
-            hermesConnectionMessage = "Checking Hermes gateway…";
-            let hermesEndpoint = normalizeHermesEndpoint(Config.ai.hermesEndpoint);
-            fetchProcessHermes.command = [
-                "curl", "-sS", "--fail-with-body", "--connect-timeout", "3", "--max-time", "8",
-                hermesEndpoint + "/models",
-                "-H", "Authorization: Bearer " + hermesKey
-            ];
-            fetchProcessHermes.running = true;
+            if (startHermesModelFetch(true))
+                pendingFetches++;
         } else {
+            hermesFetchGeneration++;
             hermesConnectionState = "unconfigured";
             hermesConnectionMessage = "Enter the gateway API key to connect";
             replaceProviderModels([], "hermes");
@@ -1485,6 +1501,9 @@ for f in files:
             id: fetchHermesErr
         }
         onExited: exitCode => {
+            let completedGeneration = hermesRunningGeneration;
+            let countsTowardRefresh = hermesFetchCountsTowardRefresh;
+            hermesFetchCountsTowardRefresh = false;
             let parsed = HermesConfig.parseModelsResponse(fetchHermesOut.text);
             let discovered = parsed.modelIds;
             let connectionState = "error";
@@ -1504,10 +1523,13 @@ for f in files:
             if (discovered.length === 0)
                 discovered.push("hermes-agent");
             Qt.callLater(() => {
-                hermesConnectionState = connectionState;
-                hermesConnectionMessage = connectionMessage;
-                publishHermesModels(discovered);
-                checkFetchCompletion();
+                if (completedGeneration === hermesFetchGeneration) {
+                    hermesConnectionState = connectionState;
+                    hermesConnectionMessage = connectionMessage;
+                    publishHermesModels(discovered);
+                }
+                if (countsTowardRefresh)
+                    checkFetchCompletion();
             });
         }
     }
@@ -1557,32 +1579,65 @@ for f in files:
 
     function replaceProviderModels(newModels, provider) {
         let updatedList = [];
-        let removed = [];
+        let existingProviderModels = [];
         for (let i = 0; i < models.length; i++) {
             if (models[i].provider === provider)
-                removed.push(models[i]);
+                existingProviderModels.push(models[i]);
             else
                 updatedList.push(models[i]);
         }
-        for (let i = 0; i < newModels.length; i++)
-            updatedList.push(newModels[i]);
 
-        let currentRemoved = currentModel && currentModel.provider === provider;
-        let previousModelId = currentRemoved ? currentModel.model : "";
-        models = updatedList;
-        if (currentRemoved) {
-            let replacement = null;
-            for (let i = 0; i < newModels.length; i++) {
-                if (newModels[i].model === previousModelId) {
-                    replacement = newModels[i];
+        // Reuse matching objects so a catalog refresh does not fire
+        // onCurrentModelChanged and cancel an in-flight response.
+        let providerModels = [];
+        let supersededModels = [];
+        for (let i = 0; i < newModels.length; i++) {
+            let incoming = newModels[i];
+            let existing = null;
+            for (let j = 0; j < existingProviderModels.length; j++) {
+                if (incoming.model === existingProviderModels[j].model) {
+                    existing = existingProviderModels[j];
                     break;
                 }
             }
-            currentModel = replacement || (newModels.length > 0 ? newModels[0]
+            if (existing) {
+                existing.name = incoming.name;
+                existing.icon = incoming.icon;
+                existing.description = incoming.description;
+                existing.endpoint = incoming.endpoint;
+                existing.requires_key = incoming.requires_key;
+                existing.key_id = incoming.key_id;
+                providerModels.push(existing);
+                supersededModels.push(incoming);
+            } else {
+                providerModels.push(incoming);
+            }
+        }
+        for (let i = 0; i < providerModels.length; i++)
+            updatedList.push(providerModels[i]);
+
+        let currentBelongsToProvider = currentModel && currentModel.provider === provider;
+        let currentStillPresent = currentBelongsToProvider
+            && providerModels.indexOf(currentModel) !== -1;
+        let previousModelId = currentBelongsToProvider ? currentModel.model : "";
+        models = updatedList;
+        if (currentBelongsToProvider && !currentStillPresent) {
+            let replacement = null;
+            for (let i = 0; i < providerModels.length; i++) {
+                if (providerModels[i].model === previousModelId) {
+                    replacement = providerModels[i];
+                    break;
+                }
+            }
+            currentModel = replacement || (providerModels.length > 0 ? providerModels[0]
                 : (updatedList.length > 0 ? updatedList[0] : null));
         }
-        for (let i = 0; i < removed.length; i++)
-            removed[i].destroy();
+        for (let i = 0; i < existingProviderModels.length; i++) {
+            if (providerModels.indexOf(existingProviderModels[i]) === -1)
+                existingProviderModels[i].destroy();
+        }
+        for (let i = 0; i < supersededModels.length; i++)
+            supersededModels[i].destroy();
         if (!isRestored)
             tryRestore();
     }

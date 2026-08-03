@@ -7,6 +7,8 @@ function normalizeEndpoint(value) {
     if (!endpoint)
         return defaultEndpoint;
 
+    if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(endpoint))
+        endpoint = "http://" + endpoint;
     endpoint = endpoint.replace(/\/(?:models|chat\/completions)$/i, "");
     if (!/\/v1$/i.test(endpoint))
         endpoint += "/v1";

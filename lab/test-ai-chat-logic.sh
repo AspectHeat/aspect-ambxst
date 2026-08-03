@@ -166,6 +166,8 @@ check("Hermes endpoint defaults to local API",
     HermesConfig.normalizeEndpoint("") === "http://127.0.0.1:8642/v1");
 check("Hermes endpoint appends v1",
     HermesConfig.normalizeEndpoint("http://127.0.0.1:8642/") === "http://127.0.0.1:8642/v1");
+check("Hermes endpoint adds local HTTP scheme",
+    HermesConfig.normalizeEndpoint("127.0.0.1:8642") === "http://127.0.0.1:8642/v1");
 check("Hermes endpoint preserves profile v1",
     HermesConfig.normalizeEndpoint("https://agent.example/p/coder/v1/") === "https://agent.example/p/coder/v1");
 check("Hermes endpoint strips models resource",
@@ -198,7 +200,7 @@ check("highlighter is completion gated", /active:\s*root\.highlightEnabled/.test
 check("tool callback defers structural mutation",
     /id:\s*commandExecutionProc[\s\S]*?onExited:[\s\S]*?Qt\.callLater\(\(\)\s*=>\s*\{[\s\S]*?appendMessage/.test(aiSource));
 check("Hermes fallback publishes before discovery",
-    /publishHermesModels\(\["hermes-agent"\]\)[\s\S]*?fetchProcessHermes\.running\s*=\s*true/.test(aiSource));
+    /function\s+startHermesModelFetch[\s\S]*?publishHermesModels\(\["hermes-agent"\]\)[\s\S]*?fetchProcessHermes\.running\s*=\s*true/.test(aiSource));
 check("overlapping model refreshes are queued",
     /if\s*\(fetchingModels\)\s*\{[\s\S]*?modelRefreshPending\s*=\s*true/.test(aiSource));
 check("curl waits for request body save",
@@ -222,6 +224,17 @@ check("Hermes settings expose connection validation",
     && /modelData\s*===\s*"hermes"\s*\?\s*"Save & Test"/.test(aiPanelSource)
     && /text:\s*Ai\.hermesConnectionMessage/.test(aiPanelSource)
     && /API_SERVER_KEY/.test(aiPanelSource));
+check("Hermes connection test is provider-isolated and generation-guarded",
+    /function\s+testHermesConnection\(\)[\s\S]*?startHermesModelFetch\(false\)/.test(aiSource)
+    && /property\s+int\s+hermesFetchGeneration/.test(aiSource)
+    && /hermesRunningGeneration\s*=\s*hermesFetchGeneration/.test(aiSource)
+    && /completedGeneration\s*=\s*hermesRunningGeneration/.test(aiSource)
+    && /completedGeneration\s*===\s*hermesFetchGeneration/.test(aiSource)
+    && /if\s*\(countsTowardRefresh\)\s*checkFetchCompletion\(\)/.test(aiSource));
+check("Hermes refresh preserves matching model identity",
+    /incoming\.model\s*===\s*existingProviderModels\[j\]\.model/.test(aiSource)
+    && /currentStillPresent[\s\S]*?currentBelongsToProvider\s*&&\s*!currentStillPresent/.test(aiSource)
+    && /supersededModels\[i\]\.destroy\(\)/.test(aiSource));
 
 if (failures.length > 0) {
     console.error(`AI chat logic: ${passed} passed, ${failures.length} failed`);
