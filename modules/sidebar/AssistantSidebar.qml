@@ -680,26 +680,83 @@ Item {
                                 visible: false
                             }
 
-                            ListView {
+                            Flickable {
                                 id: chatView
                                 property bool followTail: true
+                                readonly property int renderPageSize: 60
+                                property bool showingLatestPage: true
+                                property int pageEndIndex: count
+                                readonly property int count: Ai.visibleMessageIDs.length
+                                readonly property int renderEndIndex: Math.min(count, Math.max(0, pageEndIndex))
+                                readonly property int renderStartIndex: Math.max(0, renderEndIndex - renderPageSize)
+                                readonly property var renderedMessageIDs: Ai.visibleMessageIDs.slice(renderStartIndex, renderEndIndex)
+
+                                contentWidth: width
+                                contentHeight: chatContent.implicitHeight
+                                boundsBehavior: Flickable.StopAtBounds
+                                flickableDirection: Flickable.VerticalFlick
 
                                 function nearTail() {
-                                    return atYEnd || contentY + height >= contentHeight + bottomMargin - 48;
+                                    return atYEnd || contentY + height >= contentHeight - 48;
                                 }
 
                                 function enableFollow() {
                                     followTail = true;
+                                    showingLatestPage = true;
+                                    pageEndIndex = count;
                                     requestTailPosition();
                                 }
 
-                                // Full ListView positioning is reserved for bounded
-                                // structural changes, completion, and explicit follow.
-                                // Calling it for every streamed text flush reconstructs
-                                // off-screen variable-height delegates.
+                                // Message delegates are deliberately non-virtualized.
+                                // Variable-height ListView positioning and input-margin
+                                // changes repeatedly reconstructed long chat delegates.
                                 function requestTailPosition() {
                                     if (followTail && count > 0)
                                         tailPositionTimer.restart();
+                                }
+
+                                function snapToTail() {
+                                    contentY = Math.max(0, contentHeight - height);
+                                }
+
+                                function syncRenderedMessages() {
+                                    let desired = renderedMessageIDs;
+
+                                    // Remove IDs outside the bounded render window.
+                                    for (let i = chatMessageModel.count - 1; i >= 0; i--) {
+                                        if (desired.indexOf(chatMessageModel.get(i).messageId) === -1)
+                                            chatMessageModel.remove(i);
+                                    }
+
+                                    // Incrementally insert/reorder only changed IDs. The
+                                    // model object itself remains stable, so appending a
+                                    // message cannot reset every existing delegate.
+                                    for (let i = 0; i < desired.length; i++) {
+                                        if (i < chatMessageModel.count
+                                                && chatMessageModel.get(i).messageId === desired[i])
+                                            continue;
+
+                                        let foundAt = -1;
+                                        for (let j = i + 1; j < chatMessageModel.count; j++) {
+                                            if (chatMessageModel.get(j).messageId === desired[i]) {
+                                                foundAt = j;
+                                                break;
+                                            }
+                                        }
+                                        if (foundAt >= 0)
+                                            chatMessageModel.remove(foundAt);
+                                        chatMessageModel.insert(i, { messageId: desired[i] });
+                                    }
+
+                                    while (chatMessageModel.count > desired.length)
+                                        chatMessageModel.remove(chatMessageModel.count - 1);
+                                }
+
+                                onRenderedMessageIDsChanged: syncRenderedMessages()
+                                Component.onCompleted: syncRenderedMessages()
+
+                                ListModel {
+                                    id: chatMessageModel
                                 }
 
                                 Timer {
@@ -708,7 +765,7 @@ Item {
                                     repeat: false
                                     onTriggered: {
                                         if (chatView.followTail && chatView.count > 0)
-                                            chatView.positionViewAtEnd();
+                                            chatView.snapToTail();
                                     }
                                 }
 
@@ -723,526 +780,585 @@ Item {
                                     function onChatModelChanged() {
                                         chatView.requestTailPosition();
                                     }
+
+                                    function onCurrentChatIdChanged() {
+                                        chatView.enableFollow();
+                                    }
                                 }
 
                                 visible: !mainChatArea.isWelcome
-                                cacheBuffer: 240
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 clip: true
-                                model: Ai.visibleMessageIDs
-                                spacing: 16
-                                displayMarginBeginning: 40
-                                displayMarginEnd: 40
-
-                                bottomMargin: mainChatArea.isWelcome ? 0 : inputContainer.height
 
                                 onCountChanged: {
+                                    if (showingLatestPage)
+                                        pageEndIndex = count;
+                                    else
+                                        pageEndIndex = Math.min(pageEndIndex, count);
                                     requestTailPosition();
                                 }
 
                                 onMovementStarted: followTail = false
                                 onMovementEnded: followTail = nearTail()
 
-                                delegate: Item {
-                                    id: messageDelegate
-                                    required property string modelData
-                                    required property int index
+                                Column {
+                                    id: chatContent
+                                    width: chatView.width
 
-                                    property var message: Ai.messageForId(modelData)
-                                    property int messageIndex: Ai.messageIDs.indexOf(modelData)
-                                    property bool isUser: message && message.role === "user"
-                                    property bool isSystem: message && (message.role === "system" || message.role === "function")
-                                    property bool isEditing: false
-                                    property bool retryMode: false
+                                    Item {
+                                        width: chatContent.width
+                                        height: 40
+                                    }
 
-                                    width: ListView.view.width
-                                    height: message ? bubbleArea.height + 8 : 0
+                                    RowLayout {
+                                        width: chatContent.width
+                                        height: visible ? 36 : 0
+                                        visible: chatView.renderStartIndex > 0
+                                            || chatView.renderEndIndex < chatView.count
 
-                                    Row {
-                                        anchors.left: parent.left
-                                        anchors.right: parent.right
-                                        anchors.margins: 10
-                                        layoutDirection: (isUser && !isSystem) ? Qt.RightToLeft : Qt.LeftToRight
-                                        spacing: 12
+                                        Button {
+                                            Layout.fillWidth: true
+                                            visible: chatView.renderStartIndex > 0
+                                            flat: true
+                                            text: "Previous messages"
 
-                                        Item {
-                                            width: 32
-                                            height: 32
-                                            visible: !isSystem
-
-                                            StyledRect {
-                                                anchors.fill: parent
-                                                radius: Styling.radius(16)
-                                                variant: "primary"
-                                                visible: !isUser
-
-                                                Text {
-                                                    anchors.centerIn: parent
-                                                    text: Icons.robot
-                                                    font.family: Icons.font
-                                                    color: Colors.overPrimary
-                                                    font.pixelSize: 20
-                                                }
-                                            }
-
-                                            ClippingRectangle {
-                                                anchors.fill: parent
-                                                radius: Styling.radius(16)
-                                                color: Colors.surfaceDim
-                                                visible: isUser
-
-                                                Image {
-                                                    mipmap: true
-                                                    anchors.fill: parent
-                                                    // Assistant/system delegates do not use this
-                                                    // avatar and must not probe the filesystem.
-                                                    source: isUser ? "file://" + Quickshell.env("HOME") + "/.face.icon" : ""
-                                                    fillMode: Image.PreserveAspectCrop
-
-                                                    onStatusChanged: {
-                                                        if (status === Image.Error) {
-                                                            source = "";
-                                                        }
-                                                    }
-
-                                                    Text {
-                                                        anchors.centerIn: parent
-                                                        text: Icons.user
-                                                        font.family: Icons.font
-                                                        color: Colors.overPrimary
-                                                        visible: parent.status !== Image.Ready
-                                                    }
-                                                }
+                                            onClicked: {
+                                                chatView.followTail = false;
+                                                chatView.showingLatestPage = false;
+                                                chatView.pageEndIndex = chatView.renderStartIndex;
                                             }
                                         }
 
-                                        MouseArea {
-                                            id: bubbleArea
-                                            width: parent.width
-                                            height: Math.max(bubble.height, 32) + (modelIndicator.visible ? modelIndicator.implicitHeight + 4 : 0)
-                                            hoverEnabled: true
-                                            acceptedButtons: Qt.NoButton
+                                        Button {
+                                            Layout.fillWidth: true
+                                            visible: chatView.renderEndIndex < chatView.count
+                                            flat: true
+                                            text: "Newer messages"
 
-                                            Row {
-                                                anchors.verticalCenter: bubble.verticalCenter
-                                                anchors.left: isUser ? undefined : bubble.right
-                                                anchors.right: isUser ? bubble.left : undefined
-                                                anchors.leftMargin: 8
-                                                anchors.rightMargin: 8
-                                                spacing: 4
-                                                visible: bubbleArea.containsMouse || messageDelegate.isEditing
-
-                                                Button {
-                                                    width: 24
-                                                    height: 24
-                                                    flat: true
-                                                    padding: 0
-                                                    visible: !isSystem
-
-                                                    property bool isHovered: hovered
-
-                                                    contentItem: Text {
-                                                        text: messageDelegate.isEditing ? Icons.accept : Icons.edit
-                                                        font.family: Icons.font
-                                                        color: parent.down ? Colors.overPrimary : (parent.isHovered ? Colors.overSurface : Colors.overSurface)
-                                                        horizontalAlignment: Text.AlignHCenter
-                                                        verticalAlignment: Text.AlignVCenter
-                                                    }
-
-                                                    background: StyledRect {
-                                                        variant: parent.down ? "primary" : (parent.isHovered ? "focus" : "common")
-                                                        radius: Styling.radius(4)
-                                                    }
-
-                                                    onClicked: {
-                                                        if (messageDelegate.isEditing) {
-                                                            Ai.updateMessage(messageDelegate.messageIndex, bubbleContentText.text);
-                                                            messageDelegate.isEditing = false;
-                                                        } else {
-                                                            messageDelegate.isEditing = true;
-                                                            bubbleContentText.forceActiveFocus();
-                                                            bubbleContentText.cursorPosition = bubbleContentText.text.length;
-                                                        }
-                                                    }
-                                                }
-
-                                                Button {
-                                                    width: 24
-                                                    height: 24
-                                                    flat: true
-                                                    padding: 0
-                                                    visible: !messageDelegate.isEditing
-
-                                                    property bool isHovered: hovered
-
-                                                    contentItem: Text {
-                                                        text: Icons.copy
-                                                        font.family: Icons.font
-                                                        color: parent.down ? Colors.overPrimary : (parent.isHovered ? Colors.overSurface : Colors.overSurface)
-                                                        horizontalAlignment: Text.AlignHCenter
-                                                        verticalAlignment: Text.AlignVCenter
-                                                    }
-
-                                                    background: StyledRect {
-                                                        variant: parent.down ? "primary" : (parent.isHovered ? "focus" : "common")
-                                                        radius: Styling.radius(4)
-                                                    }
-
-                                                    onClicked: {
-                                                        if (messageDelegate.message)
-                                                            Quickshell.clipboardText = messageDelegate.message.content;
-                                                    }
-                                                }
-
-                                                Button {
-                                                    visible: !isUser && !isSystem && !messageDelegate.isEditing
-                                                    width: 24
-                                                    height: 24
-                                                    flat: true
-                                                    padding: 0
-
-                                                    property bool isHovered: hovered
-
-                                                    contentItem: Text {
-                                                        text: Icons.arrowCounterClockwise
-                                                        font.family: Icons.font
-                                                        color: parent.down ? Colors.overPrimary : (parent.isHovered ? Colors.overSurface : Colors.overSurface)
-                                                        horizontalAlignment: Text.AlignHCenter
-                                                        verticalAlignment: Text.AlignVCenter
-                                                    }
-
-                                                    background: StyledRect {
-                                                        variant: parent.down ? "primary" : (parent.isHovered ? "focus" : "common")
-                                                        radius: Styling.radius(4)
-                                                    }
-
-                                                    onClicked: {
-                                                        chatView.enableFollow();
-                                                        Ai.regenerateResponse(messageDelegate.messageIndex);
-                                                    }
-                                                }
-                                            }
-
-                                            StyledRect {
-                                                id: bubble
-                                                readonly property real assistantReplyWidth: Math.max(180, chatView.width - 80)
-                                                width: isSystem
-                                                    ? chatView.width * 0.9
-                                                    : (isUser
-                                                        ? Math.min(Math.max(bubbleContent.implicitWidth + 32, 100), chatView.width * 0.7)
-                                                        : assistantReplyWidth)
-                                                height: bubbleContent.implicitHeight + 24
-
-                                                anchors.right: isUser ? parent.right : undefined
-                                                anchors.left: isUser ? undefined : parent.left
-
-                                                variant: isSystem ? "surface" : (isUser ? "primary" : "secondary")
-                                                radius: Styling.radius(4)
-                                                border.width: isSystem || messageDelegate.isEditing ? 1 : 0
-                                                border.color: messageDelegate.isEditing ? Styling.srItem("overprimary") : Colors.surfaceDim
-
-                                                ColumnLayout {
-                                                    id: bubbleContent
-                                                    anchors.centerIn: parent
-                                                    width: parent.width - 32
-                                                    spacing: 8
-
-                                                    ColumnLayout {
-                                                        Layout.fillWidth: true
-                                                        visible: !messageDelegate.isEditing
-                                                            && messageDelegate.message
-                                                            && messageDelegate.message.done
-                                                        spacing: 8
-
-                                                        Repeater {
-                                                            model: messageDelegate.message ? messageDelegate.message.blocks : []
-
-                                                            delegate: Loader {
-                                                                Layout.fillWidth: true
-                                                                sourceComponent: segment.type === "code"
-                                                                    ? codeComponent
-                                                                    : (segment.type === "think" ? thinkComponent : textComponent)
-
-                                                                property var segment: modelData
-
-                                                                Component {
-                                                                    id: textComponent
-                                                                    TextEdit {
-                                                                        width: bubbleContent.width
-                                                                        text: segment.content
-                                                                        textFormat: Text.MarkdownText
-                                                                        color: isSystem ? Colors.outline : (isUser ? Styling.srItem("primary") : Styling.srItem("secondary"))
-                                                                        font.family: Config.theme.font
-                                                                        font.pixelSize: 14
-                                                                        wrapMode: Text.Wrap
-                                                                        readOnly: true
-                                                                        selectByMouse: true
-
-                                                                        onLinkActivated: link => Qt.openUrlExternally(link)
-                                                                    }
-                                                                }
-
-                                                                Component {
-                                                                    id: codeComponent
-                                                                    CodeBlock {
-                                                                        width: bubbleContent.width
-                                                                        code: segment.content
-                                                                        language: segment.language
-                                                                        highlightEnabled: messageDelegate.message && messageDelegate.message.done
-                                                                    }
-                                                                }
-
-                                                                Component {
-                                                                    id: thinkComponent
-                                                                    MessageThinkBlock {
-                                                                        width: bubbleContent.width
-                                                                        content: segment.content
-                                                                        unfinished: segment.unfinished
-                                                                    }
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-
-                                                    TextEdit {
-                                                        Layout.fillWidth: true
-                                                        visible: !messageDelegate.isEditing
-                                                            && messageDelegate.message
-                                                            && !messageDelegate.message.done
-                                                        text: messageDelegate.message ? messageDelegate.message.content : ""
-                                                        // Keep the growing stream cheap and stable. The
-                                                        // completed state below builds rich Markdown/code/
-                                                        // think blocks once after done flips true.
-                                                        textFormat: Text.PlainText
-                                                        color: isSystem ? Colors.outline : (isUser ? Styling.srItem("primary") : Styling.srItem("secondary"))
-                                                        font.family: Config.theme.font
-                                                        font.pixelSize: 14
-                                                        wrapMode: Text.Wrap
-                                                        readOnly: true
-                                                        selectByMouse: true
-
-                                                        onLinkActivated: link => Qt.openUrlExternally(link)
-                                                    }
-
-                                                    Text {
-                                                        Layout.fillWidth: true
-                                                        visible: messageDelegate.message
-                                                            && (messageDelegate.message.toolStatus !== "" || messageDelegate.message.thinking)
-                                                        text: messageDelegate.message && messageDelegate.message.toolStatus !== ""
-                                                            ? messageDelegate.message.toolStatus
-                                                            : "Thinking…"
-                                                        color: Colors.outline
-                                                        font.family: Config.theme.font
-                                                        font.pixelSize: 12
-                                                        wrapMode: Text.Wrap
-                                                    }
-
-                                                    TextEdit {
-                                                        id: bubbleContentText
-                                                        Layout.fillWidth: true
-                                                        text: messageDelegate.message ? messageDelegate.message.content : ""
-                                                        textFormat: Text.PlainText
-                                                        color: isSystem ? Colors.outline : (isUser ? Styling.srItem("primary") : Styling.srItem("secondary"))
-                                                        font.family: Config.theme.font
-                                                        font.pixelSize: 14
-                                                        wrapMode: Text.Wrap
-                                                        readOnly: !messageDelegate.isEditing
-                                                        selectByMouse: true
-                                                        visible: messageDelegate.isEditing
-                                                    }
-
-                                                    ColumnLayout {
-                                                        visible: messageDelegate.message
-                                                            && messageDelegate.message.functionCall !== undefined
-                                                            && messageDelegate.message.functionCall !== null
-                                                        Layout.fillWidth: true
-                                                        spacing: 4
-
-                                                        Rectangle {
-                                                            Layout.fillWidth: true
-                                                            height: 1
-                                                            color: Colors.outline
-                                                            opacity: 0.2
-                                                        }
-
-                                                        Text {
-                                                            text: "Run Command"
-                                                            color: Styling.srItem("overprimary")
-                                                            font.family: Config.theme.font
-                                                            font.weight: Font.Bold
-                                                            font.pixelSize: 12
-                                                        }
-
-                                                        StyledRect {
-                                                            Layout.fillWidth: true
-                                                            variant: "surface"
-                                                            color: Colors.surface
-                                                            radius: Styling.radius(4)
-
-                                                            TextEdit {
-                                                                padding: 8
-                                                                width: parent.width
-                                                                text: messageDelegate.message && messageDelegate.message.functionCall
-                                                                    && messageDelegate.message.functionCall.args
-                                                                    ? (messageDelegate.message.functionCall.args.command || "") : ""
-                                                                font.family: "Monospace"
-                                                                color: Colors.overSurface
-                                                                readOnly: true
-                                                                wrapMode: Text.WrapAnywhere
-                                                            }
-                                                        }
-
-                                                        RowLayout {
-                                                            visible: messageDelegate.message && messageDelegate.message.functionPending === true
-                                                            Layout.alignment: Qt.AlignRight
-                                                            spacing: 8
-
-                                                            Button {
-                                                                text: "Reject"
-                                                                highlighted: true
-                                                                flat: true
-                                                                onClicked: Ai.rejectCommand(messageDelegate.messageIndex)
-
-                                                                background: StyledRect {
-                                                                    variant: "error"
-                                                                    opacity: parent.hovered ? 0.8 : 0.5
-                                                                    radius: Styling.radius(4)
-                                                                }
-
-                                                                contentItem: Text {
-                                                                    text: parent.text
-                                                                    color: Colors.overError
-                                                                    font.family: Config.theme.font
-                                                                    horizontalAlignment: Text.AlignHCenter
-                                                                    verticalAlignment: Text.AlignVCenter
-                                                                }
-                                                            }
-
-                                                            Button {
-                                                                text: "Approve"
-                                                                highlighted: true
-                                                                flat: true
-                                                                onClicked: Ai.approveCommand(messageDelegate.messageIndex)
-
-                                                                background: StyledRect {
-                                                                    variant: "primary"
-                                                                    opacity: parent.hovered ? 1 : 0.8
-                                                                    radius: Styling.radius(4)
-                                                                }
-
-                                                                contentItem: Text {
-                                                                    text: parent.text
-                                                                    color: Colors.overPrimary
-                                                                    font.family: Config.theme.font
-                                                                    horizontalAlignment: Text.AlignHCenter
-                                                                    verticalAlignment: Text.AlignVCenter
-                                                                }
-                                                            }
-                                                        }
-
-                                                        Text {
-                                                            visible: messageDelegate.message && messageDelegate.message.functionApproved === true
-                                                            text: "Command Approved"
-                                                            color: Colors.success
-                                                            font.pixelSize: 12
-                                                        }
-
-                                                        Text {
-                                                            visible: messageDelegate.message
-                                                                && messageDelegate.message.functionApproved === false
-                                                                && !messageDelegate.message.functionPending
-                                                            text: "Command Rejected"
-                                                            color: Colors.error
-                                                            font.pixelSize: 12
-                                                        }
-                                                    }
-                                                }
-                                            }
-
-                                            Text {
-                                                id: modelIndicator
-                                                visible: messageDelegate.message && !isUser && !isSystem && messageDelegate.message.model !== ""
-                                                text: retryMode ? "Retry with another model " + Icons.caretRight : (messageDelegate.message ? messageDelegate.message.model : "")
-                                                color: Colors.outline
-                                                font.family: Config.theme.font
-                                                font.pixelSize: Styling.fontSize(-2)
-                                                font.weight: Font.Medium
-
-                                                anchors.top: bubble.bottom
-                                                anchors.topMargin: 4
-                                                anchors.left: bubble.left
-                                                anchors.leftMargin: 4
-
-                                                MouseArea {
-                                                    anchors.fill: parent
-                                                    cursorShape: Qt.PointingHandCursor
-
-                                                    onClicked: {
-                                                        if (retryMode) {
-                                                            mainChatArea.retryIndex = messageDelegate.messageIndex;
-                                                            modelSelector.open();
-                                                            retryMode = false;
-                                                        } else {
-                                                            retryMode = true;
-                                                            retryTimer.start();
-                                                        }
-                                                    }
-                                                }
-
-                                                Timer {
-                                                    id: retryTimer
-                                                    interval: 5000
-                                                    onTriggered: retryMode = false
-                                                }
+                                            onClicked: {
+                                                let nextEnd = Math.min(chatView.count,
+                                                    chatView.renderEndIndex + chatView.renderPageSize);
+                                                chatView.pageEndIndex = nextEnd;
+                                                chatView.showingLatestPage = nextEnd >= chatView.count;
+                                                if (chatView.showingLatestPage)
+                                                    chatView.enableFollow();
                                             }
                                         }
                                     }
-                                }
 
-                                footer: Item {
-                                    width: chatView.width
-                                    height: 40
-                                    visible: Ai.isLoading
+                                    Repeater {
+                                        model: chatMessageModel
 
-                                    Row {
-                                        anchors.centerIn: parent
-                                        spacing: 4
+                                        delegate: Item {
+                                            id: messageDelegate
+                                            required property string messageId
+                                            required property int index
 
-                                        Repeater {
-                                            model: 3
+                                            property var message: Ai.messageForId(messageId)
+                                            property int messageIndex: Ai.messageIDs.indexOf(messageId)
+                                            property bool isUser: message && message.role === "user"
+                                            property bool isSystem: message && (message.role === "system" || message.role === "function")
+                                            property bool isEditing: false
+                                            property bool retryMode: false
 
-                                            Rectangle {
-                                                width: 8
-                                                height: 8
-                                                radius: 4
-                                                color: Styling.srItem("overprimary")
-                                                opacity: 0.5
+                                            width: chatContent.width
+                                            height: message ? bubbleArea.height + 24 : 0
 
-                                                SequentialAnimation on opacity {
-                                                    loops: Animation.Infinite
-                                                    running: Ai.isLoading
+                                            Row {
+                                                anchors.left: parent.left
+                                                anchors.right: parent.right
+                                                anchors.margins: 10
+                                                layoutDirection: (isUser && !isSystem) ? Qt.RightToLeft : Qt.LeftToRight
+                                                spacing: 12
 
-                                                    PauseAnimation {
-                                                        duration: index * 200
+                                                Item {
+                                                    width: 32
+                                                    height: 32
+                                                    visible: !isSystem
+
+                                                    StyledRect {
+                                                        anchors.fill: parent
+                                                        radius: Styling.radius(16)
+                                                        variant: "primary"
+                                                        visible: !isUser
+
+                                                        Text {
+                                                            anchors.centerIn: parent
+                                                            text: Icons.robot
+                                                            font.family: Icons.font
+                                                            color: Colors.overPrimary
+                                                            font.pixelSize: 20
+                                                        }
                                                     }
 
-                                                    PropertyAnimation {
-                                                        to: 1
-                                                        duration: 400
+                                                    ClippingRectangle {
+                                                        anchors.fill: parent
+                                                        radius: Styling.radius(16)
+                                                        color: Colors.surfaceDim
+                                                        visible: isUser
+
+                                                        Image {
+                                                            mipmap: true
+                                                            anchors.fill: parent
+                                                            // Assistant/system delegates do not use this
+                                                            // avatar and must not probe the filesystem.
+                                                            source: isUser ? "file://" + Quickshell.env("HOME") + "/.face.icon" : ""
+                                                            fillMode: Image.PreserveAspectCrop
+
+                                                            onStatusChanged: {
+                                                                if (status === Image.Error) {
+                                                                    source = "";
+                                                                }
+                                                            }
+
+                                                            Text {
+                                                                anchors.centerIn: parent
+                                                                text: Icons.user
+                                                                font.family: Icons.font
+                                                                color: Colors.overPrimary
+                                                                visible: parent.status !== Image.Ready
+                                                            }
+                                                        }
+                                                    }
+                                                }
+
+                                                MouseArea {
+                                                    id: bubbleArea
+                                                    width: parent.width
+                                                    height: Math.max(bubble.height, 32) + (modelIndicator.visible ? modelIndicator.implicitHeight + 4 : 0)
+                                                    hoverEnabled: true
+                                                    acceptedButtons: Qt.NoButton
+
+                                                    Row {
+                                                        anchors.verticalCenter: bubble.verticalCenter
+                                                        anchors.left: isUser ? undefined : bubble.right
+                                                        anchors.right: isUser ? bubble.left : undefined
+                                                        anchors.leftMargin: 8
+                                                        anchors.rightMargin: 8
+                                                        spacing: 4
+                                                        visible: bubbleArea.containsMouse || messageDelegate.isEditing
+
+                                                        Button {
+                                                            width: 24
+                                                            height: 24
+                                                            flat: true
+                                                            padding: 0
+                                                            visible: !isSystem
+
+                                                            property bool isHovered: hovered
+
+                                                            contentItem: Text {
+                                                                text: messageDelegate.isEditing ? Icons.accept : Icons.edit
+                                                                font.family: Icons.font
+                                                                color: parent.down ? Colors.overPrimary : (parent.isHovered ? Colors.overSurface : Colors.overSurface)
+                                                                horizontalAlignment: Text.AlignHCenter
+                                                                verticalAlignment: Text.AlignVCenter
+                                                            }
+
+                                                            background: StyledRect {
+                                                                variant: parent.down ? "primary" : (parent.isHovered ? "focus" : "common")
+                                                                radius: Styling.radius(4)
+                                                            }
+
+                                                            onClicked: {
+                                                                if (messageDelegate.isEditing) {
+                                                                    Ai.updateMessage(messageDelegate.messageIndex, bubbleContentText.text);
+                                                                    messageDelegate.isEditing = false;
+                                                                } else {
+                                                                    messageDelegate.isEditing = true;
+                                                                    bubbleContentText.forceActiveFocus();
+                                                                    bubbleContentText.cursorPosition = bubbleContentText.text.length;
+                                                                }
+                                                            }
+                                                        }
+
+                                                        Button {
+                                                            width: 24
+                                                            height: 24
+                                                            flat: true
+                                                            padding: 0
+                                                            visible: !messageDelegate.isEditing
+
+                                                            property bool isHovered: hovered
+
+                                                            contentItem: Text {
+                                                                text: Icons.copy
+                                                                font.family: Icons.font
+                                                                color: parent.down ? Colors.overPrimary : (parent.isHovered ? Colors.overSurface : Colors.overSurface)
+                                                                horizontalAlignment: Text.AlignHCenter
+                                                                verticalAlignment: Text.AlignVCenter
+                                                            }
+
+                                                            background: StyledRect {
+                                                                variant: parent.down ? "primary" : (parent.isHovered ? "focus" : "common")
+                                                                radius: Styling.radius(4)
+                                                            }
+
+                                                            onClicked: {
+                                                                if (messageDelegate.message)
+                                                                    Quickshell.clipboardText = messageDelegate.message.content;
+                                                            }
+                                                        }
+
+                                                        Button {
+                                                            visible: !isUser && !isSystem && !messageDelegate.isEditing
+                                                            width: 24
+                                                            height: 24
+                                                            flat: true
+                                                            padding: 0
+
+                                                            property bool isHovered: hovered
+
+                                                            contentItem: Text {
+                                                                text: Icons.arrowCounterClockwise
+                                                                font.family: Icons.font
+                                                                color: parent.down ? Colors.overPrimary : (parent.isHovered ? Colors.overSurface : Colors.overSurface)
+                                                                horizontalAlignment: Text.AlignHCenter
+                                                                verticalAlignment: Text.AlignVCenter
+                                                            }
+
+                                                            background: StyledRect {
+                                                                variant: parent.down ? "primary" : (parent.isHovered ? "focus" : "common")
+                                                                radius: Styling.radius(4)
+                                                            }
+
+                                                            onClicked: {
+                                                                let targetIndex = messageDelegate.messageIndex;
+                                                                chatView.enableFollow();
+                                                                Ai.regenerateResponse(targetIndex);
+                                                            }
+                                                        }
                                                     }
 
-                                                    PropertyAnimation {
-                                                        to: 0.5
-                                                        duration: 400
+                                                    StyledRect {
+                                                        id: bubble
+                                                        readonly property real assistantReplyWidth: Math.max(180, chatView.width - 80)
+                                                        width: isSystem
+                                                            ? chatView.width * 0.9
+                                                            : (isUser
+                                                                ? Math.min(Math.max(bubbleContent.implicitWidth + 32, 100), chatView.width * 0.7)
+                                                                : assistantReplyWidth)
+                                                        height: bubbleContent.implicitHeight + 24
+
+                                                        anchors.right: isUser ? parent.right : undefined
+                                                        anchors.left: isUser ? undefined : parent.left
+
+                                                        variant: isSystem ? "surface" : (isUser ? "primary" : "secondary")
+                                                        radius: Styling.radius(4)
+                                                        border.width: isSystem || messageDelegate.isEditing ? 1 : 0
+                                                        border.color: messageDelegate.isEditing ? Styling.srItem("overprimary") : Colors.surfaceDim
+
+                                                        ColumnLayout {
+                                                            id: bubbleContent
+                                                            anchors.centerIn: parent
+                                                            width: parent.width - 32
+                                                            spacing: 8
+
+                                                            ColumnLayout {
+                                                                Layout.fillWidth: true
+                                                                visible: !messageDelegate.isEditing
+                                                                    && messageDelegate.message
+                                                                    && messageDelegate.message.done
+                                                                spacing: 8
+
+                                                                Repeater {
+                                                                    model: messageDelegate.message ? messageDelegate.message.blocks : []
+
+                                                                    delegate: Loader {
+                                                                        Layout.fillWidth: true
+                                                                        sourceComponent: segment.type === "code"
+                                                                            ? codeComponent
+                                                                            : (segment.type === "think" ? thinkComponent : textComponent)
+
+                                                                        property var segment: modelData
+
+                                                                        Component {
+                                                                            id: textComponent
+                                                                            TextEdit {
+                                                                                width: bubbleContent.width
+                                                                                text: segment.content
+                                                                                textFormat: Text.MarkdownText
+                                                                                color: isSystem ? Colors.outline : (isUser ? Styling.srItem("primary") : Styling.srItem("secondary"))
+                                                                                font.family: Config.theme.font
+                                                                                font.pixelSize: 14
+                                                                                wrapMode: Text.Wrap
+                                                                                readOnly: true
+                                                                                selectByMouse: true
+
+                                                                                onLinkActivated: link => Qt.openUrlExternally(link)
+                                                                            }
+                                                                        }
+
+                                                                        Component {
+                                                                            id: codeComponent
+                                                                            CodeBlock {
+                                                                                width: bubbleContent.width
+                                                                                code: segment.content
+                                                                                language: segment.language
+                                                                                highlightEnabled: messageDelegate.message && messageDelegate.message.done
+                                                                            }
+                                                                        }
+
+                                                                        Component {
+                                                                            id: thinkComponent
+                                                                            MessageThinkBlock {
+                                                                                width: bubbleContent.width
+                                                                                content: segment.content
+                                                                                unfinished: segment.unfinished
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+
+                                                            TextEdit {
+                                                                Layout.fillWidth: true
+                                                                visible: !messageDelegate.isEditing
+                                                                    && messageDelegate.message
+                                                                    && !messageDelegate.message.done
+                                                                text: messageDelegate.message ? messageDelegate.message.content : ""
+                                                                // Keep the growing stream cheap and stable. The
+                                                                // completed state below builds rich Markdown/code/
+                                                                // think blocks once after done flips true.
+                                                                textFormat: Text.PlainText
+                                                                color: isSystem ? Colors.outline : (isUser ? Styling.srItem("primary") : Styling.srItem("secondary"))
+                                                                font.family: Config.theme.font
+                                                                font.pixelSize: 14
+                                                                wrapMode: Text.Wrap
+                                                                readOnly: true
+                                                                selectByMouse: true
+
+                                                                onLinkActivated: link => Qt.openUrlExternally(link)
+                                                            }
+
+                                                            Text {
+                                                                Layout.fillWidth: true
+                                                                visible: messageDelegate.message
+                                                                    && (messageDelegate.message.toolStatus !== "" || messageDelegate.message.thinking)
+                                                                text: messageDelegate.message && messageDelegate.message.toolStatus !== ""
+                                                                    ? messageDelegate.message.toolStatus
+                                                                    : "Thinking…"
+                                                                color: Colors.outline
+                                                                font.family: Config.theme.font
+                                                                font.pixelSize: 12
+                                                                wrapMode: Text.Wrap
+                                                            }
+
+                                                            TextEdit {
+                                                                id: bubbleContentText
+                                                                Layout.fillWidth: true
+                                                                text: messageDelegate.message ? messageDelegate.message.content : ""
+                                                                textFormat: Text.PlainText
+                                                                color: isSystem ? Colors.outline : (isUser ? Styling.srItem("primary") : Styling.srItem("secondary"))
+                                                                font.family: Config.theme.font
+                                                                font.pixelSize: 14
+                                                                wrapMode: Text.Wrap
+                                                                readOnly: !messageDelegate.isEditing
+                                                                selectByMouse: true
+                                                                visible: messageDelegate.isEditing
+                                                            }
+
+                                                            ColumnLayout {
+                                                                visible: messageDelegate.message
+                                                                    && messageDelegate.message.functionCall !== undefined
+                                                                    && messageDelegate.message.functionCall !== null
+                                                                Layout.fillWidth: true
+                                                                spacing: 4
+
+                                                                Rectangle {
+                                                                    Layout.fillWidth: true
+                                                                    height: 1
+                                                                    color: Colors.outline
+                                                                    opacity: 0.2
+                                                                }
+
+                                                                Text {
+                                                                    text: "Run Command"
+                                                                    color: Styling.srItem("overprimary")
+                                                                    font.family: Config.theme.font
+                                                                    font.weight: Font.Bold
+                                                                    font.pixelSize: 12
+                                                                }
+
+                                                                StyledRect {
+                                                                    Layout.fillWidth: true
+                                                                    variant: "surface"
+                                                                    color: Colors.surface
+                                                                    radius: Styling.radius(4)
+
+                                                                    TextEdit {
+                                                                        padding: 8
+                                                                        width: parent.width
+                                                                        text: messageDelegate.message && messageDelegate.message.functionCall
+                                                                            && messageDelegate.message.functionCall.args
+                                                                            ? (messageDelegate.message.functionCall.args.command || "") : ""
+                                                                        font.family: "Monospace"
+                                                                        color: Colors.overSurface
+                                                                        readOnly: true
+                                                                        wrapMode: Text.WrapAnywhere
+                                                                    }
+                                                                }
+
+                                                                RowLayout {
+                                                                    visible: messageDelegate.message && messageDelegate.message.functionPending === true
+                                                                    Layout.alignment: Qt.AlignRight
+                                                                    spacing: 8
+
+                                                                    Button {
+                                                                        text: "Reject"
+                                                                        highlighted: true
+                                                                        flat: true
+                                                                        onClicked: Ai.rejectCommand(messageDelegate.messageIndex)
+
+                                                                        background: StyledRect {
+                                                                            variant: "error"
+                                                                            opacity: parent.hovered ? 0.8 : 0.5
+                                                                            radius: Styling.radius(4)
+                                                                        }
+
+                                                                        contentItem: Text {
+                                                                            text: parent.text
+                                                                            color: Colors.overError
+                                                                            font.family: Config.theme.font
+                                                                            horizontalAlignment: Text.AlignHCenter
+                                                                            verticalAlignment: Text.AlignVCenter
+                                                                        }
+                                                                    }
+
+                                                                    Button {
+                                                                        text: "Approve"
+                                                                        highlighted: true
+                                                                        flat: true
+                                                                        onClicked: Ai.approveCommand(messageDelegate.messageIndex)
+
+                                                                        background: StyledRect {
+                                                                            variant: "primary"
+                                                                            opacity: parent.hovered ? 1 : 0.8
+                                                                            radius: Styling.radius(4)
+                                                                        }
+
+                                                                        contentItem: Text {
+                                                                            text: parent.text
+                                                                            color: Colors.overPrimary
+                                                                            font.family: Config.theme.font
+                                                                            horizontalAlignment: Text.AlignHCenter
+                                                                            verticalAlignment: Text.AlignVCenter
+                                                                        }
+                                                                    }
+                                                                }
+
+                                                                Text {
+                                                                    visible: messageDelegate.message && messageDelegate.message.functionApproved === true
+                                                                    text: "Command Approved"
+                                                                    color: Colors.success
+                                                                    font.pixelSize: 12
+                                                                }
+
+                                                                Text {
+                                                                    visible: messageDelegate.message
+                                                                        && messageDelegate.message.functionApproved === false
+                                                                        && !messageDelegate.message.functionPending
+                                                                    text: "Command Rejected"
+                                                                    color: Colors.error
+                                                                    font.pixelSize: 12
+                                                                }
+                                                            }
+                                                        }
                                                     }
 
-                                                    PauseAnimation {
-                                                        duration: 400 - (index * 200)
+                                                    Text {
+                                                        id: modelIndicator
+                                                        visible: messageDelegate.message && !isUser && !isSystem && messageDelegate.message.model !== ""
+                                                        text: retryMode ? "Retry with another model " + Icons.caretRight : (messageDelegate.message ? messageDelegate.message.model : "")
+                                                        color: Colors.outline
+                                                        font.family: Config.theme.font
+                                                        font.pixelSize: Styling.fontSize(-2)
+                                                        font.weight: Font.Medium
+
+                                                        anchors.top: bubble.bottom
+                                                        anchors.topMargin: 4
+                                                        anchors.left: bubble.left
+                                                        anchors.leftMargin: 4
+
+                                                        MouseArea {
+                                                            anchors.fill: parent
+                                                            cursorShape: Qt.PointingHandCursor
+
+                                                            onClicked: {
+                                                                if (retryMode) {
+                                                                    mainChatArea.retryIndex = messageDelegate.messageIndex;
+                                                                    modelSelector.open();
+                                                                    retryMode = false;
+                                                                } else {
+                                                                    retryMode = true;
+                                                                    retryTimer.start();
+                                                                }
+                                                            }
+                                                        }
+
+                                                        Timer {
+                                                            id: retryTimer
+                                                            interval: 5000
+                                                            onTriggered: retryMode = false
+                                                        }
                                                     }
                                                 }
                                             }
                                         }
+
+                                    }
+
+                                    Item {
+                                        width: chatView.width
+                                        height: Ai.isLoading ? 40 : 0
+                                        visible: Ai.isLoading
+
+                                        Row {
+                                            anchors.centerIn: parent
+                                            spacing: 4
+
+                                            Repeater {
+                                                model: 3
+
+                                                Rectangle {
+                                                    width: 8
+                                                    height: 8
+                                                    radius: 4
+                                                    color: Styling.srItem("overprimary")
+                                                    opacity: 0.5
+
+                                                    SequentialAnimation on opacity {
+                                                        loops: Animation.Infinite
+                                                        running: Ai.isLoading
+
+                                                        PauseAnimation {
+                                                            duration: index * 200
+                                                        }
+
+                                                        PropertyAnimation {
+                                                            to: 1
+                                                            duration: 400
+                                                        }
+
+                                                        PropertyAnimation {
+                                                            to: 0.5
+                                                            duration: 400
+                                                        }
+
+                                                        PauseAnimation {
+                                                            duration: 400 - (index * 200)
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                    }
+
+                                    Item {
+                                        width: chatContent.width
+                                        height: inputContainer.height + 40
                                     }
                                 }
                             }

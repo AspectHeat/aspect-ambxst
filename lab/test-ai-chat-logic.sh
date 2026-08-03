@@ -200,8 +200,26 @@ check("think-leading streams retain progress feedback",
     /message\.thinking\s*=\s*displayContent\.trim\(\)\s*===\s*""/.test(aiSource));
 check("sidebar models a structurally published stable ID list",
     /property\s+var\s+visibleMessageIDs:\s*\[\]/.test(aiSource)
-    && /model:\s*Ai\.visibleMessageIDs/.test(sidebarSource)
+    && /renderedMessageIDs:\s*Ai\.visibleMessageIDs\.slice\(renderStartIndex,\s*renderEndIndex\)/.test(sidebarSource)
+    && /id:\s*chatMessageModel/.test(sidebarSource)
+    && /model:\s*chatMessageModel/.test(sidebarSource)
     && !/model:\s*Ai\.messageIDs\.filter/.test(sidebarSource));
+check("chat messages use stable non-virtualized delegates",
+    /Flickable\s*\{\s*\n\s*id:\s*chatView/.test(sidebarSource)
+    && /contentHeight:\s*chatContent\.implicitHeight/.test(sidebarSource)
+    && /readonly\s+property\s+int\s+renderPageSize:\s*60/.test(sidebarSource)
+    && /renderedMessageIDs:\s*Ai\.visibleMessageIDs\.slice\(renderStartIndex,\s*renderEndIndex\)/.test(sidebarSource)
+    && /function\s+enableFollow\(\)[\s\S]*?showingLatestPage\s*=\s*true[\s\S]*?pageEndIndex\s*=\s*count/.test(sidebarSource)
+    && /onCurrentChatIdChanged\(\)[\s\S]*?chatView\.enableFollow\(\)/.test(sidebarSource)
+    && /let\s+targetIndex\s*=\s*messageDelegate\.messageIndex;[\s\S]*?chatView\.enableFollow\(\);[\s\S]*?Ai\.regenerateResponse\(targetIndex\)/.test(sidebarSource)
+    && /text:\s*"Previous messages"[\s\S]*?text:\s*"Newer messages"/.test(sidebarSource)
+    && /function\s+syncRenderedMessages\(\)[\s\S]*?chatMessageModel\.insert/.test(sidebarSource)
+    && /id:\s*chatContent[\s\S]*?Repeater\s*\{[\s\S]*?model:\s*chatMessageModel/.test(sidebarSource)
+    && /height:\s*inputContainer\.height\s*\+\s*40/.test(sidebarSource)
+    && !/bottomMargin:\s*[^\n]*inputContainer\.height/.test(sidebarSource)
+    && !/ListView\.view/.test(sidebarSource)
+    && !/ListView\s*\{\s*\n\s*id:\s*chatView/.test(sidebarSource)
+    && !/chatView\.positionViewAtEnd\(\)/.test(sidebarSource));
 check("sidebar consumes message blocks", /message\.blocks/.test(sidebarSource));
 check("streaming uses one persistent text surface before rich blocks",
     /property\s+var\s+blocks:\s*done\s*\?/.test(messageDataSource)
@@ -213,7 +231,7 @@ check("tail following cannot feed back through layout height",
     && !/onStreamFlushCountChanged\s*\(/.test(sidebarSource)
     && /onChatModelChanged\(\)[\s\S]*?requestTailPosition\(\)/.test(sidebarSource)
     && /onIsLoadingChanged\(\)[\s\S]*?if\s*\(!Ai\.isLoading\)[\s\S]*?requestTailPosition\(\)/.test(sidebarSource)
-    && /id:\s*tailPositionTimer[\s\S]*?positionViewAtEnd\(\)/.test(sidebarSource));
+    && /id:\s*tailPositionTimer[\s\S]*?chatView\.snapToTail\(\)/.test(sidebarSource));
 check("ordinary streaming text bypasses block parsing",
     /function\s+displayContent\(value\)[\s\S]*?indexOf\("<think>"\)\s*===\s*-1[\s\S]*?return\s+text;/.test(
         fs.readFileSync("modules/services/ai/markdown.js", "utf8")));
