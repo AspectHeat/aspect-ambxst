@@ -14,6 +14,37 @@ Item {
     readonly property int contentWidth: Math.min(width, maxContentWidth)
     readonly property real sideMargin: Math.max(0, (width - contentWidth) / 2)
 
+    component LegibleTextField: TextField {
+        id: field
+
+        property string hintText: ""
+
+        placeholderText: ""
+        color: Colors.overSurface
+        selectionColor: Colors.primary
+        selectedTextColor: Colors.overPrimary
+        palette.text: Colors.overSurface
+        palette.placeholderText: Colors.overSurfaceVariant
+        palette.highlight: Colors.primary
+        palette.highlightedText: Colors.overPrimary
+        Accessible.description: hintText
+
+        Text {
+            anchors.fill: parent
+            anchors.leftMargin: field.leftPadding
+            anchors.rightMargin: field.rightPadding
+            z: 10
+
+            visible: field.length === 0 && field.preeditText.length === 0
+            text: field.hintText
+            color: Colors.overSurfaceVariant
+            font: field.font
+            horizontalAlignment: field.effectiveHorizontalAlignment
+            verticalAlignment: Text.AlignVCenter
+            elide: Text.ElideRight
+        }
+    }
+
     Flickable {
         anchors.fill: parent
         contentHeight: contentColumn.implicitHeight + 40
@@ -77,17 +108,13 @@ Item {
                             Layout.fillWidth: true
                             spacing: 12
 
-                            TextField {
+                            LegibleTextField {
                                 visible: modelData !== "ollama"
                                 id: keyInput
                                 Layout.fillWidth: true
-                                placeholderText: "Enter API Key..."
+                                hintText: "Enter API Key..."
                                 echoMode: TextInput.Password
                                 font.family: Config.theme.font
-                                color: Colors.overSurface
-                                placeholderTextColor: Colors.overSurfaceVariant
-                                selectionColor: Colors.primary
-                                selectedTextColor: Colors.overPrimary
                                 padding: 6
                                 
                                 background: StyledRect {
@@ -184,17 +211,13 @@ Item {
                             color: Colors.overSurfaceVariant
                         }
 
-                        TextField {
+                        LegibleTextField {
                             id: hermesEndpointInput
                             visible: modelData === "hermes"
                             Layout.fillWidth: true
                             text: modelData === "hermes" ? Config.ai.hermesEndpoint : ""
-                            placeholderText: "http://127.0.0.1:8642/v1"
+                            hintText: "http://127.0.0.1:8642/v1"
                             font.family: Config.theme.font
-                            color: Colors.overSurface
-                            placeholderTextColor: Colors.overSurfaceVariant
-                            selectionColor: Colors.primary
-                            selectedTextColor: Colors.overPrimary
                             padding: 6
 
                             onEditingFinished: {
@@ -265,16 +288,12 @@ Item {
                         Layout.fillWidth: true
                         spacing: 12
 
-                        TextField {
+                        LegibleTextField {
                             id: customKeyInput
                             Layout.fillWidth: true
-                            placeholderText: "Enter API Key..."
+                            hintText: "Enter API Key..."
                             echoMode: TextInput.Password
                             font.family: Config.theme.font
-                            color: Colors.overSurface
-                            placeholderTextColor: Colors.overSurfaceVariant
-                            selectionColor: Colors.primary
-                            selectedTextColor: Colors.overPrimary
                             padding: 6
                             
                             background: StyledRect {
@@ -376,16 +395,12 @@ Item {
                         color: Colors.overSurface
                     }
                     
-                    TextField {
+                    LegibleTextField {
                         id: endpointInput
                         Layout.fillWidth: true
                         text: Config.ai.customEndpoint
-                        placeholderText: "e.g. https://api.example.com/v1/chat/completions"
+                        hintText: "e.g. https://api.example.com/v1/chat/completions"
                         font.family: Config.theme.font
-                        color: Colors.overSurface
-                        placeholderTextColor: Colors.overSurfaceVariant
-                        selectionColor: Colors.primary
-                        selectedTextColor: Colors.overPrimary
                         padding: 6
                         
                         onEditingFinished: Config.ai.customEndpoint = text.trim()
@@ -418,16 +433,12 @@ Item {
                         color: Colors.overSurfaceVariant
                     }
                     
-                    TextField {
+                    LegibleTextField {
                         id: curlInput
                         Layout.fillWidth: true
                         text: Config.ai.customCurlTemplate
-                        placeholderText: "curl -X POST {{ENDPOINT}} -H 'Authorization: Bearer {{API_KEY}}' -d @{{BODY_PATH}}"
+                        hintText: "curl -X POST {{ENDPOINT}} -H 'Authorization: Bearer {{API_KEY}}' -d @{{BODY_PATH}}"
                         font.family: "Monospace"
-                        color: Colors.overSurface
-                        placeholderTextColor: Colors.overSurfaceVariant
-                        selectionColor: Colors.primary
-                        selectedTextColor: Colors.overPrimary
                         padding: 6
                         
                         onEditingFinished: Config.ai.customCurlTemplate = text

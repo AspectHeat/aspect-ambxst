@@ -161,6 +161,7 @@ check("normal SSE delegated", event.handled === false && event.pendingEvent === 
 
 const aiSource = fs.readFileSync("modules/services/Ai.qml", "utf8");
 const configSource = fs.readFileSync("config/Config.qml", "utf8");
+const aiPanelSource = fs.readFileSync("modules/widgets/config/AiPanel.qml", "utf8");
 const sidebarSource = fs.readFileSync("modules/sidebar/AssistantSidebar.qml", "utf8");
 const codeSource = fs.readFileSync("modules/sidebar/CodeBlock.qml", "utf8");
 check("no raw currentChat model remains", !/\bcurrentChat\b/.test(aiSource));
@@ -183,6 +184,11 @@ check("each request gets an isolated body writer",
 check("missing AI config uses enum and retries after mkdir",
     /error\s*===\s*FileViewError\.FileNotFound[\s\S]*?aiLoader\.setText/.test(configSource)
     && /id:\s*ensureConfigDir[\s\S]*?onExited:[\s\S]*?aiLoader\.reload/.test(configSource));
+check("AI settings render explicit legible hints",
+    /component\s+LegibleTextField:\s*TextField/.test(aiPanelSource)
+    && /placeholderText:\s*""/.test(aiPanelSource)
+    && /z:\s*10[\s\S]*?color:\s*Colors\.overSurfaceVariant/.test(aiPanelSource)
+    && (aiPanelSource.match(/hintText:/g) || []).length === 6);
 
 if (failures.length > 0) {
     console.error(`AI chat logic: ${passed} passed, ${failures.length} failed`);
