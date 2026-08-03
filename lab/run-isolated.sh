@@ -26,6 +26,41 @@ LAB_HOME="$REAL_XDG_DATA_HOME/ambxst-lab/home"
 LOG_DIR="$REAL_XDG_STATE_HOME/ambxst-lab"
 LOG_FILE="$LOG_DIR/latest.log"
 AXCTL_SOCKET="/tmp/axctl-$(id -u).sock"
+AXCTL_CONFIG="$LAB_HOME/.local/share/ambxst/axctl.toml"
+
+lab_axctl_daemon_pids() {
+    pgrep -f "[a]xctl -c $AXCTL_CONFIG daemon" 2>/dev/null || true
+}
+
+stop_lab_axctl() {
+    local pids pid
+    mapfile -t pids < <(lab_axctl_daemon_pids)
+    if (( ${#pids[@]} > 0 )); then
+        printf '[lab] stopping axctl daemon(s): %s\n' "${pids[*]}"
+        kill -TERM "${pids[@]}" 2>/dev/null || true
+        for _ in $(seq 1 25); do
+            local any_alive=false
+            for pid in "${pids[@]}"; do
+                if kill -0 "$pid" 2>/dev/null; then
+                    any_alive=true
+                    break
+                fi
+            done
+            [[ "$any_alive" == false ]] && break
+            sleep 0.2
+        done
+        for pid in "${pids[@]}"; do
+            kill -0 "$pid" 2>/dev/null && kill -KILL "$pid" 2>/dev/null || true
+        done
+    fi
+
+    # axctl does not reliably unlink this socket on abnormal exits. Never let
+    # the next shell mistake a dead socket for a working daemon.
+    if [[ -S "$AXCTL_SOCKET" ]]; then
+        printf '[lab] removing axctl socket %s\n' "$AXCTL_SOCKET"
+        rm -f "$AXCTL_SOCKET"
+    fi
+}
 
 # --- take Ambxst down with us on every exit path ---------------------------
 stop_ambxst() {
@@ -44,15 +79,9 @@ stop_ambxst() {
         kill -0 "$AMBXST_PID" 2>/dev/null && kill -KILL "$AMBXST_PID" 2>/dev/null || true
     fi
 
-    # Ambxst spawns `axctl daemon`, which does not remove its socket when it
-    # dies with the shell. The next daemon then refuses to bind, `axctl
-    # subscribe` fails in a tight loop, and the bar comes up with no workspace
-    # or window data -- with only a JSON parse error to show for it. Clear the
-    # socket here so the next start is clean.
-    if [[ -S "$AXCTL_SOCKET" ]] && ! axctl monitor list >/dev/null 2>&1; then
-        printf '[lab] removing stale axctl socket %s\n' "$AXCTL_SOCKET"
-        rm -f "$AXCTL_SOCKET"
-    fi
+    # The daemon can outlive a killed Quickshell process. Stop only the daemon
+    # launched with this sandbox's config, then clear its socket.
+    stop_lab_axctl
 
     printf '[lab] no shell running; SUPER+Return for a terminal\n'
     exit "$rc"
@@ -81,7 +110,7 @@ printf '[lab] log:       %s\n' "$LOG_FILE"
 
 # A previous shell killed without its trap (SIGKILL, crash) leaves an axctl
 # socket that no daemon is listening on. Clear it before Ambxst spawns its own.
-if [[ -S "$AXCTL_SOCKET" ]] && ! axctl monitor list >/dev/null 2>&1; then
+if [[ -S "$AXCTL_SOCKET" ]] && [[ -z "$(lab_axctl_daemon_pids)" ]]; then
     printf '[lab] clearing stale axctl socket %s\n' "$AXCTL_SOCKET"
     rm -f "$AXCTL_SOCKET"
 fi

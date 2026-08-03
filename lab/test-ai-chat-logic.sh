@@ -190,6 +190,7 @@ const configSource = fs.readFileSync("config/Config.qml", "utf8");
 const aiPanelSource = fs.readFileSync("modules/widgets/config/AiPanel.qml", "utf8");
 const sidebarSource = fs.readFileSync("modules/sidebar/AssistantSidebar.qml", "utf8");
 const codeSource = fs.readFileSync("modules/sidebar/CodeBlock.qml", "utf8");
+const labRunnerSource = fs.readFileSync("lab/run-isolated.sh", "utf8");
 check("no raw currentChat model remains", !/\bcurrentChat\b/.test(aiSource));
 check("stream timer is bounded", /interval:\s*50\b/.test(aiSource));
 check("stream callback mutates live object", /message\.content\s*=\s*Markdown\.displayContent\(responseBuffer\)/.test(aiSource));
@@ -202,6 +203,11 @@ check("tail following cannot feed back through layout height",
     && /id:\s*tailPositionTimer[\s\S]*?positionViewAtEnd\(\)/.test(sidebarSource));
 check("avatar loading is limited to user delegates",
     /source:\s*isUser\s*\?\s*"file:\/\/"/.test(sidebarSource));
+check("lab recovery removes only its axctl daemon and socket",
+    /function\s+stop_lab_axctl|stop_lab_axctl\(\)/.test(labRunnerSource)
+    && /\[a\]xctl -c \$AXCTL_CONFIG daemon/.test(labRunnerSource)
+    && /stop_lab_axctl\s*\n/.test(labRunnerSource)
+    && /-S "\$AXCTL_SOCKET"/.test(labRunnerSource));
 check("clipboard avoids generated Process", !/Qt\.createQmlObject/.test(codeSource));
 check("highlighter is completion gated", /active:\s*root\.highlightEnabled/.test(codeSource));
 check("tool callback defers structural mutation",
