@@ -14,6 +14,26 @@ Item {
     readonly property int contentWidth: Math.min(width, maxContentWidth)
     readonly property real sideMargin: Math.max(0, (width - contentWidth) / 2)
 
+    function providerStatusText(provider) {
+        if (provider !== "hermes")
+            return KeyStore.hasKey(provider) ? "Key Configured" : "Not Configured";
+        if (Ai.hermesConnectionState === "connected")
+            return "Connected";
+        if (Ai.hermesConnectionState === "checking")
+            return "Checking…";
+        if (Ai.hermesConnectionState === "error")
+            return "Connection Failed";
+        return "Not Configured";
+    }
+
+    function providerStatusColor(provider) {
+        if (provider === "hermes" && Ai.hermesConnectionState === "error")
+            return Colors.error;
+        if (provider === "hermes" && Ai.hermesConnectionState === "checking")
+            return Colors.primary;
+        return KeyStore.hasKey(provider) ? Colors.success : Colors.overSurfaceVariant;
+    }
+
     component LegibleTextField: TextField {
         id: field
 
@@ -99,10 +119,10 @@ Item {
                                 Layout.fillWidth: true
                             }
                             Text {
-                                text: KeyStore.hasKey(modelData) ? "Key Configured" : "Not Configured"
+                                text: root.providerStatusText(modelData)
                                 font.family: Config.theme.font
                                 font.pixelSize: 12
-                                color: KeyStore.hasKey(modelData) ? Colors.success : Colors.overSurfaceVariant
+                                color: root.providerStatusColor(modelData)
                             }
                         }
 
@@ -134,7 +154,9 @@ Item {
                             }
                             Button {
                                 id: saveButton
-                                text: modelData === "ollama" ? (KeyStore.hasKey("ollama") ? "Configured" : "Enable") : "Save"
+                                text: modelData === "ollama"
+                                    ? (KeyStore.hasKey("ollama") ? "Configured" : "Enable")
+                                    : (modelData === "hermes" ? "Save & Test" : "Save")
                                 visible: modelData === "ollama" ? !KeyStore.hasKey("ollama") : true
                                 hoverEnabled: true
                                 leftPadding: 6
@@ -145,6 +167,8 @@ Item {
                                     if (modelData === "ollama") {
                                         KeyStore.setKey("ollama", "enabled")
                                     } else if (keyInput.text !== "") {
+                                        if (modelData === "hermes")
+                                            Ai.prepareHermesKeySave();
                                         KeyStore.setKey(modelData, keyInput.text)
                                         keyInput.text = ""
                                     }
@@ -225,9 +249,10 @@ Item {
                             padding: 6
 
                             onEditingFinished: {
-                                let normalized = text.trim().replace(/\/+$/, "");
-                                Config.ai.hermesEndpoint = normalized || "http://127.0.0.1:8642/v1";
-                                Ai.fetchAvailableModels();
+                                let normalized = Ai.normalizeHermesEndpoint(text);
+                                text = normalized;
+                                Config.ai.hermesEndpoint = normalized;
+                                Ai.testHermesConnection();
                             }
 
                             background: StyledRect {
@@ -240,6 +265,66 @@ Item {
                                 anchors.rightMargin: -parent.padding
                                 anchors.topMargin: -parent.padding
                                 anchors.bottomMargin: -parent.padding
+                            }
+                        }
+
+                        Text {
+                            visible: modelData === "hermes"
+                            Layout.fillWidth: true
+                            text: "Start the Hermes gateway, then enter its API_SERVER_KEY above. "
+                                + "Local default: http://127.0.0.1:8642/v1"
+                            wrapMode: Text.WordWrap
+                            font.family: Config.theme.font
+                            font.pixelSize: 11
+                            color: Colors.overSurfaceVariant
+                        }
+
+                        RowLayout {
+                            visible: modelData === "hermes"
+                            Layout.fillWidth: true
+                            spacing: 12
+
+                            Button {
+                                id: hermesTestButton
+                                text: Ai.hermesConnectionState === "checking" ? "Checking…" : "Test Connection"
+                                enabled: KeyStore.hasKey("hermes") && Ai.hermesConnectionState !== "checking"
+                                hoverEnabled: enabled
+                                leftPadding: 8
+                                rightPadding: 8
+                                topPadding: 4
+                                bottomPadding: 4
+                                onClicked: {
+                                    let normalized = Ai.normalizeHermesEndpoint(hermesEndpointInput.text);
+                                    hermesEndpointInput.text = normalized;
+                                    Config.ai.hermesEndpoint = normalized;
+                                    Ai.testHermesConnection();
+                                }
+                                background: StyledRect {
+                                    variant: hermesTestButton.enabled
+                                        ? (hermesTestButton.down ? "overprimary"
+                                            : (hermesTestButton.hovered ? "primaryfocus" : "primary"))
+                                        : "internalbg"
+                                    radius: Styling.radius(4)
+                                }
+                                contentItem: Text {
+                                    text: hermesTestButton.text
+                                    color: hermesTestButton.enabled ? Colors.overPrimary : Colors.overSurfaceVariant
+                                    font.family: Config.theme.font
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                            }
+
+                            Text {
+                                Layout.fillWidth: true
+                                text: Ai.hermesConnectionMessage
+                                wrapMode: Text.WordWrap
+                                font.family: Config.theme.font
+                                font.pixelSize: 12
+                                color: Ai.hermesConnectionState === "connected"
+                                    ? Colors.success
+                                    : (Ai.hermesConnectionState === "error"
+                                        ? Colors.error : Colors.overSurfaceVariant)
                             }
                         }
                     }

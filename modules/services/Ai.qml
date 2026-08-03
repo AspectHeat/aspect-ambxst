@@ -5,6 +5,7 @@ import Quickshell.Io
 import qs.config
 import qs.modules.services
 import "ai"
+import "ai/hermes-config.js" as HermesConfig
 import "ai/markdown.js" as Markdown
 import "ai/message-utils.js" as MessageUtils
 import "ai/strategies"
@@ -1065,6 +1066,28 @@ for f in files:
     property bool fetchingModels: false
     property int pendingFetches: 0
     property bool modelRefreshPending: false
+    property string hermesConnectionState: "unconfigured"
+    property string hermesConnectionMessage: "Enter the gateway API key to connect"
+
+    function normalizeHermesEndpoint(endpoint) {
+        return HermesConfig.normalizeEndpoint(endpoint);
+    }
+
+    function prepareHermesKeySave() {
+        hermesConnectionState = "checking";
+        hermesConnectionMessage = "Saving key and checking Hermes…";
+    }
+
+    function testHermesConnection() {
+        if (!KeyStore.getKey("hermes")) {
+            hermesConnectionState = "unconfigured";
+            hermesConnectionMessage = "Enter the gateway API key to connect";
+            return;
+        }
+        hermesConnectionState = "checking";
+        hermesConnectionMessage = "Checking Hermes gateway…";
+        fetchAvailableModels();
+    }
 
     function fetchAvailableModels() {
         if (fetchingModels) {
@@ -1138,14 +1161,18 @@ for f in files:
             // The discovered catalog replaces this fallback when the request exits.
             publishHermesModels(["hermes-agent"]);
             pendingFetches++;
-            let hermesEndpoint = (Config.ai.hermesEndpoint || "http://127.0.0.1:8642/v1").replace(/\/+$/, "");
+            hermesConnectionState = "checking";
+            hermesConnectionMessage = "Checking Hermes gateway…";
+            let hermesEndpoint = normalizeHermesEndpoint(Config.ai.hermesEndpoint);
             fetchProcessHermes.command = [
-                "curl", "-sS", "--fail", "--connect-timeout", "3", "--max-time", "8",
+                "curl", "-sS", "--fail-with-body", "--connect-timeout", "3", "--max-time", "8",
                 hermesEndpoint + "/models",
                 "-H", "Authorization: Bearer " + hermesKey
             ];
             fetchProcessHermes.running = true;
         } else {
+            hermesConnectionState = "unconfigured";
+            hermesConnectionMessage = "Enter the gateway API key to connect";
             replaceProviderModels([], "hermes");
         }
 
@@ -1160,7 +1187,7 @@ for f in files:
             name: modelId,
             icon: Qt.resolvedUrl("../../../assets/aiproviders/openai.svg"),
             description: "Hermes Agent",
-            endpoint: Config.ai.hermesEndpoint || "http://127.0.0.1:8642/v1",
+            endpoint: normalizeHermesEndpoint(Config.ai.hermesEndpoint),
             model: modelId,
             provider: "hermes",
             requires_key: true,
@@ -1454,25 +1481,31 @@ for f in files:
         stdout: StdioCollector {
             id: fetchHermesOut
         }
+        stderr: StdioCollector {
+            id: fetchHermesErr
+        }
         onExited: exitCode => {
-            let discovered = [];
+            let parsed = HermesConfig.parseModelsResponse(fetchHermesOut.text);
+            let discovered = parsed.modelIds;
+            let connectionState = "error";
+            let connectionMessage = "";
             if (exitCode === 0) {
-                try {
-                    let data = JSON.parse(fetchHermesOut.text);
-                    if (data.data && data.data.length > 0) {
-                        for (let i = 0; i < data.data.length; i++) {
-                            let item = data.data[i];
-                            if (item.id)
-                                discovered.push(item.id);
-                        }
-                    }
-                } catch (e) {
-                    console.log("Hermes model fetch error: " + e);
+                if (discovered.length > 0) {
+                    connectionState = "connected";
+                    connectionMessage = "Connected · " + discovered.length
+                        + (discovered.length === 1 ? " model" : " models");
+                } else {
+                    connectionMessage = parsed.error;
                 }
+            } else {
+                connectionMessage = HermesConfig.connectionError(
+                    exitCode, fetchHermesErr.text, fetchHermesOut.text);
             }
             if (discovered.length === 0)
                 discovered.push("hermes-agent");
             Qt.callLater(() => {
+                hermesConnectionState = connectionState;
+                hermesConnectionMessage = connectionMessage;
                 publishHermesModels(discovered);
                 checkFetchCompletion();
             });

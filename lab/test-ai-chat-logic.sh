@@ -26,6 +26,9 @@ function loadLibrary(file, exported) {
 const Markdown = loadLibrary("modules/services/ai/markdown.js", ["splitMarkdownBlocks", "displayContent"]);
 const Messages = loadLibrary("modules/services/ai/message-utils.js", ["serializeMessage", "messageForApi"]);
 const Hermes = loadLibrary("modules/services/ai/hermes-sse.js", ["parseLine"]);
+const HermesConfig = loadLibrary("modules/services/ai/hermes-config.js", [
+    "normalizeEndpoint", "parseModelsResponse", "connectionError"
+]);
 
 let passed = 0;
 const failures = [];
@@ -159,6 +162,27 @@ check("Hermes progress isolated", event.handled && event.toolStatus === "termina
 event = Hermes.parseLine('data: {"choices":[]}', "");
 check("normal SSE delegated", event.handled === false && event.pendingEvent === "");
 
+check("Hermes endpoint defaults to local API",
+    HermesConfig.normalizeEndpoint("") === "http://127.0.0.1:8642/v1");
+check("Hermes endpoint appends v1",
+    HermesConfig.normalizeEndpoint("http://127.0.0.1:8642/") === "http://127.0.0.1:8642/v1");
+check("Hermes endpoint preserves profile v1",
+    HermesConfig.normalizeEndpoint("https://agent.example/p/coder/v1/") === "https://agent.example/p/coder/v1");
+check("Hermes endpoint strips models resource",
+    HermesConfig.normalizeEndpoint("http://127.0.0.1:8642/v1/models") === "http://127.0.0.1:8642/v1");
+
+let catalog = HermesConfig.parseModelsResponse(
+    '{"object":"list","data":[{"id":"hermes-agent"},{"id":"hermes-agent"},{"id":"coder"}]}');
+check("Hermes catalog parses and de-duplicates",
+    catalog.error === "" && same(catalog.modelIds, ["hermes-agent", "coder"]));
+check("Hermes invalid catalog is actionable",
+    HermesConfig.parseModelsResponse("not json").error === "Hermes returned invalid JSON");
+check("Hermes auth errors preserve API message",
+    HermesConfig.connectionError(22, "", '{"error":{"message":"Invalid gateway API key"}}')
+        === "Invalid gateway API key");
+check("Hermes connection refusal is actionable",
+    HermesConfig.connectionError(7, "", "") === "Hermes gateway is not reachable");
+
 const aiSource = fs.readFileSync("modules/services/Ai.qml", "utf8");
 const configSource = fs.readFileSync("config/Config.qml", "utf8");
 const aiPanelSource = fs.readFileSync("modules/widgets/config/AiPanel.qml", "utf8");
@@ -191,6 +215,13 @@ check("AI settings render explicit legible hints",
     && (aiPanelSource.match(/hintText:/g) || []).length === 6
     && /Accessible\.name:\s*accessibleName/.test(aiPanelSource)
     && (aiPanelSource.match(/accessibleName:/g) || []).length === 6);
+check("Hermes settings expose connection validation",
+    /property\s+string\s+hermesConnectionState:\s*"unconfigured"/.test(aiSource)
+    && /--fail-with-body/.test(aiSource)
+    && /function\s+testHermesConnection\(\)/.test(aiSource)
+    && /modelData\s*===\s*"hermes"\s*\?\s*"Save & Test"/.test(aiPanelSource)
+    && /text:\s*Ai\.hermesConnectionMessage/.test(aiPanelSource)
+    && /API_SERVER_KEY/.test(aiPanelSource));
 
 if (failures.length > 0) {
     console.error(`AI chat logic: ${passed} passed, ${failures.length} failed`);
