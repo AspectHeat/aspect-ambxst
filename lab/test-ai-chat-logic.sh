@@ -230,7 +230,8 @@ check("Hermes connection test is provider-isolated and generation-guarded",
     && /hermesRunningGeneration\s*=\s*hermesFetchGeneration/.test(aiSource)
     && /completedGeneration\s*=\s*hermesRunningGeneration/.test(aiSource)
     && /completedGeneration\s*===\s*hermesFetchGeneration/.test(aiSource)
-    && /fetchProcessHermes\.running[\s\S]*?hermesFetchGeneration\+\+[\s\S]*?hermesTestPending\s*=\s*true/.test(aiSource)
+    && /hermesKnownKey\s*=\s*currentKey;[\s\S]*?hermesFetchGeneration\+\+/.test(aiSource)
+    && /fetchProcessHermes\.running[\s\S]*?hermesTestPending\s*=\s*true/.test(aiSource)
     && /if\s*\(hermesTestPending\)[\s\S]*?startHermesModelFetch\(false\)/.test(aiSource)
     && /if\s*\(countsTowardRefresh\)\s*checkFetchCompletion\(\)/.test(aiSource));
 check("Hermes refresh preserves matching model identity",

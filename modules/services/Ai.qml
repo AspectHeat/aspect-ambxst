@@ -1101,8 +1101,9 @@ for f in files:
             return;
 
         hermesKnownKey = currentKey;
-        if (fetchProcessHermes.running)
-            hermesFetchGeneration++;
+        // Invalidate even after Process.running flips false: onExited applies
+        // its captured result on the next event-loop turn.
+        hermesFetchGeneration++;
 
         if (!currentKey) {
             hermesTestPending = false;
