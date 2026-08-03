@@ -690,7 +690,39 @@ Item {
 
                                 function enableFollow() {
                                     followTail = true;
-                                    Qt.callLater(() => positionViewAtEnd());
+                                    requestTailPosition();
+                                }
+
+                                // Position from semantic chat events only. Watching
+                                // contentHeight here creates a feedback loop with
+                                // variable-height delegate layout: positionViewAtEnd()
+                                // can change contentHeight and continuously recreate
+                                // delegates until Quickshell runs out of memory.
+                                function requestTailPosition() {
+                                    if (followTail && count > 0)
+                                        tailPositionTimer.restart();
+                                }
+
+                                Timer {
+                                    id: tailPositionTimer
+                                    interval: 0
+                                    repeat: false
+                                    onTriggered: {
+                                        if (chatView.followTail && chatView.count > 0)
+                                            chatView.positionViewAtEnd();
+                                    }
+                                }
+
+                                Connections {
+                                    target: Ai
+
+                                    function onStreamFlushCountChanged() {
+                                        chatView.requestTailPosition();
+                                    }
+
+                                    function onIsLoadingChanged() {
+                                        chatView.requestTailPosition();
+                                    }
                                 }
 
                                 visible: !mainChatArea.isWelcome
@@ -709,13 +741,7 @@ Item {
                                 bottomMargin: mainChatArea.isWelcome ? 0 : inputContainer.height
 
                                 onCountChanged: {
-                                    if (followTail)
-                                        Qt.callLater(() => positionViewAtEnd());
-                                }
-
-                                onContentHeightChanged: {
-                                    if (followTail)
-                                        Qt.callLater(() => positionViewAtEnd());
+                                    requestTailPosition();
                                 }
 
                                 onMovementStarted: followTail = false
@@ -772,7 +798,9 @@ Item {
                                                 Image {
                                                     mipmap: true
                                                     anchors.fill: parent
-                                                    source: "file://" + Quickshell.env("HOME") + "/.face.icon"
+                                                    // Assistant/system delegates do not use this
+                                                    // avatar and must not probe the filesystem.
+                                                    source: isUser ? "file://" + Quickshell.env("HOME") + "/.face.icon" : ""
                                                     fillMode: Image.PreserveAspectCrop
 
                                                     onStatusChanged: {

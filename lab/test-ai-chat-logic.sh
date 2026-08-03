@@ -195,6 +195,13 @@ check("stream timer is bounded", /interval:\s*50\b/.test(aiSource));
 check("stream callback mutates live object", /message\.content\s*=\s*Markdown\.displayContent\(responseBuffer\)/.test(aiSource));
 check("sidebar models stable IDs", /model:\s*Ai\.messageIDs\.filter/.test(sidebarSource));
 check("sidebar consumes message blocks", /message\.blocks/.test(sidebarSource));
+check("tail following cannot feed back through layout height",
+    !/onContentHeightChanged\s*:/.test(sidebarSource)
+    && /function\s+requestTailPosition\(\)/.test(sidebarSource)
+    && /onStreamFlushCountChanged\(\)[\s\S]*?requestTailPosition/.test(sidebarSource)
+    && /id:\s*tailPositionTimer[\s\S]*?positionViewAtEnd\(\)/.test(sidebarSource));
+check("avatar loading is limited to user delegates",
+    /source:\s*isUser\s*\?\s*"file:\/\/"/.test(sidebarSource));
 check("clipboard avoids generated Process", !/Qt\.createQmlObject/.test(codeSource));
 check("highlighter is completion gated", /active:\s*root\.highlightEnabled/.test(codeSource));
 check("tool callback defers structural mutation",
