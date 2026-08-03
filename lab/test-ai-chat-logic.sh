@@ -200,7 +200,7 @@ check("highlighter is completion gated", /active:\s*root\.highlightEnabled/.test
 check("tool callback defers structural mutation",
     /id:\s*commandExecutionProc[\s\S]*?onExited:[\s\S]*?Qt\.callLater\(\(\)\s*=>\s*\{[\s\S]*?appendMessage/.test(aiSource));
 check("Hermes fallback publishes before discovery",
-    /function\s+startHermesModelFetch[\s\S]*?publishHermesModels\(\["hermes-agent"\]\)[\s\S]*?fetchProcessHermes\.running\s*=\s*true/.test(aiSource));
+    /function\s+startHermesModelFetch[\s\S]*?if\s*\(!hasHermesModels\(\)\)[\s\S]*?publishHermesModels\(\["hermes-agent"\]\)[\s\S]*?fetchProcessHermes\.running\s*=\s*true/.test(aiSource));
 check("overlapping model refreshes are queued",
     /if\s*\(fetchingModels\)\s*\{[\s\S]*?modelRefreshPending\s*=\s*true/.test(aiSource));
 check("curl waits for request body save",
@@ -230,9 +230,12 @@ check("Hermes connection test is provider-isolated and generation-guarded",
     && /hermesRunningGeneration\s*=\s*hermesFetchGeneration/.test(aiSource)
     && /completedGeneration\s*=\s*hermesRunningGeneration/.test(aiSource)
     && /completedGeneration\s*===\s*hermesFetchGeneration/.test(aiSource)
+    && /fetchProcessHermes\.running[\s\S]*?hermesFetchGeneration\+\+[\s\S]*?hermesTestPending\s*=\s*true/.test(aiSource)
+    && /if\s*\(hermesTestPending\)[\s\S]*?startHermesModelFetch\(false\)/.test(aiSource)
     && /if\s*\(countsTowardRefresh\)\s*checkFetchCompletion\(\)/.test(aiSource));
 check("Hermes refresh preserves matching model identity",
-    /incoming\.model\s*===\s*existingProviderModels\[j\]\.model/.test(aiSource)
+    /function\s+hasHermesModels\(\)/.test(aiSource)
+    && /incoming\.model\s*===\s*existingProviderModels\[j\]\.model/.test(aiSource)
     && /currentStillPresent[\s\S]*?currentBelongsToProvider\s*&&\s*!currentStillPresent/.test(aiSource)
     && /supersededModels\[i\]\.destroy\(\)/.test(aiSource));
 

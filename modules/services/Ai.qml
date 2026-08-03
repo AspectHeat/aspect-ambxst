@@ -81,11 +81,15 @@ Singleton {
     Connections {
         target: KeyStore
         function onKeysChanged() {
-            Qt.callLater(() => fetchAvailableModels());
+            Qt.callLater(() => {
+                root.handleHermesKeyChange();
+                root.fetchAvailableModels();
+            });
         }
     }
 
     Component.onCompleted: {
+        hermesKnownKey = KeyStore.getKey("hermes");
         if (StateService.initialized)
             restoreModel();
 
@@ -1071,6 +1075,8 @@ for f in files:
     property bool hermesFetchCountsTowardRefresh: false
     property int hermesFetchGeneration: 0
     property int hermesRunningGeneration: 0
+    property bool hermesTestPending: false
+    property string hermesKnownKey: ""
 
     function normalizeHermesEndpoint(endpoint) {
         return HermesConfig.normalizeEndpoint(endpoint);
@@ -1081,6 +1087,37 @@ for f in files:
         hermesConnectionMessage = "Saving key and checking Hermes…";
     }
 
+    function hasHermesModels() {
+        for (let i = 0; i < models.length; i++) {
+            if (models[i].provider === "hermes")
+                return true;
+        }
+        return false;
+    }
+
+    function handleHermesKeyChange() {
+        let currentKey = KeyStore.getKey("hermes");
+        if (currentKey === hermesKnownKey)
+            return;
+
+        hermesKnownKey = currentKey;
+        if (fetchProcessHermes.running)
+            hermesFetchGeneration++;
+
+        if (!currentKey) {
+            hermesTestPending = false;
+            hermesConnectionState = "unconfigured";
+            hermesConnectionMessage = "Enter the gateway API key to connect";
+            replaceProviderModels([], "hermes");
+        } else if (fetchProcessHermes.running) {
+            hermesTestPending = true;
+            hermesConnectionState = "checking";
+            hermesConnectionMessage = "Waiting to recheck the updated key…";
+        } else {
+            testHermesConnection();
+        }
+    }
+
     function testHermesConnection() {
         if (!KeyStore.getKey("hermes")) {
             hermesConnectionState = "unconfigured";
@@ -1089,6 +1126,11 @@ for f in files:
         }
         hermesConnectionState = "checking";
         hermesConnectionMessage = "Checking Hermes gateway…";
+        if (fetchProcessHermes.running) {
+            hermesFetchGeneration++;
+            hermesTestPending = true;
+            return;
+        }
         startHermesModelFetch(false);
     }
 
@@ -1097,10 +1139,14 @@ for f in files:
         if (!hermesKey || fetchProcessHermes.running)
             return false;
 
-        // Keep Hermes selectable while discovery is slow or unavailable.
-        publishHermesModels(["hermes-agent"]);
+        // Publish a fallback only on first connection. Keep an existing
+        // discovered catalog intact while refreshing so its selected model
+        // object cannot be displaced and cancel an in-flight response.
+        if (!hasHermesModels())
+            publishHermesModels(["hermes-agent"]);
         hermesConnectionState = "checking";
         hermesConnectionMessage = "Checking Hermes gateway…";
+        hermesTestPending = false;
         hermesFetchCountsTowardRefresh = countsTowardRefresh;
         hermesFetchGeneration++;
         hermesRunningGeneration = hermesFetchGeneration;
@@ -1187,6 +1233,7 @@ for f in files:
                 pendingFetches++;
         } else {
             hermesFetchGeneration++;
+            hermesTestPending = false;
             hermesConnectionState = "unconfigured";
             hermesConnectionMessage = "Enter the gateway API key to connect";
             replaceProviderModels([], "hermes");
@@ -1530,6 +1577,10 @@ for f in files:
                 }
                 if (countsTowardRefresh)
                     checkFetchCompletion();
+                if (hermesTestPending) {
+                    hermesTestPending = false;
+                    startHermesModelFetch(false);
+                }
             });
         }
     }
