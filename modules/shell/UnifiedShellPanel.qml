@@ -178,7 +178,7 @@ PanelWindow {
     FocusGrab {
         id: focusGrab
         windows: [unifiedPanel]
-        active: notchContent.screenNotchOpen
+        active: notchContent.screenNotchOpen && !unifiedPanel.externalPickerActive
 
         onCleared: {
             Visibilities.setActiveModule("");
@@ -212,6 +212,7 @@ PanelWindow {
     Item {
         id: visualContent
         anchors.fill: parent
+        visible: !unifiedPanel.externalPickerActive
 
         layer.enabled: true
         layer.effect: Shadow {}

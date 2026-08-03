@@ -191,6 +191,7 @@ const configSource = fs.readFileSync("config/Config.qml", "utf8");
 const aiPanelSource = fs.readFileSync("modules/widgets/config/AiPanel.qml", "utf8");
 const sidebarSource = fs.readFileSync("modules/sidebar/AssistantSidebar.qml", "utf8");
 const shellPanelSource = fs.readFileSync("modules/shell/UnifiedShellPanel.qml", "utf8");
+const pickerScriptSource = fs.readFileSync("scripts/image_picker.sh", "utf8");
 const messageDataSource = fs.readFileSync("modules/services/ai/AiMessageData.qml", "utf8");
 const codeSource = fs.readFileSync("modules/sidebar/CodeBlock.qml", "utf8");
 const labRunnerSource = fs.readFileSync("lab/run-isolated.sh", "utf8");
@@ -256,7 +257,20 @@ check("attachment picker overrides competing layer input",
     /readonly\s+property\s+bool\s+externalPickerActive:\s*assistantSidebar\.active\s*&&\s*assistantSidebar\.attachmentPickerActive/.test(shellPanelSource)
     && /WlrLayershell\.keyboardFocus:\s*\{[\s\S]*?if\s*\(unifiedPanel\.externalPickerActive\)[\s\S]*?return\s+WlrKeyboardFocus\.None[\s\S]*?if\s*\(notchContent\.screenNotchOpen\)/.test(shellPanelSource)
     && /readonly\s+property\s+bool\s+needsFullScreenInput:\s*!externalPickerActive\s*&&/.test(shellPanelSource)
-    && (shellPanelSource.match(/item:\s*!unifiedPanel\.externalPickerActive/g) || []).length === 4);
+    && (shellPanelSource.match(/item:\s*!unifiedPanel\.externalPickerActive/g) || []).length === 4
+    && /id:\s*visualContent[\s\S]*?visible:\s*!unifiedPanel\.externalPickerActive/.test(shellPanelSource));
+check("attachment picker clamps only unusable portal geometry",
+    /Quickshell\.shellDir\s*\+\s*"\/scripts\/image_picker\.sh"[\s\S]*?Math\.round\(root\.width\)[\s\S]*?Math\.round\(root\.height\)/.test(sidebarSource)
+    && /saved_width\s*\*\s*5\s*>\s*screen_width\s*\*\s*4/.test(pickerScriptSource)
+    && /saved_height\s*\*\s*5\s*>\s*screen_height\s*\*\s*4/.test(pickerScriptSource)
+    && /target_width=\$\(\(screen_width\s*\*\s*2\s*\/\s*3\)\)/.test(pickerScriptSource)
+    && /target_height=\$\(\(screen_height\s*\*\s*2\s*\/\s*3\)\)/.test(pickerScriptSource)
+    && /org\.gtk\.Settings\.FileChooser\s+org\.gtk\.gtk4\.Settings\.FileChooser/.test(pickerScriptSource)
+    && /account_home=.*getent\s+passwd.*id\s+-u/.test(pickerScriptSource)
+    && /gsettings_command=\(env\s+"HOME=\$account_home"\s+"XDG_CONFIG_HOME=\$account_home\/\.config"\s+gsettings\)/.test(pickerScriptSource)
+    && /set\s+"\$chooser_schema"\s+window-position/.test(pickerScriptSource)
+    && /active:\s*notchContent\.screenNotchOpen\s*&&\s*!unifiedPanel\.externalPickerActive/.test(shellPanelSource)
+    && /exec\s+zenity\s+"\$@"/.test(pickerScriptSource));
 check("message cards avoid avatar filesystem probes",
     !/\.face\.icon/.test(sidebarSource));
 check("lab recovery removes only its axctl daemon and socket",

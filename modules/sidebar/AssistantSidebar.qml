@@ -569,7 +569,7 @@ Item {
                             id: zenityProcess
                             property int launchGeneration: 0
                             property bool startedSuccessfully: false
-                            command: ["zenity", "--file-selection", "--title=Attach an image", "--file-filter=Images | *.png *.jpg *.jpeg *.gif *.webp *.bmp", "--file-filter=All files | *"]
+                            command: [Quickshell.shellDir + "/scripts/image_picker.sh", Math.round(root.width).toString(), Math.round(root.height).toString(), "--file-selection", "--title=Attach an image", "--file-filter=Images | *.png *.jpg *.jpeg *.gif *.webp *.bmp", "--file-filter=All files | *"]
                             onStarted: startedSuccessfully = true
                             stdout: StdioCollector {
                                 onStreamFinished: {
