@@ -270,11 +270,16 @@ check("AI requests have bounded curl and watchdog finalization",
     && /id:\s*requestWatchdogTimer[\s\S]*?Date\.now\(\)\s*-\s*request\.lastActivityAt[\s\S]*?root\.finishRequest\(request[\s\S]*?Request timed out after 5 minutes without activity/.test(aiSource)
     && /requestWatchdogTimer\.restart\(\)/.test(aiSource)
     && /requestWatchdogTimer\.stop\(\)/.test(aiSource)
-    && /--connect-timeout",\s*"10"/.test(aiSource)
+    && /--connect-timeout\s+10/.test(aiSource)
     && !/"--max-time"/.test(aiSource.substring(aiSource.indexOf("function runCurl"), aiSource.indexOf("// ============================================\n    // PROCESSES")))
     && /function\s+cancelActiveRequest\(preservePartial,\s*reason\)[\s\S]*?message\.content\s*===\s*""[\s\S]*?Response interrupted before any text was received/.test(aiSource)
     && /request\.lastActivityAt\s*=\s*Date\.now\(\)/.test(aiSource)
     && /text:\s*"Thinking…"[\s\S]*?text:\s*"Stop"[\s\S]*?onClicked:\s*Ai\.stopActiveRequest\(\)/.test(sidebarSource));
+check("default AI bearer headers stay out of process argv",
+    /AMBXST_AI_HEADERS:\s*payload\.headers\.join\("\\n"\)/.test(aiSource)
+    && /exec\s+3<<<\\"\$AMBXST_AI_HEADERS\\";\s*exec\s+curl/.test(aiSource)
+    && /-H\s+@\/proc\/self\/fd\/3/.test(aiSource)
+    && !/command\.push\("-H",\s*payload\.headers\[i\]\)/.test(aiSource));
 check("attachment picker clamps only unusable portal geometry",
     /Quickshell\.shellDir\s*\+\s*"\/scripts\/image_picker\.sh"[\s\S]*?Math\.round\(root\.width\)[\s\S]*?Math\.round\(root\.height\)/.test(sidebarSource)
     && /saved_width\s*\*\s*5\s*>\s*screen_width\s*\*\s*4/.test(pickerScriptSource)

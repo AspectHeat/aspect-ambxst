@@ -821,6 +821,7 @@ Singleton {
         if (!isRequestCurrent(payload.request))
             return;
         let command = [];
+        curlProcess.environment = ({});
         if (payload.customCurl) {
             let curlCmd = payload.customCurl
                 .split("{{BODY_PATH}}").join(payload.bodyPath)
@@ -828,11 +829,15 @@ Singleton {
                 .replace("{{API_KEY}}", payload.apiKey);
             command = ["/usr/bin/bash", "-c", curlCmd];
         } else {
-            command = ["curl", "-sS", "--no-buffer", "-N", "--connect-timeout", "10",
-                "-X", "POST", payload.endpoint];
-            for (let i = 0; i < payload.headers.length; i++)
-                command.push("-H", payload.headers[i]);
-            command.push("--data-binary", "@" + payload.bodyPath);
+            // Keep bearer headers out of argv/process listings. Bash opens a
+            // private here-string on fd 3, then exec replaces it with curl so
+            // cancellation still targets the real network process.
+            curlProcess.environment = ({
+                AMBXST_AI_HEADERS: payload.headers.join("\n")
+            });
+            command = ["/usr/bin/bash", "-c",
+                "exec 3<<<\"$AMBXST_AI_HEADERS\"; exec curl -sS --no-buffer -N --connect-timeout 10 -X POST \"$1\" -H @/proc/self/fd/3 --data-binary \"@$2\"",
+                "ambxst-ai-curl", payload.endpoint, payload.bodyPath];
         }
         curlProcess.generation = payload.request.generation;
         curlProcess.request = payload.request;
