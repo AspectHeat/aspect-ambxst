@@ -286,7 +286,8 @@ check("Hermes model probe keeps bearer headers out of process argv",
 check("parser completion terminates its curl lifecycle",
     /function\s+finishParsedRequest\(request,\s*explicitError\)[\s\S]*?finishRequest\(request,\s*0,\s*"",\s*explicitError\s*\|\|\s*""\)[\s\S]*?curlProcess\.running[\s\S]*?curlProcess\.generation\s*===\s*request\.generation[\s\S]*?curlProcess\.running\s*=\s*false/.test(aiSource)
     && /if\s*\(result\.error\)[\s\S]*?finishParsedRequest\(request,\s*result\.error\)/.test(aiSource)
-    && /if\s*\(result\.done\)[\s\S]*?finishParsedRequest\(request,\s*result\.error\s*\|\|\s*""\)/.test(aiSource));
+    && /if\s*\(result\.done\)[\s\S]*?finishParsedRequest\(request,\s*result\.error\s*\|\|\s*""\)/.test(aiSource)
+    && /id:\s*curlProcess[\s\S]*?onExited:\s*exitCode\s*=>\s*\{[\s\S]*?root\.curlProcessBusy\s*=\s*false[\s\S]*?root\.finishRequest\(completedRequest,[\s\S]*?Qt\.callLater\(\(\)\s*=>\s*root\.tryStartPendingRequest\(\)\)/.test(aiSource));
 check("attachment picker clamps only unusable portal geometry",
     /Quickshell\.shellDir\s*\+\s*"\/scripts\/image_picker\.sh"[\s\S]*?Math\.round\(root\.width\)[\s\S]*?Math\.round\(root\.height\)/.test(sidebarSource)
     && /saved_width\s*\*\s*5\s*>\s*screen_width\s*\*\s*4/.test(pickerScriptSource)
