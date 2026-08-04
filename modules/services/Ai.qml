@@ -29,7 +29,7 @@ Singleton {
 
     onCurrentModelChanged: {
         if (activeRequest)
-            cancelActiveRequest(true);
+            cancelActiveRequest(true, "Model changed.");
         if (persistenceReady && currentModel && isRestored) {
             StateService.set("lastAiModel", currentModel.model);
         }
@@ -165,6 +165,7 @@ Singleton {
     property int streamChunkCount: 0
     property int streamFlushCount: 0
     property int requestFinishCount: 0
+    readonly property int requestTimeoutMs: 300000
     property int createdMessageCount: 0
     property int destroyedMessageCount: 0
 
@@ -185,6 +186,28 @@ Singleton {
         interval: 50
         repeat: false
         onTriggered: root.flushStream(root.activeRequest)
+    }
+
+    Timer {
+        id: requestWatchdogTimer
+        interval: 1000
+        repeat: true
+        onTriggered: {
+            let request = root.activeRequest;
+            if (!root.isRequestCurrent(request)) {
+                stop();
+                return;
+            }
+            if (Date.now() - request.lastActivityAt < root.requestTimeoutMs)
+                return;
+
+            root.finishRequest(request, 0, "",
+                "Request timed out after 5 minutes without activity. Hermes may still be busy; retry when it is ready.");
+            if (requestProcess.running)
+                requestProcess.running = false;
+            if (curlProcess.running)
+                curlProcess.running = false;
+        }
     }
 
     // ============================================
@@ -353,7 +376,7 @@ Singleton {
     function regenerateResponse(index) {
         if (index < 0 || index >= messageIDs.length)
             return;
-        cancelActiveRequest(true);
+        cancelActiveRequest(true, "Response regenerated.");
         removeMessagesFrom(index);
         lastError = "";
         makeRequest();
@@ -508,7 +531,7 @@ Singleton {
             return;
         if (processCommand(text))
             return;
-        cancelActiveRequest(true);
+        cancelActiveRequest(true, "Superseded by a new message.");
         lastError = "";
         let userMsg = {
             role: "user",
@@ -529,7 +552,7 @@ Singleton {
             return;
         }
 
-        cancelActiveRequest(true);
+        cancelActiveRequest(true, "Superseded by a new request.");
         let requestModel = currentModel;
         let requestStrategy = getStrategyForProvider(requestModel.provider);
         let apiKey = getApiKey(requestModel);
@@ -574,10 +597,12 @@ Singleton {
             provider: requestModel.provider,
             strategy: requestStrategy,
             toolCalls: ({}),
+            lastActivityAt: Date.now(),
             finished: false
         };
         activeRequest = request;
         isLoading = true;
+        requestWatchdogTimer.restart();
         responseBuffer = "";
         pendingDisplayBuffer = "";
         if (requestStrategy.resetStream)
@@ -663,6 +688,7 @@ Singleton {
             return false;
         request.finished = true;
         streamFlushTimer.stop();
+        requestWatchdogTimer.stop();
         flushStream(request);
         applyToolCall(request);
 
@@ -692,7 +718,7 @@ Singleton {
         return true;
     }
 
-    function cancelActiveRequest(preservePartial) {
+    function cancelActiveRequest(preservePartial, reason) {
         let request = activeRequest;
         if (request && isRequestCurrent(request)) {
             streamFlushTimer.stop();
@@ -700,12 +726,18 @@ Singleton {
                 flushStream(request);
                 let message = messageForId(request.messageId);
                 if (message) {
+                    if (message.content === "" && !message.functionCall) {
+                        message.content = reason || "Response interrupted before any text was received.";
+                        message.rawContent = message.content;
+                    }
                     message.done = true;
                     message.thinking = false;
                     message.toolStatus = "";
                 }
                 saveCurrentChat(request.chatId);
             }
+            console.warn("AI request " + request.generation + " canceled: "
+                + (reason || "request lifecycle changed"));
         }
         requestGeneration++;
         activeRequest = null;
@@ -713,11 +745,16 @@ Singleton {
         responseBuffer = "";
         pendingDisplayBuffer = "";
         streamFlushTimer.stop();
+        requestWatchdogTimer.stop();
         isLoading = false;
         if (requestProcess.running)
             requestProcess.running = false;
         if (curlProcess.running)
             curlProcess.running = false;
+    }
+
+    function stopActiveRequest() {
+        cancelActiveRequest(true, "Response stopped.");
     }
 
     function writeTempBody(jsonBody, headers, endpoint, request, apiKey, customCurl) {
@@ -791,7 +828,8 @@ Singleton {
                 .replace("{{API_KEY}}", payload.apiKey);
             command = ["/usr/bin/bash", "-c", curlCmd];
         } else {
-            command = ["curl", "-sS", "--no-buffer", "-N", "-X", "POST", payload.endpoint];
+            command = ["curl", "-sS", "--no-buffer", "-N", "--connect-timeout", "10",
+                "-X", "POST", payload.endpoint];
             for (let i = 0; i < payload.headers.length; i++)
                 command.push("-H", payload.headers[i]);
             command.push("--data-binary", "@" + payload.bodyPath);
@@ -836,6 +874,7 @@ Singleton {
                 let request = curlProcess.request;
                 if (!root.isRequestCurrent(request) || curlProcess.generation !== request.generation)
                     return;
+                request.lastActivityAt = Date.now();
                 let result = curlProcess.strategy.parseStreamChunk(data);
                 if (result.error) {
                     root.finishRequest(request, 0, "", result.error);

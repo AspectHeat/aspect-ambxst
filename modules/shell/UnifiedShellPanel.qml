@@ -212,7 +212,6 @@ PanelWindow {
     Item {
         id: visualContent
         anchors.fill: parent
-        visible: !unifiedPanel.externalPickerActive
 
         layer.enabled: true
         layer.effect: Shadow {}
@@ -254,6 +253,10 @@ PanelWindow {
             id: assistantSidebar
             targetScreen: unifiedPanel.targetScreen
             z: 1
+            // Keep the bar, notch, dock, and frame visible while the native
+            // picker owns input. Only the overlay that could cover the picker
+            // is hidden until the picker exits.
+            visible: !unifiedPanel.externalPickerActive
             
             // Respect top/bottom bar reservations so the sidebar doesn't overlap them
             anchors.topMargin: {

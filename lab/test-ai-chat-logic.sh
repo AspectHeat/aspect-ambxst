@@ -258,7 +258,23 @@ check("attachment picker overrides competing layer input",
     && /WlrLayershell\.keyboardFocus:\s*\{[\s\S]*?if\s*\(unifiedPanel\.externalPickerActive\)[\s\S]*?return\s+WlrKeyboardFocus\.None[\s\S]*?if\s*\(notchContent\.screenNotchOpen\)/.test(shellPanelSource)
     && /readonly\s+property\s+bool\s+needsFullScreenInput:\s*!externalPickerActive\s*&&/.test(shellPanelSource)
     && (shellPanelSource.match(/item:\s*!unifiedPanel\.externalPickerActive/g) || []).length === 4
-    && /id:\s*visualContent[\s\S]*?visible:\s*!unifiedPanel\.externalPickerActive/.test(shellPanelSource));
+    && /id:\s*assistantSidebar[\s\S]*?visible:\s*!unifiedPanel\.externalPickerActive/.test(shellPanelSource)
+    && !/id:\s*visualContent[\s\S]{0,120}?visible:\s*!unifiedPanel\.externalPickerActive/.test(shellPanelSource));
+check("plain text paste is silent while attachment paste remains available",
+    /if\s*\(event\.key\s*===\s*Qt\.Key_V[\s\S]*?if\s*\(!clipboardTypesProcess\.running\)[\s\S]*?clipboardTypesProcess\.running\s*=\s*true[\s\S]*?\/\/ Do not accept the event/.test(sidebarSource)
+    && /id:\s*clipboardTypesProcess[\s\S]*?imageType\.length\s*>\s*0[\s\S]*?clipboardImageProcess\.running\s*=\s*true[\s\S]*?text\/uri-list[\s\S]*?clipboardUrisProcess\.running\s*=\s*true/.test(sidebarSource)
+    && !/Clipboard does not contain an image or file/.test(sidebarSource)
+    && !/Ai\.pushSystemMessage\("Clipboard read failed:/.test(sidebarSource));
+check("AI requests have bounded curl and watchdog finalization",
+    /readonly\s+property\s+int\s+requestTimeoutMs:\s*300000/.test(aiSource)
+    && /id:\s*requestWatchdogTimer[\s\S]*?Date\.now\(\)\s*-\s*request\.lastActivityAt[\s\S]*?root\.finishRequest\(request[\s\S]*?Request timed out after 5 minutes without activity/.test(aiSource)
+    && /requestWatchdogTimer\.restart\(\)/.test(aiSource)
+    && /requestWatchdogTimer\.stop\(\)/.test(aiSource)
+    && /--connect-timeout",\s*"10"/.test(aiSource)
+    && !/"--max-time"/.test(aiSource.substring(aiSource.indexOf("function runCurl"), aiSource.indexOf("// ============================================\n    // PROCESSES")))
+    && /function\s+cancelActiveRequest\(preservePartial,\s*reason\)[\s\S]*?message\.content\s*===\s*""[\s\S]*?Response interrupted before any text was received/.test(aiSource)
+    && /request\.lastActivityAt\s*=\s*Date\.now\(\)/.test(aiSource)
+    && /text:\s*"Thinking…"[\s\S]*?text:\s*"Stop"[\s\S]*?onClicked:\s*Ai\.stopActiveRequest\(\)/.test(sidebarSource));
 check("attachment picker clamps only unusable portal geometry",
     /Quickshell\.shellDir\s*\+\s*"\/scripts\/image_picker\.sh"[\s\S]*?Math\.round\(root\.width\)[\s\S]*?Math\.round\(root\.height\)/.test(sidebarSource)
     && /saved_width\s*\*\s*5\s*>\s*screen_width\s*\*\s*4/.test(pickerScriptSource)

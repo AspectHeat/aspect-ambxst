@@ -635,7 +635,8 @@ Item {
                                         clipboardUrisProcess.running = true;
                                         return;
                                     }
-                                    Ai.pushSystemMessage("Clipboard does not contain an image or file.");
+                                    // Ordinary text is pasted by TextArea itself. The MIME
+                                    // probe only supplements Ctrl+V with image/file support.
                                 }
                             }
                             stderr: StdioCollector {
@@ -644,7 +645,8 @@ Item {
                             onExited: exitCode => {
                                 if (exitCode !== 0) {
                                     let err = clipboardTypesStderr.text.trim();
-                                    Ai.pushSystemMessage("Clipboard read failed: " + (err.length > 0 ? err : "unknown error"));
+                                    console.warn("Assistant clipboard type probe failed: "
+                                        + (err.length > 0 ? err : "unknown error"));
                                 }
                             }
                         }
@@ -1343,7 +1345,15 @@ Item {
 
                                         Row {
                                             anchors.centerIn: parent
-                                            spacing: 4
+                                            spacing: Math.max(4, Config.theme.fontSize / 2)
+
+                                            Text {
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                text: "Thinking…"
+                                                color: Colors.overBackground
+                                                font.family: Config.theme.font
+                                                font.pixelSize: Styling.fontSize(-2)
+                                            }
 
                                             Repeater {
                                                 model: 3
@@ -1377,6 +1387,29 @@ Item {
                                                             duration: 400 - (index * 200)
                                                         }
                                                     }
+                                                }
+                                            }
+
+                                            StyledRect {
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                width: stopLabel.implicitWidth + Config.theme.fontSize
+                                                height: stopLabel.implicitHeight + Config.theme.fontSize / 2
+                                                variant: "internalbg"
+                                                radius: Styling.radius(2)
+
+                                                Text {
+                                                    id: stopLabel
+                                                    anchors.centerIn: parent
+                                                    text: "Stop"
+                                                    color: Colors.overBackground
+                                                    font.family: Config.theme.font
+                                                    font.pixelSize: Styling.fontSize(-2)
+                                                }
+
+                                                MouseArea {
+                                                    anchors.fill: parent
+                                                    cursorShape: Qt.PointingHandCursor
+                                                    onClicked: Ai.stopActiveRequest()
                                                 }
                                             }
                                         }
@@ -1676,7 +1709,10 @@ Item {
                                                     }
                                                 }
                                                 if (event.key === Qt.Key_V && (event.modifiers & Qt.ControlModifier)) {
-                                                    clipboardTypesProcess.running = true;
+                                                    if (!clipboardTypesProcess.running)
+                                                        clipboardTypesProcess.running = true;
+                                                    // Do not accept the event: TextArea must still perform
+                                                    // its normal plain-text paste.
                                                     return;
                                                 }
                                                 if (event.key === Qt.Key_Escape) {
