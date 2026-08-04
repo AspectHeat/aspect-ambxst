@@ -718,6 +718,18 @@ Singleton {
         return true;
     }
 
+    function finishParsedRequest(request, explicitError) {
+        if (!finishRequest(request, 0, "", explicitError || ""))
+            return false;
+
+        // A valid SSE completion marker ends the logical request even if a
+        // broken peer keeps the HTTP connection open. Stop that exact curl so
+        // curlProcessBusy is released by onExited and queued work can proceed.
+        if (curlProcess.running && curlProcess.generation === request.generation)
+            curlProcess.running = false;
+        return true;
+    }
+
     function cancelActiveRequest(preservePartial, reason) {
         let request = activeRequest;
         if (request && isRequestCurrent(request)) {
@@ -882,7 +894,7 @@ Singleton {
                 request.lastActivityAt = Date.now();
                 let result = curlProcess.strategy.parseStreamChunk(data);
                 if (result.error) {
-                    root.finishRequest(request, 0, "", result.error);
+                    root.finishParsedRequest(request, result.error);
                     return;
                 }
                 if (result.content) {
@@ -911,7 +923,7 @@ Singleton {
                     }
                 }
                 if (result.done)
-                    root.finishRequest(request, 0, "", result.error || "");
+                    root.finishParsedRequest(request, result.error || "");
             }
         }
 
@@ -1214,10 +1226,15 @@ for f in files:
         hermesRunningGeneration = hermesFetchGeneration;
 
         let hermesEndpoint = normalizeHermesEndpoint(Config.ai.hermesEndpoint);
+        // Keep the saved gateway bearer out of argv/process listings just as
+        // the chat path does. curl reads its header from an inherited fd.
+        fetchProcessHermes.environment = ({
+            AMBXST_HERMES_HEADERS: "Authorization: Bearer " + hermesKey
+        });
         fetchProcessHermes.command = [
-            "curl", "-sS", "--fail-with-body", "--connect-timeout", "3", "--max-time", "8",
-            hermesEndpoint + "/models",
-            "-H", "Authorization: Bearer " + hermesKey
+            "/usr/bin/bash", "-c",
+            "exec 3<<<\"$AMBXST_HERMES_HEADERS\"; exec curl -sS --fail-with-body --connect-timeout 3 --max-time 8 -H @/proc/self/fd/3 \"$1\"",
+            "ambxst-hermes-models", hermesEndpoint + "/models"
         ];
         fetchProcessHermes.running = true;
         return true;

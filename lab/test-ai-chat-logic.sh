@@ -280,6 +280,13 @@ check("default AI bearer headers stay out of process argv",
     && /exec\s+3<<<\\"\$AMBXST_AI_HEADERS\\";\s*exec\s+curl/.test(aiSource)
     && /-H\s+@\/proc\/self\/fd\/3/.test(aiSource)
     && !/command\.push\("-H",\s*payload\.headers\[i\]\)/.test(aiSource));
+check("Hermes model probe keeps bearer headers out of process argv",
+    /function\s+startHermesModelFetch[\s\S]*?AMBXST_HERMES_HEADERS:\s*"Authorization: Bearer "\s*\+\s*hermesKey[\s\S]*?-H\s+@\/proc\/self\/fd\/3[\s\S]*?ambxst-hermes-models[\s\S]*?fetchProcessHermes\.running\s*=\s*true/.test(aiSource)
+    && !/fetchProcessHermes\.command\s*=\s*\[[\s\S]*?"-H",\s*"Authorization: Bearer "\s*\+\s*hermesKey[\s\S]*?\];/.test(aiSource));
+check("parser completion terminates its curl lifecycle",
+    /function\s+finishParsedRequest\(request,\s*explicitError\)[\s\S]*?finishRequest\(request,\s*0,\s*"",\s*explicitError\s*\|\|\s*""\)[\s\S]*?curlProcess\.running[\s\S]*?curlProcess\.generation\s*===\s*request\.generation[\s\S]*?curlProcess\.running\s*=\s*false/.test(aiSource)
+    && /if\s*\(result\.error\)[\s\S]*?finishParsedRequest\(request,\s*result\.error\)/.test(aiSource)
+    && /if\s*\(result\.done\)[\s\S]*?finishParsedRequest\(request,\s*result\.error\s*\|\|\s*""\)/.test(aiSource));
 check("attachment picker clamps only unusable portal geometry",
     /Quickshell\.shellDir\s*\+\s*"\/scripts\/image_picker\.sh"[\s\S]*?Math\.round\(root\.width\)[\s\S]*?Math\.round\(root\.height\)/.test(sidebarSource)
     && /saved_width\s*\*\s*5\s*>\s*screen_width\s*\*\s*4/.test(pickerScriptSource)
