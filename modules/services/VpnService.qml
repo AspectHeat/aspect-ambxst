@@ -5,30 +5,79 @@ import QtQuick
 import Quickshell
 import qs.config
 
-// Coordinates the two VPN providers. Knows nothing about either CLI - it only reads their
-// booleans and serializes transitions between them.
+// Coordinates the VPN providers. Knows nothing about any CLI - it only reads their booleans
+// and serializes transitions between them.
 //
-// Two rules this file exists to enforce:
+// Three rules this file exists to enforce:
 //   1. handoffPhase is an ENUM and is never rendered. UI text comes from statusTextFor(),
 //      which returns "" for any surface that is not the current handoff target. v1 rendered
 //      a shared phase string everywhere, so the NordVPN page announced "Disconnecting
 //      Tailscale...".
 //   2. "connected" is not symmetric between providers, so a handoff is keyed on who owns
 //      the DEFAULT ROUTE, not on who happens to be running.
+//   3. Nothing here is per-provider except providerTable. Every helper was hard-coded binary
+//      NordVPN <-> Tailscale before AirVPN, and otherProvider() in particular was a plain
+//      boolean flip - with a third provider that silently returned the WRONG provider, so
+//      handoff text and settle detection would both have lied. Adding a fourth provider
+//      should be one table entry plus a connect case, and nothing else.
 Singleton {
     id: root
+
+    // ---------------------------------------------------------------- provider table
+    // The single per-provider definition. `service` holds the singleton itself, so the helpers
+    // below need no switch at all.
+    //
+    // settleOn distinguishes the two disciplines already in the codebase: the commercial CLIs
+    // separate isReading from isMutating, so waiting on isUpdating there would also wait out
+    // unrelated background polls and stretch every handoff by a poll cycle. TailscaleService is
+    // push-driven and only exposes isUpdating.
+    readonly property var providerTable: ({
+        "tailscale": {
+            label: "Tailscale",
+            service: TailscaleService,
+            settleOn: "isUpdating",
+            disconnectMethod: "down"
+        },
+        "nordvpn": {
+            label: "NordVPN",
+            service: NordVpnService,
+            settleOn: "isMutating",
+            disconnectMethod: "disconnect"
+        },
+        "airvpn": {
+            label: "AirVPN",
+            service: AirVpnService,
+            settleOn: "isMutating",
+            disconnectMethod: "disconnect"
+        }
+    })
+
+    function providerFor(provider): var {
+        return root.providerTable[String(provider ?? "")] ?? null;
+    }
 
     // ---------------------------------------------------------------- observed facts
     readonly property bool tailscaleUp: TailscaleService.connected
     readonly property bool nordUp: NordVpnService.connected
+    readonly property bool airUp: AirVpnService.connected
 
     // Tailscale being up is not egress. It only owns the default route when an exit node is
     // set, so mesh-only Tailscale must never trigger a handoff prompt.
+    //
+    // Order is the tie-break when two commercial tunnels are somehow up at once. Arbitrary but
+    // deterministic, which is what matters - a routeOwner that flapped between them would make
+    // every handoff decision unstable.
     readonly property string routeOwner: root.nordUp ? "nordvpn"
+        : root.airUp ? "airvpn"
         : (root.tailscaleUp && TailscaleService.exitNodeId !== "" ? "tailscale" : "none")
 
-    // Both providers can legitimately be connected at once (mesh + commercial egress).
-    readonly property bool bothConnected: root.tailscaleUp && root.nordUp
+    // Providers can legitimately be connected at once (mesh + commercial egress). "both" is a
+    // holdover from when there were two; it now means "two or more", which is all any consumer
+    // ever asked of it.
+    readonly property bool bothConnected: root.connectedCount > 1
+
+    readonly property int connectedCount:
+        (root.tailscaleUp ? 1 : 0) + (root.nordUp ? 1 : 0) + (root.airUp ? 1 : 0)
 
     // ---------------------------------------------------------------- handoff state
     // idle | confirming | disconnecting | connecting | failed
@@ -54,16 +103,13 @@ Singleton {
 
     // ---------------------------------------------------------------- text mapping
     function labelFor(provider): string {
-        if (provider === "nordvpn")
-            return "NordVPN";
-        if (provider === "tailscale")
-            return "Tailscale";
-        return "";
+        return root.providerFor(provider)?.label ?? "";
     }
 
-    function otherProvider(provider): string {
-        return provider === "nordvpn" ? "tailscale" : "nordvpn";
-    }
+    // otherProvider() is deliberately GONE. With two providers a boolean flip happened to name
+    // the one being torn down; with three it returns a provider that has nothing to do with the
+    // handoff. recoveryProvider is the real answer - it is set to routeOwner at the start of
+    // every handoff, which is precisely "the provider whose tunnel we are taking away".
 
     // The direction guard. A surface only ever sees its own phase.
     function statusTextFor(provider): string {
@@ -74,7 +120,9 @@ Singleton {
         case "confirming":
             return "Switch to " + root.labelFor(provider) + "?";
         case "disconnecting":
-            return "Disconnecting " + root.labelFor(root.otherProvider(provider)) + "…";
+            // recoveryProvider, not a flip of `provider`. Reached only from beginHandoff(),
+            // which assigns it before setting this phase.
+            return "Disconnecting " + root.labelFor(root.recoveryProvider) + "…";
         case "connecting":
             return "Connecting " + root.labelFor(provider) + "…";
         case "failed":
@@ -106,24 +154,34 @@ Singleton {
         if (root.busy || root.awaitingConfirmation || target === "")
             return;
 
+        if (root.providerFor(target) === null)
+            return;
+
         root.pendingSelection = selection;
         root.pendingP2p = p2p;
 
         // Remember a country-level pick so Quick Connect and the primary toggle reuse it.
         // Nothing wrote this before, so "Quick Connect" always ignored the user's last
-        // choice. City-level picks ("Country City") are deliberately not persisted - the
+        // choice. Sub-country picks ("Country City") are deliberately not persisted - the
         // CLI's own recommended server within a country is the better default next time.
-        if (target === "nordvpn" && selection !== "" && !selection.includes(" "))
-            Config.system.nordvpn.preferredCountry = selection;
+        if (selection !== "" && !selection.includes(" ")) {
+            if (target === "nordvpn")
+                Config.system.nordvpn.preferredCountry = selection;
+            else if (target === "airvpn")
+                Config.system.airvpn.preferredCountry = selection;
+        }
         root.lastError = "";
         root.recoveryProvider = "";
 
-        // Already connected: a country/city change is a plain reconnect, NOT a handoff.
-        // Routing it through the handoff phases made handoffTimer see providerConnected()
-        // already true on its first tick and declare success while the reconnect was still
-        // in flight.
+        // Already connected: a location change is a plain reconnect, NOT a handoff. Routing it
+        // through the handoff phases made handoffTimer see providerConnected() already true on
+        // its first tick and declare success while the reconnect was still in flight.
         if (target === "nordvpn" && root.nordUp) {
             NordVpnService.connectTo(selection, p2p);
+            return;
+        }
+        if (target === "airvpn" && root.airUp) {
+            AirVpnService.connectTo(selection);
             return;
         }
         // Only a no-op when Tailscale ALREADY owns egress. If it is up mesh-only while
@@ -169,11 +227,12 @@ Singleton {
 
         // A provider rejects a mutation while one is already in flight. Detect that instead
         // of showing "Disconnecting..." for 12 s against a command that never ran.
+        // Table-driven, so a new provider needs no edit here. The method name differs
+        // (Tailscale's is down(), the commercial ones disconnect()), which is why it is data.
+        const entry = root.providerFor(owner);
         let started = true;
-        if (owner === "tailscale")
-            started = TailscaleService.down();
-        else if (owner === "nordvpn")
-            started = NordVpnService.disconnect();
+        if (entry !== null)
+            started = entry.service[entry.disconnectMethod]();
 
         if (!started) {
             root.fail("Could not disconnect " + root.labelFor(owner) + " right now. Try again.");
@@ -196,10 +255,17 @@ Singleton {
             return;
         }
 
-        let started = true;
+        // Connect stays an explicit switch rather than table data, because the signatures
+        // genuinely differ per provider and flattening them would mean inventing a lowest
+        // common denominator that fits none of them. An unknown target must NOT fall through:
+        // the old `else` branch ran TailscaleService.up(), so a third provider's connect
+        // request would have brought up Tailscale instead.
+        let started = false;
         if (target === "nordvpn")
             started = NordVpnService.connectTo(root.pendingSelection, root.pendingP2p);
-        else
+        else if (target === "airvpn")
+            started = AirVpnService.connectTo(root.pendingSelection);
+        else if (target === "tailscale")
             started = TailscaleService.up();
 
         if (!started) {
@@ -214,19 +280,20 @@ Singleton {
     }
 
     function providerConnected(provider): bool {
-        return provider === "nordvpn" ? root.nordUp : root.tailscaleUp;
+        return root.providerFor(provider)?.service?.connected ?? false;
     }
 
     function providerSettled(provider): bool {
-        // isMutating for NordVPN: waiting on isUpdating would also wait out unrelated
-        // background reads, stretching every handoff by a poll cycle.
-        return provider === "nordvpn"
-            ? !root.nordUp && !NordVpnService.isMutating
-            : !root.tailscaleUp && !TailscaleService.isUpdating;
+        const entry = root.providerFor(provider);
+        // An unknown provider is NOT settled. Reporting true would let a handoff proceed to
+        // connect while the old tunnel was still up.
+        if (entry === null)
+            return false;
+        return !entry.service.connected && !entry.service[entry.settleOn];
     }
 
     function providerError(provider): string {
-        return provider === "nordvpn" ? NordVpnService.lastError : TailscaleService.lastError;
+        return root.providerFor(provider)?.service?.lastError ?? "";
     }
 
     function succeed(): void {
@@ -286,7 +353,11 @@ Singleton {
             root.elapsedTicks++;
 
             if (root.handoffPhase === "disconnecting") {
-                if (root.providerSettled(root.otherProvider(root.handoffTarget))) {
+                // recoveryProvider is the one actually being torn down. The old
+                // otherProvider(handoffTarget) flip happened to be right for two providers and
+                // is wrong for three - it would have waited on a provider nobody touched, so
+                // this branch would settle instantly and connect over a live tunnel.
+                if (root.providerSettled(root.recoveryProvider)) {
                     root.connectTarget(root.handoffTarget);
                     return;
                 }
