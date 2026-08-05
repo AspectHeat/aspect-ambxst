@@ -156,6 +156,76 @@ else
 fi
 
 say
+say '=== AirVPN Suite ==='
+# The widget talks to goldcrest only, never hummingbird: goldcrest drives the bluetit
+# daemon, which is what actually owns the tunnel across the widget's lifetime.
+#
+# The load-bearing check here is the LAST one. An unauthenticated goldcrest does not
+# fail on a credentialed subcommand -- it prompts on stdin for the username, and on
+# stdin EOF (which is what Quickshell's Process hands a child) it re-prompts in a
+# tight loop. Measured 3.97 GB of stdout in 12 s, enough to OOM the shell and take
+# the desktop with it. AirVpnService therefore derives credentialsConfigured by
+# READING the run-control file, and never probes the CLI to find out.
+# See docs/airvpn-recon-findings.md §1.
+if command -v goldcrest >/dev/null 2>&1; then
+    ok "goldcrest -> $(command -v goldcrest) ($(goldcrest --version 2>/dev/null \
+        | head -1 || echo 'version unknown'))"
+
+    if systemctl is-active --quiet bluetit.service 2>/dev/null; then
+        ok 'bluetit.service active'
+    else
+        warn 'bluetit.service not active; the AirVPN panel will show "Daemon unavailable". \
+Remedy: sudo systemctl enable --now bluetit.service'
+    fi
+
+    # Group membership is inherited at session start, so adding the group is only half
+    # the fix -- the graphical session has to be restarted before Quickshell can talk
+    # to Bluetit over D-Bus. Same class of bug as NordVPN group membership.
+    if id -nG 2>/dev/null | tr ' ' '\n' | grep -qx airvpn; then
+        ok "$(id -un) is in group 'airvpn'"
+    else
+        warn "$(id -un) is NOT in group 'airvpn'; goldcrest will be refused by D-Bus. \
+Remedy: sudo usermod -aG airvpn $(id -un), then RESTART THE GRAPHICAL SESSION so \
+Quickshell inherits the group"
+    fi
+
+    # Network Lock can drop Tailscale and SSH, which are the only ways into this
+    # machine. The widget defaults it off and only ever applies it at connect time.
+    if goldcrest --bluetit-status 2>&1 | grep -qiE 'network (filter and lock|lock).*(enabled|active)'; then
+        warn 'AirVPN Network Lock is currently ENABLED. If the tunnel drops, SSH and \
+Tailscale go with it. Clear it with: goldcrest --network-lock off (or --recover-network)'
+    else
+        ok 'AirVPN Network Lock is off'
+    fi
+
+    AIRVPN_RC="$REAL_HOME/.config/goldcrest.rc"
+    if [[ -f "$AIRVPN_RC" ]]; then
+        # Only ever tests for NON-EMPTY directives. Never prints a value.
+        if grep -qE '^[[:space:]]*air-user[[:space:]]+[^[:space:]]' "$AIRVPN_RC" \
+            && grep -qE '^[[:space:]]*air-password[[:space:]]+[^[:space:]]' "$AIRVPN_RC"; then
+            ok "AirVPN credentials present in $AIRVPN_RC"
+            rc_mode="$(stat -c '%a' "$AIRVPN_RC" 2>/dev/null || echo '?')"
+            if [[ "$rc_mode" != "600" ]]; then
+                warn "$AIRVPN_RC is mode $rc_mode; it holds an account password. \
+Remedy: chmod 600 '$AIRVPN_RC'"
+            fi
+        else
+            warn "$AIRVPN_RC has no air-user + air-password; the AirVPN panel will show \
+\"Log in required\". Countries still browse without credentials. NOTE: do not run \
+'goldcrest --air-user-info' or '--air-key-list' to test this -- unauthenticated they \
+prompt on stdin and loop, emitting GBs of output"
+        fi
+    else
+        warn "no $AIRVPN_RC; the AirVPN panel will show \"Log in required\" (browsing \
+countries still works). Never commit that file"
+    fi
+else
+    # Not a failure: the panel's setup card explains the install, and every other part
+    # of the shell works without it.
+    warn 'goldcrest absent; the AirVPN panel will show its "not installed" setup card'
+fi
+
+say
 say '=== recovery path ==='
 # There is no fallback shell by design. Bare Hyprland must still get a terminal.
 BINDS_LUA="${XDG_CONFIG_HOME:-$HOME/.config}/hypr/config/binds.lua"
