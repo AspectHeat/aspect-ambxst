@@ -224,11 +224,14 @@ ShellRoot {
         root.checkEqual("Tailscale connection state untouched",
             TailscaleService.connected, tailscaleBefore);
 
-        // A refused connect must not persist a country either, or Quick Connect would later
-        // claim a location the user never reached.
-        VpnService.clearTransient();
+        // A failure must be dismissable, or the error banner outlives the attempt. Note that
+        // requestProvider persists the country BEFORE attempting the connect, so a refused
+        // attempt still updates preferredCountry - that is NordVPN's existing shipped behaviour
+        // and AirVPN matches it deliberately rather than inventing a second rule.
         VpnService.dismissFailure();
-        root.checkEqual("transient cleared", VpnService.handoffPhase, "idle");
+        root.checkEqual("failure is dismissable", VpnService.handoffPhase, "idle");
+        root.checkEqual("dismissal clears the error", VpnService.lastError, "");
+        root.checkEqual("dismissal clears the target", VpnService.handoffTarget, "");
     }
 
     function report(): void {
