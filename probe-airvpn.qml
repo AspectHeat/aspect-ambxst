@@ -5,7 +5,11 @@ import qs.modules.services
 // Headless smoke test for AirVpnService. Run it, do not import it.
 //
 //   cd ~/Projects/aspect-ambxst
-//   QT_QPA_PLATFORM=offscreen qs -p lab/probe-airvpn.qml
+//   QT_QPA_PLATFORM=offscreen qs -p probe-airvpn.qml
+//
+// It lives at the repo root, not in lab/, because Quickshell resolves `qs.*` imports relative
+// to the directory of the file passed to -p. From lab/ the import became
+// lab/modules/services and failed with "module qs.modules.services is not installed".
 //
 // Why this exists: `qs -p shell.qml` under QT_QPA_PLATFORM=offscreen cannot load the real
 // shell, because ContextMenu pulls in PanelWindow and offscreen has no layer-shell backend

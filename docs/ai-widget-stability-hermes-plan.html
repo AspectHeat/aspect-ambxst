@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aspect Ambxst — AI Widget Stability + Hermes Provider Plan</title>
+<style>
+  :root {
+    --bg:#0f1117; --surface:#181b24; --surface2:#202430; --surface3:#292e3c;
+    --line:#343a4a; --fg:#e7eaf0; --dim:#9ba3b5; --accent:#7aa2f7;
+    --ok:#9ece6a; --warn:#e0af68; --err:#f7768e;
+    --hermes:#c792ea; --ai:#7dcfff;
+    --sans:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+    --mono:"JetBrains Mono","Fira Code",ui-monospace,monospace;
+  }
+  * { box-sizing:border-box; }
+  html { scroll-behavior:smooth; }
+  body { margin:0; color:var(--fg); background:
+    radial-gradient(900px 500px at 12% -8%,rgba(125,207,255,.12),transparent 55%),
+    radial-gradient(700px 420px at 95% 0%,rgba(199,146,234,.12),transparent 50%),
+    var(--bg);
+    font:15px/1.62 var(--sans); }
+  a { color:var(--accent); text-decoration:none; }
+  a:hover { text-decoration:underline; }
+  .layout { display:grid; grid-template-columns:250px minmax(0,1fr); max-width:1480px; margin:auto; }
+  nav { position:sticky; top:0; height:100vh; overflow:auto; padding:28px 18px;
+    background:rgba(24,27,36,.94); border-right:1px solid var(--line); }
+  nav strong { display:block; color:var(--ai); font-size:12px; letter-spacing:.12em; text-transform:uppercase; }
+  nav small { display:block; color:var(--dim); margin:3px 0 20px; }
+  nav a { display:block; color:var(--dim); font-size:13px; padding:5px 9px; border-radius:7px; }
+  nav a:hover { color:var(--fg); background:var(--surface2); text-decoration:none; }
+  main { min-width:0; padding:46px 54px 110px; }
+  h1 { margin:0 0 8px; font-size:32px; line-height:1.2; letter-spacing:-.025em; }
+  h2 { margin:52px 0 14px; padding-bottom:8px; border-bottom:1px solid var(--line);
+    font-size:21px; scroll-margin-top:22px; }
+  h3 { margin:28px 0 8px; font-size:16px; scroll-margin-top:22px; }
+  p,li { max-width:88ch; }
+  .lede { color:var(--dim); font-size:16px; max-width:78ch; }
+  .meta { display:flex; flex-wrap:wrap; gap:7px; margin-top:18px; }
+  .chip,.tag { display:inline-block; border:1px solid var(--line); background:var(--surface2);
+    border-radius:999px; padding:3px 9px; color:var(--dim); font-size:11px; }
+  .tag { font-family:var(--mono); padding:2px 7px; }
+  .tag.new { color:var(--ok); border-color:rgba(158,206,106,.5); }
+  .tag.edit { color:var(--warn); border-color:rgba(224,175,104,.5); }
+  code { padding:1px 5px; border:1px solid var(--line); border-radius:5px;
+    background:var(--surface2); font:.88em var(--mono); }
+  pre { overflow:auto; padding:15px 17px; border:1px solid var(--line); border-radius:10px;
+    background:var(--surface); color:#d7dce7; font:12.5px/1.6 var(--mono); }
+  pre code { padding:0; border:0; background:none; }
+  table { width:100%; border-collapse:collapse; margin:15px 0; font-size:13.5px; }
+  th,td { padding:9px 11px; border:1px solid var(--line); text-align:left; vertical-align:top; }
+  th { color:var(--dim); background:var(--surface2); font-size:11px; letter-spacing:.06em; text-transform:uppercase; }
+  .callout { margin:16px 0; padding:13px 16px; border:1px solid var(--line);
+    border-left:4px solid var(--accent); border-radius:9px; background:var(--surface); }
+  .callout.warn { border-left-color:var(--warn); }
+  .callout.stop { border-left-color:var(--err); }
+  .callout.hermes { border-left-color:var(--hermes); }
+  .callout strong { display:block; margin-bottom:3px; color:var(--fg); }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(310px,1fr)); gap:14px; }
+  .card { padding:16px 18px; border:1px solid var(--line); border-radius:11px; background:var(--surface); }
+  .card h3 { margin-top:0; }
+  .phase { margin:13px 0; padding:16px 19px; border:1px solid var(--line);
+    border-radius:11px; background:var(--surface); }
+  .phase h3 { margin:0 0 8px; }
+  .phase .num { color:var(--accent); font:12px var(--mono); margin-right:8px; }
+  .tight li { margin:3px 0; }
+  .footer { margin-top:55px; padding-top:15px; border-top:1px solid var(--line); color:var(--dim); font-size:12px; }
+  .flow { display:grid; gap:10px; margin:16px 0; }
+  .flow-row { display:grid; grid-template-columns:1fr auto 1fr; gap:10px; align-items:center; }
+  .flow-box { padding:12px 14px; border:1px solid var(--line); border-radius:10px; background:var(--surface2); font-size:13px; }
+  .flow-box b { display:block; margin-bottom:4px; }
+  .flow-box small { color:var(--dim); }
+  .arrow { color:var(--warn); font-family:var(--mono); text-align:center; }
+  .mock { max-width:420px; margin:14px 0; padding:14px; border:1px solid #303646;
+    border-radius:14px; background:#1a1e28; box-shadow:0 18px 42px rgba(0,0,0,.28); }
+  .bubble { margin:10px 0; padding:10px 12px; border-radius:10px; background:#222734; font-size:13px; }
+  .bubble.user { margin-left:48px; background:rgba(122,162,247,.18); }
+  .bubble.asst { margin-right:36px; }
+  .bubble .meta-line { color:var(--dim); font-size:11px; margin-bottom:6px; }
+  .codeish { margin-top:8px; padding:8px; border-radius:8px; background:#10131a; font:12px var(--mono); color:#c3e88d; }
+  .status-line { color:var(--hermes); font-size:12px; margin-top:6px; }
+  @media(max-width:900px) {
+    .layout { grid-template-columns:1fr; }
+    nav { position:static; height:auto; border-right:0; border-bottom:1px solid var(--line); }
+    main { padding:30px 20px 80px; }
+    .flow-row { grid-template-columns:1fr; }
+    .arrow { transform:rotate(90deg); }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+<nav>
+  <strong>Aspect Ambxst</strong>
+  <small>AI widget stability<br>+ Hermes provider plan</small>
+  <a href="#outcome">1 &middot; Outcome</a>
+  <a href="#postmortem">2 &middot; Why it was built this way</a>
+  <a href="#compare">3 &middot; Ambxst vs end-4</a>
+  <a href="#crash">4 &middot; Crash mechanics</a>
+  <a href="#model">5 &middot; Target message model</a>
+  <a href="#render">6 &middot; Rendering plan</a>
+  <a href="#hermes">7 &middot; Hermes provider</a>
+  <a href="#files">8 &middot; Files &amp; contracts</a>
+  <a href="#hazards">9 &middot; Hazards</a>
+  <a href="#phases">10 &middot; Delivery gates</a>
+  <a href="#tests">11 &middot; Test protocol</a>
+  <a href="#acceptance">12 &middot; Acceptance</a>
+</nav>
+
+<main>
+<h1>AI widget stability, rendering, and Hermes</h1>
+<p class="lede">Stop long-thread Quickshell lockups by fixing the chat data model that streaming was bolted onto,
+improve markdown/code rendering using end-4 patterns, and add Hermes Agent as a first-class local
+OpenAI-compatible provider in the assistant sidebar.</p>
+
+<div class="meta">
+  <span class="chip">Plan only &mdash; no QML implementation yet</span>
+  <span class="chip">Repo date: 2026-07-30</span>
+  <span class="chip">Surfaces: AssistantSidebar + Ai.qml</span>
+  <span class="chip">Reference: end-4/dots-hyprland AiChat</span>
+  <span class="chip">Hermes: OpenAI-compat API on :8642</span>
+</div>
+
+<div class="callout stop">
+  <strong>Read &sect;2 before rewriting the ListView</strong>
+  The current <code>Array.from(currentChat)</code> pattern is not a careless mistake. It was the correct
+  reactivity workaround for a JSON-persisted plain-object chat. Streaming made that workaround lethal.
+  The fix must preserve on-disk chat JSON while changing the <em>runtime</em> model.
+</div>
+
+<h2 id="outcome">1 &middot; Product outcome</h2>
+<p>After this work:</p>
+<ul class="tight">
+  <li>Long multi-turn chats stream without freezing or crashing Quickshell.</li>
+  <li>Assistant replies render closed and in-progress code fences, think blocks, and readable markdown.</li>
+  <li>Hermes Agent appears as a selectable provider when its local API server is configured.</li>
+  <li>Existing saved chats under <code>~/.local/share/ambxst/chats/</code> still load.</li>
+</ul>
+
+<table>
+<tr><th>Need</th><th>Planned behavior</th><th>Precedent</th></tr>
+<tr><td>Stable streaming</td><td>Reactive <code>AiMessageData</code> objects; mutate <code>content</code> in place; list model is IDs only</td><td>end-4 <code>messageIDs</code> / <code>messageByID</code></td></tr>
+<tr><td>Readable replies</td><td>Shared <code>splitMarkdownBlocks</code> with unfinished fence/think handling; highlight after <code>done</code></td><td>end-4 <code>StringUtils.splitMarkdownBlocks</code></td></tr>
+<tr><td>Hermes in widget</td><td>Provider <code>hermes</code> &rarr; <code>http://127.0.0.1:8642/v1</code>, bearer key, session header</td><td>Existing OpenAI strategy + Ollama local pattern</td></tr>
+</table>
+
+<div class="callout">
+  <strong>Explicit non-goals for this pass</strong>
+  No Hermes TUI gateway / ACP, no <code>/v1/runs</code> approval UI, no LaTeX renderer, no full rewrite of
+  provider catalog architecture beyond what Hermes needs.
+</div>
+
+<h2 id="postmortem">2 &middot; Why it was configured this way</h2>
+<p>Timeline from git history on <code>modules/services/Ai.qml</code>:</p>
+
+<table>
+<tr><th>When</th><th>Commit</th><th>Design choice</th><th>Why it made sense</th></tr>
+<tr>
+  <td>2025-12-22</td>
+  <td><code>1cec6fb5</code> ai progress</td>
+  <td><code>property var currentChat: []</code> of plain <code>{role, content}</code></td>
+  <td>Save/load is <code>JSON.stringify</code> / <code>JSON.parse</code> to chat files. QtObjects do not serialize for free.</td>
+</tr>
+<tr>
+  <td>same day</td>
+  <td>same</td>
+  <td><code>Array.from</code> + reassign after each full reply</td>
+  <td>Plain JS objects emit <strong>no</strong> QML property signals. Replacing the array is the only reliable UI notify. Project rule in <code>AGENTS.md</code>: raw JSON objects have no signals.</td>
+</tr>
+<tr>
+  <td>same day</td>
+  <td>same</td>
+  <td>Non-streaming <code>curl -s</code></td>
+  <td>One response &rarr; one array push. Cost is O(messages) per turn, acceptable.</td>
+</tr>
+<tr>
+  <td>2026-03-02</td>
+  <td><code>0e005a15</code> ai sidebar</td>
+  <td>Always-stream via <code>SplitParser</code></td>
+  <td>Better UX for tokens. <strong>Data model left unchanged.</strong></td>
+</tr>
+<tr>
+  <td>streaming path</td>
+  <td>same</td>
+  <td>Every chunk: clone array, set last content, reassign</td>
+  <td>Necessary under the old model; catastrophic under streaming &times; long threads &times; heavy delegates.</td>
+</tr>
+</table>
+
+<div class="callout warn">
+  <strong>Bottom line</strong>
+  The architecture optimized for <em>persistence simplicity</em>. Streaming was layered on without introducing
+  a reactive runtime message type. End-4 made the opposite trade: QtObjects at runtime, custom serialize
+  for disk. That is the target here.
+</div>
+
+<pre><code>Day-1 (correct for non-stream):
+  reply done → Array.from(chat) → push/update → currentChat = newChat → ListView refresh once
+
+Today (lethal under stream):
+  each SSE line → Array.from(chat) → mutate last → currentChat = newChat
+               → rebuild ALL message delegates
+               → re-run fence regex + MarkdownText + SyntaxHighlighter on history
+               → UI thread stalls → Quickshell dies</code></pre>
+
+<h2 id="compare">3 &middot; Ambxst vs end-4</h2>
+<table>
+<tr><th>Concern</th><th>Ambxst today</th><th>end-4</th><th>Adopt?</th></tr>
+<tr><td>Runtime message</td><td>Plain object in replaced array</td><td><code>AiMessageData</code> QtObject</td><td>Yes</td></tr>
+<tr><td>List model</td><td><code>Ai.currentChat</code> array</td><td><code>messageIDs</code> via ScriptModel</td><td>Yes</td></tr>
+<tr><td>Stream update</td><td>Reassign whole chat</td><td><code>message.content += chunk</code></td><td>Yes</td></tr>
+<tr><td>Markdown split</td><td>Inline regex in delegate; closed fences only</td><td><code>splitMarkdownBlocks</code> + unfinished</td><td>Yes</td></tr>
+<tr><td>Think / reasoning</td><td>Dumped as prose</td><td><code>MessageThinkBlock</code></td><td>Yes (simple)</td></tr>
+<tr><td>Code highlight</td><td>Always-on KDE SyntaxHighlighter</td><td>Also always-on; less historical thrash due to model</td><td>Improve both patterns: defer until <code>done</code></td></tr>
+<tr><td>LaTeX</td><td>None</td><td><code>LatexRenderer</code></td><td>No (later)</td></tr>
+<tr><td>Auto-scroll</td><td><code>onCountChanged</code> &rarr; end</td><td>Mostly disabled (jank)</td><td>Only if at bottom</td></tr>
+</table>
+
+<h2 id="crash">4 &middot; Crash mechanics (what to measure)</h2>
+<p>Hot path today in <code>modules/services/Ai.qml</code>:</p>
+<pre><code>stdout: SplitParser {
+  onRead: data =&gt; {
+    let result = root.currentStrategy.parseStreamChunk(data);
+    if (result.content) {
+      root.responseBuffer += result.content;
+      let newChat = Array.from(root.currentChat);
+      newChat[newChat.length - 1].content = root.responseBuffer;
+      root.currentChat = newChat;   // &lt;-- full model invalidate
+    }
+  }
+}</code></pre>
+
+<p>Compounded in <code>AssistantSidebar.qml</code> by:</p>
+<ul class="tight">
+  <li>Fence-splitting regex as the <code>Repeater</code> model expression (re-eval on every rebuild).</li>
+  <li>Nested <code>Loader</code> + inline <code>Component</code> per segment.</li>
+  <li><code>CodeBlock</code> constructing <code>SyntaxHighlighter</code> for every code segment in history.</li>
+  <li><code>cacheBuffer: 1000</code> keeping heavy offscreen delegates alive.</li>
+</ul>
+
+<div class="grid">
+  <div class="card">
+    <h3>Cost model</h3>
+    <p>Roughly <code>O(messages &times; chunks &times; (parse + layout + highlight))</code>. A 30-turn thread with code blocks and a long streamed reply is enough to hard-lock the shell.</p>
+  </div>
+  <div class="card">
+    <h3>Success signal</h3>
+    <p>While streaming, <code>messageIDs</code> length stays constant; only the live message&rsquo;s <code>content</code> property changes; older delegates do not recreate.</p>
+  </div>
+</div>
+
+<h2 id="model">5 &middot; Target message model</h2>
+
+<div class="flow">
+  <div class="flow-row">
+    <div class="flow-box">
+      <b>Runtime</b>
+      <small><code>messageIDs: []</code><br><code>messageByID: { id → AiMessageData }</code></small>
+    </div>
+    <div class="arrow">→</div>
+    <div class="flow-box">
+      <b>ListView</b>
+      <small>model = IDs<br>delegate reads <code>Ai.messageByID[id]</code></small>
+    </div>
+  </div>
+  <div class="flow-row">
+    <div class="flow-box">
+      <b>Stream chunk</b>
+      <small><code>msg.content += chunk</code><br>optional 50–100ms flush timer</small>
+    </div>
+    <div class="arrow">→</div>
+    <div class="flow-box">
+      <b>Disk</b>
+      <small>serialize to existing JSON array shape<br><code>[{role, content, ...}, ...]</code></small>
+    </div>
+  </div>
+</div>
+
+<h3>AiMessageData fields</h3>
+<table>
+<tr><th>Property</th><th>Type</th><th>Notes</th></tr>
+<tr><td><code>role</code></td><td>string</td><td><code>user</code> / <code>assistant</code> / <code>system</code> / <code>function</code></td></tr>
+<tr><td><code>content</code></td><td>string</td><td>Display + API text (reactive)</td></tr>
+<tr><td><code>rawContent</code></td><td>string</td><td>Optional mirror for strategy/debug</td></tr>
+<tr><td><code>done</code></td><td>bool</td><td>False while streaming; gates highlighter</td></tr>
+<tr><td><code>thinking</code></td><td>bool</td><td>Waiting / tool / reasoning indicator</td></tr>
+<tr><td><code>model</code></td><td>string</td><td>Model id that produced the reply</td></tr>
+<tr><td><code>functionCall</code> / <code>functionPending</code></td><td>var / bool</td><td>Keep current shell-tool UX</td></tr>
+<tr><td><code>functionApproved</code></td><td>bool</td><td>Preserve current approval/rejection state and UI</td></tr>
+<tr><td><code>name</code></td><td>string</td><td>Function-message name used at the API boundary</td></tr>
+<tr><td><code>attachments</code> / <code>geminiParts</code></td><td>var / var</td><td>Losslessly preserve current attachment and Gemini payloads</td></tr>
+<tr><td><code>fileMimeType</code> / <code>fileUri</code> / <code>localFilePath</code></td><td>string</td><td>Future-safe attachment metadata; persist when present</td></tr>
+<tr><td><code>functionName</code> / <code>functionResponse</code></td><td>string</td><td>Explicit tool-result state rather than overloading display text</td></tr>
+<tr><td><code>annotations</code> / <code>annotationSources</code> / <code>searchQueries</code></td><td>var</td><td>Provider metadata; optional but serializer-safe</td></tr>
+<tr><td><code>visibleToUser</code></td><td>bool</td><td>Allows API/tool context that is hidden from the sidebar</td></tr>
+<tr><td><code>toolStatus</code></td><td>string</td><td>Transient Hermes tool progress; not persisted</td></tr>
+</table>
+
+<h3>API boundary</h3>
+<p>Strategies keep consuming plain message arrays. Add <code>messagesForApi()</code> that maps QtObjects &rarr;
+<code>{ role, content, ... }</code> so strategy files stay mostly untouched. The mapping must retain
+<code>attachments</code>, <code>geminiParts</code>, <code>functionCall</code>, and <code>name</code> when present.</p>
+
+<h3>Content contract</h3>
+<ul class="tight">
+  <li><code>rawContent</code> is the canonical provider/API response; <code>content</code> is sanitized display text.</li>
+  <li>A user edit updates both fields unless the UI explicitly offers a display-only edit.</li>
+  <li>Hermes progress events enter neither field. Hidden reasoning needs a separate field if it must be sent back to a provider.</li>
+  <li>Save/load is lossless for every existing Ambxst field. Unknown JSON keys should be retained or deliberately migrated, never silently dropped.</li>
+</ul>
+
+<h3>Ownership and mutation API</h3>
+<p>Do not mutate <code>messageIDs</code> and <code>messageByID</code> ad hoc. Centralize
+<code>appendMessage</code>, <code>removeMessageById</code>, <code>replaceChat</code>, <code>clearChat</code>,
+<code>serializeMessage</code>, and <code>destroyMessage</code>. Insert the object into the map before exposing
+its ID; remove the ID before deleting and destroying the object. Destroy removed QtObjects on delete,
+clear, load, and regeneration so repeated chat changes do not leak children parented to <code>Ai</code>.
+Structural changes from process callbacks run through <code>Qt.callLater()</code>.</p>
+
+<h2 id="render">6 &middot; Rendering plan</h2>
+
+<div class="mock">
+  <div class="bubble user">
+    <div class="meta-line">You</div>
+    Explain the streaming bug with a short code sample.
+  </div>
+  <div class="bubble asst">
+    <div class="meta-line">Assistant · streaming</div>
+    The ListView was invalidating its whole model on every token.
+    <div class="codeish">root.currentChat = Array.from(...); // bad under SSE</div>
+    <div class="status-line">tool: terminal · ls repo &hellip;</div>
+  </div>
+</div>
+
+<ol>
+  <li>Use end-4 <code>splitMarkdownBlocks</code> as a reference, not a verbatim port. Implement a small stateful scanner (preferred) or hardened parser that handles unfinished/empty fences, <code>~~~</code>, language identifiers such as <code>c++</code>, <code>c#</code>, and <code>shell-session</code>, missing opening-fence newlines, and malformed <code>&lt;think&gt;</code> blocks without treating markers inside code as reasoning.</li>
+  <li>Compute blocks from the message object when <code>content</code> changes — not as an inline <code>Repeater.model</code> expression rebuilt from the outside.</li>
+  <li>Text segments: <code>TextEdit</code> with <code>MarkdownText</code>.</li>
+  <li>Code segments: existing <code>CodeBlock.qml</code>, but <strong>plain monospace until <code>done</code></strong>; expose an explicit <code>highlightEnabled</code> contract and create <code>SyntaxHighlighter</code> through a Loader only after completion. This is an improvement over end-4, which also highlights continuously.</li>
+  <li>Think segments: collapsible block (minimal styled header + body).</li>
+  <li>Clipboard: replace <code>Qt.createQmlObject(... wl-copy "...")</code> with <code>Quickshell.clipboardText</code> or a properly escaped Process.</li>
+  <li>Auto-scroll: capture a follow flag before content-height changes using <code>atYEnd</code> plus a small pixel threshold. User scrolling upward disables follow; sending a message explicitly enables it. Never force scroll on every height change.</li>
+  <li>Batch streaming updates: accumulate raw chunks and flush only the live message every 30&ndash;60 ms, plus a synchronous final flush. This is required, not optional, so block parsing and layout do not run for every one-character SSE chunk.</li>
+</ol>
+
+<h2 id="hermes">7 &middot; Hermes Agent provider</h2>
+
+<div class="callout hermes">
+  <strong>Chosen integration surface</strong>
+  Hermes <strong>OpenAI-compatible API server</strong> (<code>hermes gateway</code> &rarr; <code>http://127.0.0.1:8642/v1</code>).
+  This matches Ambxst&rsquo;s strategy pattern and how Open WebUI / LobeChat already attach. Full TUI gateway /
+  ACP is a later project if slash commands and mid-run approvals are required in-widget.
+</div>
+
+<h3>Config / secrets</h3>
+<table>
+<tr><th>Key</th><th>Where</th><th>Default / meaning</th></tr>
+<tr><td><code>hermesEndpoint</code></td><td><code>config/defaults/ai.js</code> + <code>Config.qml</code> ai adapter</td><td><code>http://127.0.0.1:8642/v1</code></td></tr>
+<tr><td>KeyStore <code>hermes</code></td><td><code>KeyStore</code></td><td>Bearer token = Hermes <code>API_SERVER_KEY</code></td></tr>
+<tr><td>Provider id</td><td><code>AiModel.provider</code></td><td><code>"hermes"</code></td></tr>
+</table>
+
+<div class="callout warn">
+  <strong>Broken UI to fix while here</strong>
+  <code>AiPanel.qml</code> already edits <code>Config.ai.customEndpoint</code> / <code>customCurlTemplate</code>, but those
+  properties are <strong>not</strong> declared on the ai <code>JsonAdapter</code> or in <code>defaults/ai.js</code>. That UI is a
+  no-op today. Either wire those keys properly or replace the custom block with the Hermes fields.
+</div>
+
+<h3>Request behavior</h3>
+<ul class="tight">
+  <li>Reuse OpenAI chat-completions streaming (thin <code>HermesApiStrategy</code> wrapping OpenAI, or provider branch in OpenAI strategy).</li>
+  <li>Send <code>Authorization: Bearer &lt;key&gt;</code>.</li>
+  <li>Send <code>X-Hermes-Session-Id: &lt;currentChatId&gt;</code> so Hermes can keep agent memory across turns for that Ambxst chat.</li>
+  <li>Model discovery: <code>GET /v1/models</code> when key present; fallback single model <code>hermes-agent</code>.</li>
+  <li>SSE <code>event: hermes.tool.progress</code> updates live <code>toolStatus</code> / thinking UI only — <strong>do not</strong> append into persisted assistant <code>content</code>.</li>
+</ul>
+
+<pre><code># Operator setup (on the machine running Hermes)
+# ~/.hermes/.env
+API_SERVER_ENABLED=true
+API_SERVER_KEY=change-me-local-dev
+
+hermes gateway
+# → http://127.0.0.1:8642</code></pre>
+
+<p>If Hermes runs on another Tailnet host (there is a <code>hermes-agent</code> node), <code>hermesEndpoint</code> may point at
+that host&rsquo;s <code>:8642/v1</code> instead of localhost. Tool execution then happens on the Hermes host, not Ambxst.</p>
+
+<h2 id="files">8 &middot; Files &amp; contracts</h2>
+<table>
+<tr><th>File</th><th>Action</th><th>Role</th></tr>
+<tr><td><code>modules/services/ai/AiMessageData.qml</code></td><td><span class="tag new">new</span></td><td>Reactive message object</td></tr>
+<tr><td><code>modules/services/ai/markdown.js</code></td><td><span class="tag new">new</span></td><td><code>splitMarkdownBlocks</code></td></tr>
+<tr><td><code>modules/services/Ai.qml</code></td><td><span class="tag edit">edit</span></td><td>ID map, managed object lifecycle, batched stream, request generations, lossless serialization, Hermes fetch</td></tr>
+<tr><td><code>modules/sidebar/AssistantSidebar.qml</code></td><td><span class="tag edit">edit</span></td><td>ListView over IDs; block rendering; scroll policy</td></tr>
+<tr><td><code>modules/sidebar/CodeBlock.qml</code></td><td><span class="tag edit">edit</span></td><td>Highlight only when done</td></tr>
+<tr><td><code>modules/sidebar/MessageThinkBlock.qml</code></td><td><span class="tag new">new</span></td><td>Collapsible think UI (optional thin)</td></tr>
+<tr><td><code>modules/services/ai/strategies/OpenAiApiStrategy.qml</code> or Hermes wrapper</td><td><span class="tag edit">edit</span></td><td>Session header + tool.progress parse</td></tr>
+<tr><td><code>modules/widgets/config/AiPanel.qml</code></td><td><span class="tag edit">edit</span></td><td>Hermes key/endpoint UI</td></tr>
+<tr><td><code>config/defaults/ai.js</code> + <code>config/Config.qml</code></td><td><span class="tag edit">edit</span></td><td><code>hermesEndpoint</code> (+ fix custom keys if kept)</td></tr>
+</table>
+
+<h3>Persistence contract</h3>
+<pre><code>// On-disk chat JSON remains an array. Example:
+[
+  { "role": "user", "content": "..." },
+  { "role": "assistant", "content": "...", "model": "hermes-agent" }
+]
+
+// Load: JSON.parse → create AiMessageData per entry → map first, then publish IDs
+// Save: map AiMessageData → lossless plain objects (omit transient toolStatus) → JSON.stringify
+// Replace/clear/delete: detach ID → delete map entry → destroy QtObject</code></pre>
+
+<h2 id="hazards">9 &middot; Hazards (QML-internal)</h2>
+<table>
+<tr><th>Hazard</th><th>Symptom</th><th>Mitigation</th></tr>
+<tr><td>Mutating list length inside <code>SplitParser.onRead</code></td><td>Delegate chaos</td><td>Only mutate message properties during stream; use <code>Qt.callLater</code> for ID list changes</td></tr>
+<tr><td>Publishing an ID before its map entry</td><td>Delegate briefly resolves <code>undefined</code></td><td>Insert <code>messageByID[id]</code> first, then replace <code>messageIDs</code></td></tr>
+<tr><td>Removed QtObjects remain parented to <code>Ai</code></td><td>Memory grows after delete/load/new/regenerate</td><td>Central removal helpers call <code>destroy()</code> after detaching IDs</td></tr>
+<tr><td>Saving QtObjects with <code>JSON.stringify</code></td><td>Empty / wrong files</td><td>Explicit serializer; never stringify QtObject graph directly</td></tr>
+<tr><td>Serializer omits legacy fields</td><td>Attachments, Gemini parts, or tool state disappear after save</td><td>Round-trip every existing field and test old fixtures</td></tr>
+<tr><td>Every SSE fragment changes <code>content</code></td><td>Live delegate still reparses and relayouts excessively</td><td>Required 30&ndash;60 ms coalescing timer plus final flush</td></tr>
+<tr><td>Highlight while streaming incomplete fences</td><td>CPU spikes</td><td><code>done</code> gate on SyntaxHighlighter</td></tr>
+<tr><td>Blindly copying end-4 fence regex</td><td>Broken <code>c++</code>/<code>c#</code>/tilde/empty fences</td><td>Stateful parser and malformed-input fixtures</td></tr>
+<tr><td>Auto-scroll fighting user</td><td>Cannot read history mid-stream</td><td>Scroll-follow only if near bottom</td></tr>
+<tr><td>Clipboard via string-built Process</td><td>Quote breakage / hangs</td><td><code>Quickshell.clipboardText</code></td></tr>
+<tr><td>Hermes tool events written into <code>content</code></td><td>Polluted saved chats</td><td>Separate <code>toolStatus</code> field</td></tr>
+<tr><td>Late chunks after new/load/regenerate/model change</td><td>Wrong chat is modified or saved</td><td>Capture request generation, chat ID, message ID, model, and strategy; reject stale callbacks</td></tr>
+<tr><td>SSE done and process exit both finalize</td><td>Duplicate save/hook or dropped buffered tail</td><td>One idempotent <code>finishRequest()</code> that flushes before marking done</td></tr>
+</table>
+
+<h3>Request lifetime contract</h3>
+<p>Each request captures a monotonically increasing generation plus the chat ID, assistant message ID,
+model, and strategy. Every parser, exit, and timer callback verifies that identity before writing.
+New chat, load, regeneration, model change, or a replacement send cancels the process where possible and
+always invalidates the old generation. A single idempotent <code>finishRequest()</code> flushes pending text,
+sets <code>done</code>, clears thinking/tool status, records any error, saves the captured chat once, and releases
+request state.</p>
+
+<h2 id="phases">10 &middot; Delivery gates</h2>
+
+<div class="phase">
+  <h3><span class="num">Phase 01</span> Message model + in-place streaming</h3>
+  <p><strong>Exit artifact:</strong> <code>AiMessageData.qml</code> committed; <code>Ai.qml</code> uses centralized ID/map lifecycle helpers; stream path no longer assigns <code>currentChat = Array.from(...)</code> per chunk; old attachment, Gemini, and function-message fixtures round-trip without field loss; repeated load/clear/delete destroys removed objects.</p>
+</div>
+<div class="phase">
+  <h3><span class="num">Phase 02</span> Sidebar bind + crash validation</h3>
+  <p><strong>Exit artifact:</strong> <code>AssistantSidebar</code> delegates bind to <code>messageByID</code>; 30&ndash;60 ms stream coalescing and request-generation guards are active; lab test script or manual protocol shows a 20+ turn / large-code stream without freeze or cross-chat writes.</p>
+</div>
+<div class="phase">
+  <h3><span class="num">Phase 03</span> Markdown / think / highlight gating</h3>
+  <p><strong>Exit artifact:</strong> <code>markdown.js</code> stateful scanner (or equivalent) passes complete, unfinished, empty, tilde, punctuation-language, and malformed think fixtures; think block UI works; highlighter is loaded only after <code>done</code>.</p>
+</div>
+<div class="phase">
+  <h3><span class="num">Phase 04</span> Hermes provider</h3>
+  <p><strong>Exit artifact:</strong> Config keys + AiPanel Hermes section; model appears when key set; chat works against local or remote Hermes <code>/v1</code>; tool progress shows as status only.</p>
+</div>
+
+<div class="callout stop">
+  <strong>Gate rule</strong>
+  Do not start Phase 04 until Phase 02&rsquo;s long-thread test passes. Hermes multiplies stream volume
+  (tools + prose); putting it on the old model will reintroduce the crash.
+</div>
+
+<h2 id="tests">11 &middot; Test protocol</h2>
+<ol>
+  <li><strong>Smoke stream:</strong> short OpenAI/Gemini/Ollama reply; tokens appear; one assistant bubble.</li>
+  <li><strong>Long thread:</strong> 20+ turns, include large fenced code; scroll history while still streaming; no freeze.</li>
+  <li><strong>Chunk pressure:</strong> replay a response as one-character chunks; visible updates are coalesced, the final tail is present, and block parsing does not run once per character.</li>
+  <li><strong>Lossless reload:</strong> round-trip legacy fixtures containing attachments, <code>geminiParts</code>, function calls/results/approval state, names, and unknown optional metadata; no QtObject internals enter JSON and no fields disappear.</li>
+  <li><strong>Lifecycle:</strong> repeatedly load, clear, delete, and regenerate; removed <code>AiMessageData</code> objects are destroyed and the child/object count does not grow.</li>
+  <li><strong>Fence matrix:</strong> complete, unfinished, and empty backtick/tilde fences; <code>c++</code>, <code>c#</code>, and <code>shell-session</code> languages; missing newline; markers inside code; malformed/unfinished <code>&lt;think&gt;</code>.</li>
+  <li><strong>Request races:</strong> new chat, load chat, regenerate, change model, and replacement send during a stream; late chunks and exit handlers cannot touch or save the new chat.</li>
+  <li><strong>Completion races:</strong> SSE done then process exit, network error after partial output, cancellation, and empty response; completion occurs once and buffered output is flushed.</li>
+  <li><strong>Editing:</strong> edit, save, reload, and regenerate; <code>content</code>/<code>rawContent</code> follow the declared contract.</li>
+  <li><strong>Clipboard:</strong> copy prose and code containing quotes, newlines, backslashes, dollar signs, and shell syntax exactly.</li>
+  <li><strong>Hermes:</strong> gateway up; select Hermes; multi-turn with a tool-using prompt; status line updates; final text clean; new Ambxst chat gets a new session id header.</li>
+  <li><strong>Regression:</strong> regenerate / edit / copy / shell tool approve-reject still work.</li>
+</ol>
+
+<p>Prefer <code>./lab/run-isolated.sh</code> on Bostrom before anything that can affect the primary shell.</p>
+
+<h2 id="acceptance">12 &middot; Acceptance criteria</h2>
+<ul class="tight">
+  <li>No per-chunk full-array reassignment remains in the stream path.</li>
+  <li>Stream fragments are coalesced to a bounded UI update rate and the final buffered tail is never lost.</li>
+  <li>A deliberately large streamed reply on a long history does not lock Quickshell.</li>
+  <li>Code fences and think blocks render correctly during and after stream across the fence matrix; SyntaxHighlighter is absent until completion.</li>
+  <li>Hermes is selectable, authenticated via KeyStore, and usable as a chat backend from the sidebar.</li>
+  <li>Old chat JSON files load without migration ceremony and round-trip without losing attachments, provider payloads, or function state.</li>
+  <li>Removed runtime messages are destroyed, and repeated chat replacement does not grow retained message objects.</li>
+  <li>Stale request callbacks cannot mutate or save a different chat.</li>
+</ul>
+
+<div class="footer">
+  Aspect Ambxst &middot; AI widget stability + Hermes provider plan &middot; 2026-07-30<br>
+  Compare refs: Ambxst <code>modules/services/Ai.qml</code>, <code>modules/sidebar/AssistantSidebar.qml</code>;
+  end-4 <code>services/Ai.qml</code>, <code>sidebarLeft/aiChat/*</code>;
+  Hermes docs: OpenAI-compatible API server.
+</div>
+</main>
+</div>
+</body>
+</html>

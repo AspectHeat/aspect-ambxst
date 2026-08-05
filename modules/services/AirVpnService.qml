@@ -128,6 +128,10 @@ Singleton {
     property bool countriesLoaded: false
     property bool countriesLoading: false
 
+    // Latches the panel's interest in the country list, so a request that arrives before the
+    // availability probe has answered is honoured once it does. See ensureCountries().
+    property bool countriesRequested: false
+
     property list<string> keys: []
     property bool keysLoaded: false
 
@@ -260,13 +264,26 @@ Singleton {
     // Called by the panel when the country list is actually needed. Fetched once; a poll never
     // triggers it. Uncredentialed browse is verified to work, so this is not gated on
     // credentialsConfigured - which is the whole reason the page is useful before login.
+    //
+    // The request is REMEMBERED rather than dropped, which is the whole point of the split
+    // with tryFetchCountries(). The panel calls this on mount, and on a cold start that is
+    // routinely before the `which goldcrest` probe has answered, so an early-return on
+    // !available left the list permanently empty with nothing retrying - reproduced with
+    // probe-airvpn.qml (countryCount 0, loaded=false, loading=false, forever). Same class of
+    // bug as NordVPN's city fetches, which queue instead of being discarded.
     function ensureCountries(): void {
-        if (!root.available || !root.enabled)
+        root.countriesRequested = true;
+        root.tryFetchCountries();
+    }
+
+    function tryFetchCountries(): void {
+        if (!root.countriesRequested || !root.available || !root.enabled)
             return;
         if (root.countriesLoaded || root.countriesLoading || countriesProc.running)
             return;
         // Never while a mutation is in flight: resetting Bluetit's staged options underneath
-        // an in-progress connect is asking for a confusing failure.
+        // an in-progress connect is asking for a confusing failure. A status read completing
+        // re-drives this, so the request is deferred rather than lost.
         if (root.isMutating)
             return;
 
@@ -724,6 +741,10 @@ Singleton {
             }
 
             root.finishRead();
+
+            // Re-drive a country fetch that ensureCountries() had to defer, either because the
+            // availability probe had not answered yet or because a mutation was in flight.
+            root.tryFetchCountries();
         }
     }
 
@@ -789,8 +810,16 @@ Singleton {
     }
 
     onEnabledChanged: {
-        if (root.enabled && root.available)
+        if (root.enabled && root.available) {
             root.refresh();
+            root.tryFetchCountries();
+        }
+    }
+
+    // The probe answering is the event ensureCountries() may have been waiting on.
+    onAvailableChanged: {
+        if (root.available)
+            root.tryFetchCountries();
     }
 
     Component.onCompleted: availabilityProbe.running = true
