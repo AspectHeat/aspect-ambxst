@@ -168,8 +168,12 @@ say '=== AirVPN Suite ==='
 # READING the run-control file, and never probes the CLI to find out.
 # See docs/airvpn-recon-findings.md §1.
 if command -v goldcrest >/dev/null 2>&1; then
-    ok "goldcrest -> $(command -v goldcrest) ($(goldcrest --version 2>/dev/null \
-        | head -1 || echo 'version unknown'))"
+    # Captured in two steps on purpose. `goldcrest --version | head -1` makes goldcrest
+    # exit non-zero on SIGPIPE, and under `set -o pipefail` that tripped the `|| echo`
+    # fallback so the banner and "version unknown" both ended up in the label.
+    airvpn_version="$(goldcrest --version 2>/dev/null)" || true
+    airvpn_version="${airvpn_version%%$'\n'*}"
+    ok "goldcrest -> $(command -v goldcrest) (${airvpn_version:-version unknown})"
 
     if systemctl is-active --quiet bluetit.service 2>/dev/null; then
         ok 'bluetit.service active'
