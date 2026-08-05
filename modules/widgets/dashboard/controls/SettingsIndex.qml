@@ -16,7 +16,7 @@ QtObject {
     // 0: Network, 1: Bluetooth, 2: Mixer, 3: Effects, 4: Theme, 5: Binds, 6: System, 7: Compositor, 8: Ambxst
     
     property var dynamicItems: []
-    readonly property var vpnItems: (Config.system.tailscale.enabled || Config.system.nordvpn.enabled) ? [
+    readonly property var vpnItems: (Config.system.tailscale.enabled || Config.system.nordvpn.enabled || Config.system.airvpn.enabled) ? [
         { label: "VPN", keywords: "virtual private network providers", section: 10, subSection: "", subLabel: "", icon: Icons.network, isIcon: true }
     ].concat(Config.system.tailscale.enabled ? [
         { label: "Tailscale", keywords: "vpn mesh tailnet wireguard remote", section: 10, subSection: "tailscale", subLabel: "VPN", icon: Icons.network, isIcon: true },
@@ -31,7 +31,15 @@ QtObject {
         { label: "VPN Locations", keywords: "country city location flag region server", section: 10, subSection: "nordvpn", subLabel: "VPN > NordVPN", icon: Icons.globe, isIcon: true },
         { label: "P2P VPN", keywords: "peer torrent speed optimized group", section: 10, subSection: "nordvpn", subLabel: "VPN > NordVPN", icon: Icons.lightning, isIcon: true },
         { label: "Quick Connect", keywords: "recommended nordvpn connect fastest", section: 10, subSection: "nordvpn", subLabel: "VPN > NordVPN", icon: Icons.lightning, isIcon: true },
-        { label: "Switch VPN Provider", keywords: "handoff swap between tailscale nordvpn route egress", section: 10, subSection: "", subLabel: "VPN", icon: Icons.network, isIcon: true }
+        { label: "Switch VPN Provider", keywords: "handoff swap between tailscale nordvpn airvpn route egress", section: 10, subSection: "", subLabel: "VPN", icon: Icons.network, isIcon: true }
+    ] : []).concat(Config.system.airvpn.enabled ? [
+        { label: "AirVPN", keywords: "vpn privacy commercial eddie bluetit goldcrest wireguard openvpn", section: 10, subSection: "airvpn", subLabel: "VPN", icon: Icons.shieldCheck, isIcon: true },
+        // Countries only, deliberately: AirVPN's second level is individual servers and there
+        // is no per-server browser in v1, so no keyword here should promise one.
+        { label: "AirVPN Countries", keywords: "country location flag region load", section: 10, subSection: "airvpn", subLabel: "VPN > AirVPN", icon: Icons.globe, isIcon: true },
+        { label: "AirVPN Quick Connect", keywords: "connect best available airvpn", section: 10, subSection: "airvpn", subLabel: "VPN > AirVPN", icon: Icons.lightning, isIcon: true },
+        { label: "WireGuard or OpenVPN", keywords: "protocol vpn type tunnel airvpn", section: 10, subSection: "airvpn", subLabel: "VPN > AirVPN", icon: Icons.shield, isIcon: true },
+        { label: "Network Lock", keywords: "kill switch block leak firewall airvpn", section: 10, subSection: "airvpn", subLabel: "VPN > AirVPN", icon: Icons.lock, isIcon: true }
     ] : []) : []
 
     readonly property var staticItems: [

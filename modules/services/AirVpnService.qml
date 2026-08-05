@@ -562,6 +562,16 @@ Singleton {
         Config.system.airvpn.preferredKey = String(value ?? "");
     }
 
+    // Logging in happens entirely outside this widget: the user needs their AirVPN account
+    // credentials, and the only place Goldcrest reads them from is the run-control file. The
+    // most useful thing the setup card can do is get them to the page that has the credentials.
+    //
+    // Deliberately NOT a password field that writes Config: this is a public repo, Config is
+    // plain JSON in the user's home, and the rc file already has a documented 0600 contract.
+    function openClientArea(): void {
+        Quickshell.execDetached(["xdg-open", "https://airvpn.org/client"]);
+    }
+
     // ---------------------------------------------------------------- run control file
     // The credentials signal. A file read cannot hang or flood, which is exactly why this and
     // not `--air-user-info` is authoritative. See SAFETY at the top.

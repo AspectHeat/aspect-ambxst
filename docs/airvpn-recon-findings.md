@@ -108,7 +108,62 @@ unrecognized status resolves to `error` with `unknownStatus`, never to `disconne
   SSH on this host, which is our only remote access).
 - Appendix A of the plan is already done. Gate 01 is effectively complete.
 
-## 7. Fixtures captured
+## 7. Goldcrest invocations must be serialized — one process at a time
+
+Found by running `probe-airvpn.qml` once the country fetch began overlapping the status poll.
+The second concurrent invocation dies with:
+
+```
+DBusConnectorException: DBusConnector: not primary owner (2)
+```
+
+Goldcrest claims a D-Bus name and refuses to be a secondary owner. The failure is nasty
+because it is not reported as an error by our parser's normal path — it arrives as an
+unrecognized status line, which drove `state` to `error` and put the panel into a fault
+display while the tunnel was completely fine. Sequential CLI calls are unaffected.
+
+This is the **one structural difference from `NordVpnService`**, which happily fans three
+reads out at once. Consequences baked into `AirVpnService`:
+
+- `goldcrestBusy` gates every read; each completion re-drives the others via `drainReads()`.
+- A deferred read is *recorded*, never dropped (`refreshPending`, `countriesRequested`,
+  `keysRequested`). The first attempt at a bare busy-check deadlocked the service on a cold
+  start: the country fetch won the race, `performRefresh()` returned, nothing retried, and
+  `state` sat at `unavailable` forever — which also kept the poll timer off, since it only runs
+  when the dashboard is open or a tunnel is up.
+- `drainReads()` starts exactly **one** invocation and returns, in priority order
+  (status → countries → keys). Falling through would start the list fetch inside `refresh()`'s
+  200 ms debounce window and recreate the collision.
+- Mutations get a **gate**, not a refusal: `isMutating` latches immediately so controls gate and
+  no read slips in, then the argv waits for any in-flight read. Dropping a click would be worse
+  than a sub-second delay, and reads are timeout-bounded at 15 s — inside VpnService's 25 s
+  connect budget.
+
+Related: a request arriving before the `which goldcrest` probe answers must also be latched.
+The panel calls `ensureCountries()` on mount, which on a cold start is routinely before
+availability is known.
+
+## 8. Verified end-to-end on Bostrom (gate 03)
+
+`probe-airvpn.qml`, logged out, against live goldcrest:
+
+```
+available=true  state=disconnected  daemonReachable=true  permissionDenied=false
+credentialsConfigured=false  needsCredentials=true
+networkLock=false (known=true)  lastError=""
+countryCount=23 (loaded=true)   wireGuardPreferred=true
+AT "Austria" flag=🇦🇹 servers=3 users=476 load=64 searchKey="austria at"
+countryForToken('CH') = Switzerland / matchesStatusName('Switzerland')=true
+```
+
+Stable across repeated polls. Note `qs -p shell.qml` under `QT_QPA_PLATFORM=offscreen` cannot
+be used for this: `ContextMenu` pulls in `PanelWindow` and offscreen has no layer-shell backend
+("No PanelWindow backend loaded"), so CLAUDE.md gotcha 9's offscreen trick verifies type
+resolution only for components not reachable from a window. `probe-airvpn.qml` is a `ShellRoot`
+declaring no windows, which sidesteps that; it must live at the repo root because Quickshell
+resolves `qs.*` imports relative to the directory of the file given to `-p`.
+
+## 9. Fixtures captured
 
 All home paths redacted to `$HOME` before commit (public repo).
 

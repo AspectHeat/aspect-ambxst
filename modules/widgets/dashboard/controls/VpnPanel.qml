@@ -16,6 +16,7 @@ Item {
     property string currentSection: ""
     property bool tailscalePositioned: false
     property bool nordVpnPositioned: false
+    property bool airVpnPositioned: false
     readonly property int contentWidth: Math.min(width, maxContentWidth)
 
     function positionTailscaleOnFirstVisit(): void {
@@ -34,11 +35,20 @@ Item {
         Qt.callLater(() => nordVpnLoader.item.positionAtBeginning());
     }
 
+    function positionAirVpnOnFirstVisit(): void {
+        if (root.airVpnPositioned || !airVpnLoader.item)
+            return;
+        root.airVpnPositioned = true;
+        Qt.callLater(() => airVpnLoader.item.positionAtBeginning());
+    }
+
     onCurrentSectionChanged: {
         if (root.currentSection === "tailscale")
             root.positionTailscaleOnFirstVisit();
         else if (root.currentSection === "nordvpn")
             root.positionNordVpnOnFirstVisit();
+        else if (root.currentSection === "airvpn")
+            root.positionAirVpnOnFirstVisit();
     }
 
     ColumnLayout {
@@ -226,6 +236,88 @@ Item {
             }
         }
 
+        StyledRect {
+            id: airVpnCard
+
+            Layout.fillWidth: true
+            Layout.preferredHeight: 56
+            variant: airVpnMouseArea.containsMouse ? "focus" : "pane"
+            radius: Styling.radius(0)
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.margins: 12
+                spacing: 12
+
+                StyledRect {
+                    Layout.preferredWidth: 32
+                    Layout.preferredHeight: 32
+                    variant: AirVpnService.connected ? "primary" : "internalbg"
+                    radius: Styling.radius(2)
+
+                    // An icon-font glyph rather than an SVG, unlike the two cards above. We hold
+                    // no official AirVPN mark, and inventing one for a public repo is worse than
+                    // using the theme's own shield.
+                    Text {
+                        anchors.centerIn: parent
+                        text: Icons.shieldCheck
+                        font.family: Icons.font
+                        font.pixelSize: 18
+                        color: AirVpnService.connected
+                            ? Styling.srItem("primary") : Colors.overBackground
+                    }
+                }
+
+                Text {
+                    text: "AirVPN"
+                    font.family: Config.theme.font
+                    font.pixelSize: Styling.fontSize(0)
+                    font.bold: true
+                    color: Colors.overBackground
+                }
+
+                Text {
+                    // Mirrors the provider page's state vocabulary.
+                    text: !AirVpnService.available ? "Not installed"
+                        : AirVpnService.permissionDenied ? "Permission denied"
+                        : !AirVpnService.daemonReachable ? "Daemon unavailable"
+                        : AirVpnService.needsCredentials ? "Log in required"
+                        : AirVpnService.connecting ? "Connecting…"
+                        : AirVpnService.disconnecting ? "Disconnecting…"
+                        : AirVpnService.connected ? "Connected" : "Off"
+                    font.family: Config.theme.font
+                    font.pixelSize: Styling.fontSize(-2)
+                    color: AirVpnService.connected ? Styling.srItem("overprimary")
+                        : (!AirVpnService.available || AirVpnService.needsCredentials
+                            || AirVpnService.permissionDenied
+                            || !AirVpnService.daemonReachable
+                            ? Colors.warning : Colors.overSurfaceVariant)
+                }
+
+                Item {
+                    Layout.fillWidth: true
+                }
+
+                Text {
+                    text: Icons.caretRight
+                    font.family: Icons.font
+                    font.pixelSize: 20
+                    color: Colors.overSurfaceVariant
+                }
+            }
+
+            MouseArea {
+                id: airVpnMouseArea
+                anchors.fill: parent
+                hoverEnabled: true
+                enabled: !VpnService.busy && !VpnService.awaitingConfirmation
+                cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                // Opens the page even when the Suite is missing, so the setup card can explain
+                // what to install rather than the row being a dead end.
+                onClicked: root.currentSection = "airvpn"
+            }
+        }
+
         // Route-owner strip. Appears only when something actually owns egress - Tailscale
         // merely running is not egress unless an exit node is set (VpnService.routeOwner).
         StyledRect {
@@ -240,7 +332,7 @@ Item {
                 anchors.centerIn: parent
                 width: parent.width - 20
                 text: VpnService.labelFor(VpnService.routeOwner) + " currently owns the default route"
-                    + (VpnService.bothConnected ? " · both providers connected" : "")
+                    + (VpnService.bothConnected ? " · more than one provider connected" : "")
                 horizontalAlignment: Text.AlignHCenter
                 elide: Text.ElideRight
                 font.family: Config.theme.font
@@ -312,8 +404,35 @@ Item {
         }
     }
 
+    Loader {
+        id: airVpnLoader
+        anchors.fill: parent
+        active: true
+        visible: root.currentSection === "airvpn"
+        source: "AirVpnPanel.qml"
+        asynchronous: root.currentSection !== "airvpn"
+
+        onLoaded: {
+            if (item) {
+                item.maxContentWidth = root.maxContentWidth;
+                item.showBackButton = true;
+                if (root.currentSection === "airvpn")
+                    root.positionAirVpnOnFirstVisit();
+            }
+        }
+    }
+
     Connections {
         target: tailscaleLoader.item
+        ignoreUnknownSignals: true
+
+        function onBackRequested() {
+            root.currentSection = "";
+        }
+    }
+
+    Connections {
+        target: airVpnLoader.item
         ignoreUnknownSignals: true
 
         function onBackRequested() {
