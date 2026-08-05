@@ -122,10 +122,23 @@ Singleton {
     readonly property bool goldcrestBusy: statusProc.running || countriesProc.running
         || keysProc.running || root.isMutating
 
-    // Re-drive every deferred read. Called after each read completes and whenever availability
-    // or credentials change, so a read that had to yield is retried rather than lost.
+    // Re-drive whatever had to yield, in priority order, starting exactly ONE invocation.
+    // Called after each read completes and whenever availability or credentials change.
+    //
+    // Both properties matter. Priority: the panel's state copy is worth more than its lists, so
+    // a deferred status read goes first. And it returns after starting one, because refresh()
+    // is debounced 200 ms - falling through to tryFetchCountries() would start the list fetch
+    // inside that window and recreate the very D-Bus collision this exists to prevent.
     function drainReads(): void {
-        root.tryFetchCountries();
+        if (root.refreshPending) {
+            root.refreshPending = false;
+            root.refresh();
+            return;
+        }
+        if (root.countriesRequested && !root.countriesLoaded) {
+            root.tryFetchCountries();
+            return;
+        }
         root.tryFetchKeys();
     }
 
@@ -164,6 +177,10 @@ Singleton {
     // A mutation argv accepted but not yet started, because a read still holds goldcrest.
     // See startPendingMutation().
     property var pendingMutation: null
+
+    // A status read that performRefresh() had to defer because goldcrest was busy. Recorded
+    // rather than dropped; drainReads() honours it first. See performRefresh().
+    property bool refreshPending: false
 
     // Anything that is not "openvpn" means WireGuard, per plan §2. Compared this way on
     // purpose: a typo or a stale persisted value must not flip the default away from the
@@ -268,10 +285,18 @@ Singleton {
         if (!root.available || !root.enabled || root.isReading)
             return;
         // Serialized: a status read must not overlap a country/key fetch or a mutation, or
-        // goldcrest's D-Bus name collision turns one of them into a spurious error. The poll
-        // timer and the completion of whatever is running both re-drive this.
-        if (root.goldcrestBusy)
+        // goldcrest's D-Bus name collision turns one of them into a spurious error.
+        //
+        // The request is RECORDED, not discarded. A plain early-return here deadlocked the
+        // service on a cold start: the country fetch won the race, this returned, and nothing
+        // retried - so state sat at "unavailable" forever, which also kept the poll timer off
+        // (it only runs when the dashboard is open or a tunnel is up), so nothing ever
+        // recovered. Observed with probe-airvpn.qml.
+        if (root.goldcrestBusy) {
+            root.refreshPending = true;
             return;
+        }
+        root.refreshPending = false;
 
         // Re-read the rc file every refresh. It is the credentials signal, it is cheap, and
         // the user editing it is precisely how they log in - so a stale read would pin the
@@ -914,13 +939,9 @@ Singleton {
         }
     }
 
-    // The probe answering is the event ensureCountries() / ensureKeys() may have been waiting
-    // on. Deferred so the status read that refresh() queues gets goldcrest first - the panel's
-    // state copy matters more than its list.
-    onAvailableChanged: {
-        if (root.available)
-            Qt.callLater(() => root.drainReads());
-    }
+    // Deliberately no onAvailableChanged drain. availabilityProbe already calls refresh() when
+    // it succeeds, and that status read's completion drains the lists - which gives the
+    // status-first ordering for free. Draining here as well only raced the debouncer.
 
     Component.onCompleted: availabilityProbe.running = true
 }
