@@ -8,7 +8,8 @@ import qs.modules.components
 import qs.modules.services
 import qs.modules.theme
 
-// Collapsed "Advanced" section: VPN type, device key, and Network Lock.
+// Collapsed "Advanced" section: VPN type, OpenVPN TLS mode, device key, Network Lock,
+// LAN access, IPv6, and DNS behavior.
 //
 // Everything here is a CONNECT-TIME PREFERENCE, not a live mutation, which is the significant
 // difference from NordVpnAdvancedCard. Goldcrest takes these as flags on --air-connect rather
@@ -28,6 +29,83 @@ ColumnLayout {
         && AirVpnService.daemonReachable
 
     spacing: 6
+
+    component PreferenceRow: RowLayout {
+        id: preferenceRow
+
+        property string label: ""
+        property string description: ""
+        property bool checked: false
+        signal toggled(bool value)
+
+        property bool _updating: false
+
+        function sync(): void {
+            if (_updating || preferenceSwitch.checked === preferenceRow.checked)
+                return;
+            _updating = true;
+            preferenceSwitch.checked = preferenceRow.checked;
+            _updating = false;
+        }
+
+        onCheckedChanged: preferenceRow.sync()
+
+        Layout.fillWidth: true
+        spacing: 8
+
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 1
+
+            Text {
+                Layout.fillWidth: true
+                text: preferenceRow.label
+                font.family: Config.theme.font
+                font.pixelSize: Styling.fontSize(-1)
+                color: Colors.overBackground
+                elide: Text.ElideRight
+            }
+
+            Text {
+                Layout.fillWidth: true
+                text: preferenceRow.description
+                font.family: Config.theme.font
+                font.pixelSize: Styling.fontSize(-3)
+                color: Colors.overSurfaceVariant
+                wrapMode: Text.Wrap
+            }
+        }
+
+        Switch {
+            id: preferenceSwitch
+            checked: preferenceRow.checked
+            onToggled: if (!preferenceRow._updating) preferenceRow.toggled(checked)
+
+            indicator: Rectangle {
+                implicitWidth: 36
+                implicitHeight: 18
+                x: preferenceSwitch.leftPadding
+                y: parent.height / 2 - height / 2
+                radius: height / 2
+                color: preferenceSwitch.checked
+                    ? Styling.srItem("overprimary") : Colors.surfaceBright
+                border.color: preferenceSwitch.checked
+                    ? Styling.srItem("overprimary") : Colors.outline
+
+                Rectangle {
+                    x: preferenceSwitch.checked ? parent.width - width - 2 : 2
+                    y: 2
+                    width: parent.height - 4
+                    height: width
+                    radius: width / 2
+                    color: preferenceSwitch.checked
+                        ? Colors.background : Colors.overSurfaceVariant
+                }
+            }
+
+            background: null
+        }
+    }
 
     Button {
         id: discloseButton
@@ -137,6 +215,33 @@ ColumnLayout {
                 wrapMode: Text.Wrap
             }
 
+            Text {
+                Layout.fillWidth: true
+                visible: !AirVpnService.wireGuardPreferred
+                text: "OpenVPN TLS mode"
+                font.family: Config.theme.font
+                font.pixelSize: Styling.fontSize(-2)
+                font.weight: Font.Medium
+                color: Colors.overSurfaceVariant
+            }
+
+            SegmentedSwitch {
+                id: tlsSwitch
+                Layout.fillWidth: true
+                visible: !AirVpnService.wireGuardPreferred
+                buttonSize: 30
+                options: [
+                    { label: "Automatic", tooltip: "Let AirVPN choose the compatible TLS mode." },
+                    { label: "TLS Crypt", tooltip: "Encrypt and authenticate the OpenVPN control channel." },
+                    { label: "TLS Auth", tooltip: "Authenticate the OpenVPN control channel." }
+                ]
+                currentIndex: Config.system.airvpn.preferredTlsMode === "crypt" ? 1
+                    : Config.system.airvpn.preferredTlsMode === "auth" ? 2 : 0
+
+                onIndexChanged: index => AirVpnService.setPreferredTlsMode(
+                    index === 1 ? "crypt" : index === 2 ? "auth" : "auto")
+            }
+
             // ---------------------------------------------------------- device key
             // Hidden entirely unless the credentialed key list actually came back, per the §3
             // degradation rule - a picker with nothing in it is worse than no picker.
@@ -197,6 +302,31 @@ ColumnLayout {
             }
 
             // ---------------------------------------------------------- network lock
+            Separator {
+                Layout.fillWidth: true
+            }
+
+            PreferenceRow {
+                label: "Allow local network"
+                description: "Reach printers, TVs, and other devices at home while Network Lock is on."
+                checked: Config.system.airvpn.allowPrivateNetwork
+                onToggled: value => AirVpnService.setAllowPrivateNetwork(value)
+            }
+
+            PreferenceRow {
+                label: "IPv6"
+                description: "Route IPv6 through AirVPN instead of disabling it for the connection."
+                checked: Config.system.airvpn.ipv6
+                onToggled: value => AirVpnService.setIpv6Preference(value)
+            }
+
+            PreferenceRow {
+                label: "Use AirVPN DNS"
+                description: "Use AirVPN's private DNS while connected. Turn off to keep system DNS."
+                checked: Config.system.airvpn.useAirVpnDns
+                onToggled: value => AirVpnService.setUseAirVpnDns(value)
+            }
+
             Separator {
                 Layout.fillWidth: true
             }
@@ -302,8 +432,8 @@ ColumnLayout {
             Text {
                 Layout.fillWidth: true
                 Layout.topMargin: 2
-                text: "Server filters, ciphers, ports, and network recovery are intentionally "
-                    + "left to goldcrest — a single tap there can take the machine offline."
+                text: "Custom server filters, ciphers, ports, proxies, and network recovery "
+                    + "remain in goldcrest because they need validated values or recovery flows."
                 font.family: Config.theme.font
                 font.pixelSize: Styling.fontSize(-3)
                 color: Colors.overSurfaceVariant

@@ -23,9 +23,13 @@ var data = {
         "showInBar": false,
         "pollInterval": 20,
         "preferredVpnType": "wireguard",
+        "preferredTlsMode": "auto",
         "preferredCountry": "",
         "preferredKey": "",
         "networkLock": false,
+        "allowPrivateNetwork": true,
+        "ipv6": true,
+        "useAirVpnDns": true,
         "favoriteCountries": []
     },
     "vpn": {

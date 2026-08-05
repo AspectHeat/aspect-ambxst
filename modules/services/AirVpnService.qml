@@ -511,7 +511,12 @@ Singleton {
         const argv = Parse.buildConnectArgv({
             country: trimmed,
             vpnType: opts.vpnType ?? Config.system.airvpn.preferredVpnType,
+            tlsMode: opts.tlsMode ?? Config.system.airvpn.preferredTlsMode,
             key: opts.key ?? Config.system.airvpn.preferredKey,
+            allowPrivateNetwork: opts.allowPrivateNetwork
+                ?? Config.system.airvpn.allowPrivateNetwork,
+            ipv6: opts.ipv6 ?? Config.system.airvpn.ipv6,
+            useAirVpnDns: opts.useAirVpnDns ?? Config.system.airvpn.useAirVpnDns,
             // Never implicitly on. The observed lock state is not used as the default, because
             // enabling the filter can drop Tailscale and SSH on this host - which is the only
             // remote access we have to it.
@@ -566,6 +571,24 @@ Singleton {
         // is actually running.
         if (!root.connected)
             root.technology = normalized === "openvpn" ? "OpenVPN" : "WireGuard";
+    }
+
+    function setPreferredTlsMode(value): void {
+        const normalized = String(value ?? "").trim().toLowerCase();
+        Config.system.airvpn.preferredTlsMode = normalized === "auth" || normalized === "crypt"
+            ? normalized : "auto";
+    }
+
+    function setAllowPrivateNetwork(value): void {
+        Config.system.airvpn.allowPrivateNetwork = value === true;
+    }
+
+    function setIpv6Preference(value): void {
+        Config.system.airvpn.ipv6 = value === true;
+    }
+
+    function setUseAirVpnDns(value): void {
+        Config.system.airvpn.useAirVpnDns = value === true;
     }
 
     function setPreferredKey(value): void {

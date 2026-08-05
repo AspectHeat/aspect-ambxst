@@ -39,6 +39,7 @@ QtObject {
         { label: "AirVPN Countries", keywords: "country location flag region load", section: 10, subSection: "airvpn", subLabel: "VPN > AirVPN", icon: Icons.globe, isIcon: true },
         { label: "AirVPN Quick Connect", keywords: "connect best available airvpn", section: 10, subSection: "airvpn", subLabel: "VPN > AirVPN", icon: Icons.lightning, isIcon: true },
         { label: "WireGuard or OpenVPN", keywords: "protocol vpn type tunnel airvpn", section: 10, subSection: "airvpn", subLabel: "VPN > AirVPN", icon: Icons.shield, isIcon: true },
+        { label: "AirVPN Advanced", keywords: "tls crypt auth ipv6 dns local network private lan", section: 10, subSection: "airvpn", subLabel: "VPN > AirVPN", icon: Icons.faders, isIcon: true },
         { label: "Network Lock", keywords: "kill switch block leak firewall airvpn", section: 10, subSection: "airvpn", subLabel: "VPN > AirVPN", icon: Icons.lock, isIcon: true }
     ] : []) : []
 

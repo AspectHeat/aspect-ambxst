@@ -1035,6 +1035,8 @@ Singleton {
                 // "openvpn" as WireGuard rather than comparing against "wireguard"
                 // exactly, so a typo cannot flip the default away from the Suite's own.
                 property string preferredVpnType: "wireguard"
+                // "auto" | "auth" | "crypt". OpenVPN-only; ignored for WireGuard.
+                property string preferredTlsMode: "auto"
                 // ISO alpha-2, e.g. "CH". AirVPN prints ISO codes natively and accepts
                 // them as --air-country arguments, so one string is both identity and
                 // connect target.
@@ -1047,6 +1049,10 @@ Singleton {
                 // running session can drop Tailscale and SSH, which is the only remote
                 // access to the test machine. Off by default, never enabled implicitly.
                 property bool networkLock: false
+                // Safe connect-time preferences exposed alongside the NordVPN equivalents.
+                property bool allowPrivateNetwork: true
+                property bool ipv6: true
+                property bool useAirVpnDns: true
                 property list<string> favoriteCountries: []
             }
             property JsonObject vpn: JsonObject {

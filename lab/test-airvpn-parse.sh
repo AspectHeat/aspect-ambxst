@@ -142,6 +142,8 @@ if (!FILTER || "connect".includes(FILTER)) {
         { server: "Achernar" },
         { server: "Achernar", country: "CH" },
         { networkLock: true, country: "SE" },
+        { vpnType: "openvpn", tlsMode: "crypt", ipv6: false,
+            allowPrivateNetwork: false, useAirVpnDns: false },
         { vpnType: "OPENVPN", key: "mykey", country: "JP" },
         { country: "", vpnType: "", key: "", server: "" },
         { country: undefined, vpnType: null }
@@ -155,7 +157,8 @@ if (!FILTER || "connect".includes(FILTER)) {
         check(`${label} has --network-lock`, argv.includes("--network-lock"), `argv ${fmt(argv)}`);
 
         const lock = argv[argv.indexOf("--network-lock") + 1];
-        const wantLock = combo.networkLock === true ? "on" : "off";
+        const wantLock = combo.networkLock === true
+            ? (combo.allowPrivateNetwork === false ? "noprivate" : "on") : "off";
         check(`${label} lock=${wantLock}`, lock === wantLock, `got ${fmt(lock)}`);
 
         check(`${label} calls goldcrest`, argv[0] === "goldcrest", `got ${fmt(argv[0])}`);
@@ -170,6 +173,9 @@ if (!FILTER || "connect".includes(FILTER)) {
 
         check(`${label} no empty argv elements`,
             argv.every(a => typeof a === "string" && a.trim() !== ""), `argv ${fmt(argv)}`);
+
+        check(`${label} has explicit IPv6 preference`, argv.includes("--air-ipv6"),
+            `argv ${fmt(argv)}`);
     }
 
     // Server wins over country, and they never both appear: --air-server pins a host and
@@ -187,6 +193,25 @@ if (!FILTER || "connect".includes(FILTER)) {
     check("connect: default has no --air-vpn-type",
         !P.buildConnectArgv({}).includes("--air-vpn-type"),
         "an unset type must let Bluetit choose, not be forced");
+    const expanded = P.buildConnectArgv({ vpnType: "openvpn", tlsMode: "crypt", ipv6: false,
+        allowPrivateNetwork: false, useAirVpnDns: false });
+    check("connect: OpenVPN TLS mode honored",
+        expanded.includes("--air-tls-mode") && expanded.includes("crypt"), fmt(expanded));
+    check("connect: IPv6 off honored",
+        expanded[expanded.indexOf("--air-ipv6") + 1] === "off", fmt(expanded));
+    const lockedWithoutLan = P.buildConnectArgv({ networkLock: true,
+        allowPrivateNetwork: false });
+    check("connect: lock without LAN uses noprivate",
+        lockedWithoutLan[lockedWithoutLan.indexOf("--network-lock") + 1] === "noprivate",
+        fmt(lockedWithoutLan));
+    check("connect: LAN preference does not enable lock",
+        P.buildConnectArgv({ networkLock: false, allowPrivateNetwork: false })
+            [P.buildConnectArgv({ networkLock: false, allowPrivateNetwork: false })
+                .indexOf("--network-lock") + 1] === "off", "LAN preference must be inert without lock");
+    check("connect: system DNS honored", expanded.includes("--ignore-dns-push"), fmt(expanded));
+    check("connect: WireGuard never receives TLS mode",
+        !P.buildConnectArgv({ vpnType: "wireguard", tlsMode: "crypt" })
+            .includes("--air-tls-mode"), "TLS mode is OpenVPN-only");
 }
 
 // ------------------------------------------------------------------ credential prompt guard

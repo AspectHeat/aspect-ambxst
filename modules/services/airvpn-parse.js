@@ -392,10 +392,23 @@ function buildConnectArgv(options) {
     var opts = options ?? {};
     var argv = ["goldcrest", "--air-connect", "--async"];
 
-    argv.push("--network-lock", opts.networkLock === true ? "on" : "off");
+    // In asynchronous mode Goldcrest expresses LAN access as the lock mode itself:
+    // `on` keeps private networks reachable, `noprivate` blocks them too. The separate
+    // --allow-private-network help entry is not documented as taking an on/off value.
+    argv.push("--network-lock", opts.networkLock === true
+        ? (opts.allowPrivateNetwork === false ? "noprivate" : "on") : "off");
 
     if (String(opts.vpnType ?? "") !== "")
         argv.push("--air-vpn-type", vpnTypeArgument(opts.vpnType));
+
+    var tlsMode = String(opts.tlsMode ?? "").trim().toLowerCase();
+    if (vpnTypeArgument(opts.vpnType) === "openvpn"
+            && (tlsMode === "auth" || tlsMode === "crypt"))
+        argv.push("--air-tls-mode", tlsMode);
+
+    argv.push("--air-ipv6", opts.ipv6 === false ? "off" : "on");
+    if (opts.useAirVpnDns === false)
+        argv.push("--ignore-dns-push");
 
     var key = String(opts.key ?? "").trim();
     if (key !== "")
