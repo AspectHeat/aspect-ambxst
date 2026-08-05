@@ -237,6 +237,21 @@ if (!FILTER || "prompt".includes(FILTER)) {
     check("prompt: status not disconnected", prompted.state !== "disconnected", "");
 }
 
+// ------------------------------------------------------------------ authenticated key list
+if (!FILTER || "key".includes(FILTER)) {
+    const keyTable = [
+        "Goldcrest - AirVPN Bluetit Client 2.1.0 - 15 June 2026",
+        "2026-08-04 22:48:15 Name",
+        "2026-08-04 22:48:15 ------------------------------------------------",
+        "2026-08-04 22:48:15 Default"
+    ].join("\n");
+    const parsedKeys = P.parseKeyList(keyTable);
+    check("key list: standalone Name header is not a device key",
+        !parsedKeys.keys.includes("Name"), fmt(parsedKeys.keys));
+    check("key list: real key survives header filtering",
+        parsedKeys.keys.includes("Default"), fmt(parsedKeys.keys));
+}
+
 // ------------------------------------------------------------------ run control file
 if (!FILTER || "runcontrol".includes(FILTER)) {
     const commented = [

@@ -1036,6 +1036,14 @@ Singleton {
 
             root.keys = parsed.keys;
             root.keysLoaded = true;
+
+            // Goldcrest 2.1 prints a standalone "Name" table header. Older parser builds
+            // accepted it as a key, and the picker persisted preferredKey="Name"; Bluetit then
+            // rejected every async connection after Goldcrest had already exited successfully.
+            // Clear any stale or externally removed selection before the next connect.
+            if (Config.system.airvpn.preferredKey !== ""
+                    && !parsed.keys.includes(Config.system.airvpn.preferredKey))
+                Config.system.airvpn.preferredKey = "";
         }
 
         onRunningChanged: if (!keysProc.running) {

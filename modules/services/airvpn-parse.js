@@ -365,7 +365,8 @@ function parseKeyList(output) {
         .filter(function (line) {
             // Drop table furniture, headers, and prose. AirVPN key names are short tokens
             // (the default is "Default").
-            if (/^[-* ]+$/.test(line) || /:/.test(line) || /\s{2,}/.test(line))
+            if (/^name$/i.test(line) || /^[-* ]+$/.test(line)
+                    || /:/.test(line) || /\s{2,}/.test(line))
                 return false;
             return /^[A-Za-z0-9_.\-]{1,64}$/.test(line);
         });
