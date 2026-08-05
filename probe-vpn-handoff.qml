@@ -243,10 +243,26 @@ ShellRoot {
         }
     }
 
+    // Force the singletons to CONSTRUCT now, so their availability probes and first reads are
+    // in flight before the timer below asserts anything.
+    //
+    // Without this the probe reported available=false and needsCredentials=false for a Suite
+    // that is installed: QML constructs a singleton on first access, nothing referenced these
+    // until the assertion ran, so every async read was still outstanding at that instant.
+    // Reading a property is what forces construction - the same idiom, and the same reason, as
+    // shell.qml's deferred service-init tier.
+    Component.onCompleted: {
+        let _ = TailscaleService.connected;
+        _ = NordVpnService.available;
+        _ = AirVpnService.available;
+        _ = VpnService.routeOwner;
+        console.log("probe-vpn-handoff: singletons constructed, waiting for first reads");
+    }
+
     // Deferred, so the services' first availability probes and reads have landed. The
     // preconditions this asserts (AirVPN logged out) are read from the live services.
     Timer {
-        interval: 6000
+        interval: 8000
         repeat: false
         running: true
 
