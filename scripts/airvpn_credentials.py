@@ -3,6 +3,7 @@
 
 import json
 import os
+import pwd
 import sys
 import tempfile
 from pathlib import Path
@@ -14,8 +15,21 @@ def fail(message: str) -> None:
 
 
 def main() -> None:
-    if len(sys.argv) != 2:
-        fail("expected the Goldcrest run-control path")
+    # Goldcrest resolves the invoking user's home through getpwuid(), not $HOME. That distinction
+    # is observable when Ambxst runs with a sandboxed HOME: writing $HOME/.config/goldcrest.rc
+    # succeeds but Goldcrest reads the login user's real home and prompts again. Use the same
+    # lookup here so the writer and CLI cannot disagree.
+    account_home = Path(pwd.getpwuid(os.getuid()).pw_dir)
+    path = account_home / ".config" / "goldcrest.rc"
+
+    if len(sys.argv) == 2 and sys.argv[1] == "--path":
+        print(path, flush=True)
+        return
+    if len(sys.argv) == 3 and sys.argv[1] == "--target":
+        # Explicit target exists for isolated tests only; the QML service never uses it.
+        path = Path(sys.argv[2]).expanduser()
+    elif len(sys.argv) != 1:
+        fail("usage: airvpn_credentials.py [--path | --target PATH]")
 
     try:
         payload = json.loads(sys.stdin.readline())
@@ -29,7 +43,6 @@ def main() -> None:
     if any(character in username or character in password for character in "\r\n"):
         fail("credentials cannot contain line breaks")
 
-    path = Path(sys.argv[1]).expanduser()
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
 
     try:

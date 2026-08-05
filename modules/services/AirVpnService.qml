@@ -95,6 +95,7 @@ Singleton {
     property bool credentialSaveInProgress: false
     property string credentialSaveError: ""
     property string pendingCredentialPayload: ""
+    property string rcPath: ""
     readonly property string credentialWriterPath: Quickshell.shellDir
         + "/scripts/airvpn_credentials.py"
 
@@ -309,7 +310,8 @@ Singleton {
         // Re-read the rc file every refresh. It is the credentials signal, it is cheap, and
         // the user editing it is precisely how they log in - so a stale read would pin the
         // setup card open after a successful login.
-        rcFile.reload();
+        if (root.rcPath !== "")
+            rcFile.reload();
 
         root.isReading = true;
         statusProc.run();
@@ -605,16 +607,14 @@ Singleton {
     // The credentials signal. A file read cannot hang or flood, which is exactly why this and
     // not `--air-user-info` is authoritative. See SAFETY at the top.
     //
-    // HOME-based rather than XDG_CONFIG_HOME-based on purpose: goldcrest itself reports
-    // "Reading run control directives from file $HOME/.config/goldcrest.rc", so this must
-    // mirror that path or the two would disagree about whether credentials exist. Using
-    // Quickshell.env keeps it correct under lab/run-isolated.sh, which repoints HOME.
-    readonly property string rcPath: Quickshell.env("HOME") + "/.config/goldcrest.rc"
-
+    // Goldcrest prints a home-relative path but resolves that home through getpwuid(), not the
+    // HOME environment variable. The distinction matters under lab/run-isolated.sh, which
+    // deliberately repoints HOME. Ask the same helper used for writes to resolve the passwd
+    // home, then watch that exact path so the UI and Goldcrest cannot disagree again.
     Process {
         id: credentialWriter
 
-        command: ["python3", root.credentialWriterPath, root.rcPath]
+        command: ["python3", root.credentialWriterPath]
         stdinEnabled: true
 
         stdout: StdioCollector {
@@ -647,6 +647,23 @@ Singleton {
             root.credentialSaveError = "";
             rcFile.reload();
             root.refresh();
+        }
+    }
+
+    Process {
+        id: rcPathProbe
+
+        command: ["python3", root.credentialWriterPath, "--path"]
+        stdout: StdioCollector {
+            id: rcPathProbeStdout
+        }
+
+        onExited: exitCode => {
+            if (exitCode !== 0)
+                return;
+            root.rcPath = rcPathProbeStdout.text.trim();
+            if (root.rcPath !== "")
+                rcFile.reload();
         }
     }
 
@@ -1021,5 +1038,8 @@ Singleton {
     // it succeeds, and that status read's completion drains the lists - which gives the
     // status-first ordering for free. Draining here as well only raced the debouncer.
 
-    Component.onCompleted: availabilityProbe.running = true
+    Component.onCompleted: {
+        rcPathProbe.running = true;
+        availabilityProbe.running = true;
+    }
 }

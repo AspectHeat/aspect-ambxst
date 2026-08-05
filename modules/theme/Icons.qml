@@ -172,6 +172,8 @@ QtObject {
     readonly property string image: ""
     readonly property string broom: ""
     readonly property string xeyes: ""
+    readonly property string eye: "\ue220"
+    readonly property string eyeSlash: "\ue224"
     readonly property string seal: ""
     readonly property string info: ""
     readonly property string help: ""

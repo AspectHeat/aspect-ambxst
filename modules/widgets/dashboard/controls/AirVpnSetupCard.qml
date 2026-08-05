@@ -118,7 +118,7 @@ StyledRect {
                 Button {
                     id: revealButton
                     flat: true
-                    implicitWidth: 54
+                    implicitWidth: 40
                     implicitHeight: 40
 
                     background: StyledRect {
@@ -127,15 +127,20 @@ StyledRect {
                     }
 
                     contentItem: Text {
-                        text: root.revealPassword ? "Hide" : "Show"
-                        font.family: Config.theme.font
-                        font.pixelSize: Styling.fontSize(-2)
+                        text: root.revealPassword ? Icons.eyeSlash : Icons.eye
+                        font.family: Icons.font
+                        font.pixelSize: Styling.fontSize(2)
                         color: Colors.overBackground
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                     }
 
                     onClicked: root.revealPassword = !root.revealPassword
+
+                    StyledToolTip {
+                        visible: revealButton.hovered
+                        tooltipText: root.revealPassword ? "Hide password" : "Show password"
+                    }
                 }
             }
 
