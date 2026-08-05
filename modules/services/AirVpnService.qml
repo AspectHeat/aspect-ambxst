@@ -108,6 +108,27 @@ Singleton {
         return ["timeout", "-k", "2", String(seconds), "goldcrest"].concat(args ?? []);
     }
 
+    // ---------------------------------------------------------------- serialization
+    // goldcrest claims a D-Bus name and refuses to be a secondary owner, so TWO CONCURRENT
+    // INVOCATIONS DO NOT WORK. The second one dies with
+    //     DBusConnectorException: DBusConnector: not primary owner (2)
+    // which parses as an unrecognized status and put the whole panel into "error" while the
+    // tunnel was perfectly fine. Observed with probe-airvpn.qml the moment the country fetch
+    // began overlapping the status poll.
+    //
+    // This is the one structural difference from NordVpnService, which happily fans out three
+    // reads at once. Every goldcrest invocation here must be serialized: each read checks this
+    // before starting, and each completion re-drives the others through drainReads().
+    readonly property bool goldcrestBusy: statusProc.running || countriesProc.running
+        || keysProc.running || root.isMutating
+
+    // Re-drive every deferred read. Called after each read completes and whenever availability
+    // or credentials change, so a read that had to yield is retried rather than lost.
+    function drainReads(): void {
+        root.tryFetchCountries();
+        root.tryFetchKeys();
+    }
+
     // buildConnectArgv() already yields ["goldcrest", …]; this wraps it without a second
     // hard-coded binary name.
     function withTimeout(argv, seconds): var {
@@ -134,10 +155,15 @@ Singleton {
 
     property list<string> keys: []
     property bool keysLoaded: false
+    property bool keysRequested: false
 
     // What the user last asked to connect to, so feedback can say "Connecting to Switzerland…"
     // instead of a bare spinner. Cleared on disconnect.
     property string requestedTarget: ""
+
+    // A mutation argv accepted but not yet started, because a read still holds goldcrest.
+    // See startPendingMutation().
+    property var pendingMutation: null
 
     // Anything that is not "openvpn" means WireGuard, per plan §2. Compared this way on
     // purpose: a typo or a stale persisted value must not flip the default away from the
@@ -241,7 +267,10 @@ Singleton {
         // exactly when the UI most needs fresh data.
         if (!root.available || !root.enabled || root.isReading)
             return;
-        if (statusProc.running)
+        // Serialized: a status read must not overlap a country/key fetch or a mutation, or
+        // goldcrest's D-Bus name collision turns one of them into a spurious error. The poll
+        // timer and the completion of whatever is running both re-drive this.
+        if (root.goldcrestBusy)
             return;
 
         // Re-read the rc file every refresh. It is the credentials signal, it is cheap, and
@@ -279,12 +308,13 @@ Singleton {
     function tryFetchCountries(): void {
         if (!root.countriesRequested || !root.available || !root.enabled)
             return;
-        if (root.countriesLoaded || root.countriesLoading || countriesProc.running)
+        if (root.countriesLoaded || root.countriesLoading)
             return;
-        // Never while a mutation is in flight: resetting Bluetit's staged options underneath
-        // an in-progress connect is asking for a confusing failure. A status read completing
-        // re-drives this, so the request is deferred rather than lost.
-        if (root.isMutating)
+        // Serialized against every other goldcrest invocation. Two reasons, both real:
+        // concurrent invocations collide on goldcrest's D-Bus name, and resetting Bluetit's
+        // staged options underneath an in-progress connect invites a confusing failure.
+        // drainReads() retries this, so the request is deferred rather than lost.
+        if (root.goldcrestBusy)
             return;
 
         root.countriesLoading = true;
@@ -301,11 +331,22 @@ Singleton {
     }
 
     // Device keys are a credentialed read and therefore one of the two prompt-loop hazards.
-    // Guarded on credentialsConfigured, not merely on `available`.
+    // Guarded on credentialsConfigured, not merely on `available`. Latched for the same reason
+    // countries are: credentials can appear before the availability probe answers.
     function ensureKeys(): void {
-        if (!root.available || !root.enabled || !root.credentialsConfigured)
+        root.keysRequested = true;
+        root.tryFetchKeys();
+    }
+
+    function tryFetchKeys(): void {
+        if (!root.keysRequested || !root.available || !root.enabled)
             return;
-        if (root.keysLoaded || keysProc.running)
+        // THE credential gate. Without it this is the prompt-loop hazard. See SAFETY.
+        if (!root.credentialsConfigured)
+            return;
+        if (root.keysLoaded)
+            return;
+        if (root.goldcrestBusy)
             return;
         keysProc.run();
     }
@@ -364,20 +405,46 @@ Singleton {
         if (!root.available || !root.enabled || root.isMutating)
             return false;
 
+        // isMutating latches NOW, before the process starts. Two reasons: controls gate on it
+        // immediately, and it makes goldcrestBusy true so no read can slip in ahead.
         root.isMutating = true;
         root.lastError = "";
         root.errorFromMutation = false;
+        root.pendingMutation = command;
+        root.startPendingMutation();
+        return true;
+    }
+
+    // A mutation cannot start while a read is in flight - concurrent goldcrest invocations
+    // collide on its D-Bus name. Dropping the click instead would be worse, so the command
+    // waits for the read to finish rather than being refused: reads are timeout-bounded at 15 s
+    // and typically complete in about a second, well inside VpnService's 25 s connect budget.
+    // mutationWatchdog is already running (it keys off isMutating), so a read that never
+    // finishes cannot wedge this forever.
+    function startPendingMutation(): void {
+        if (root.pendingMutation === null)
+            return;
+
+        if (statusProc.running || countriesProc.running || keysProc.running) {
+            mutationGate.restart();
+            return;
+        }
+
+        const command = root.pendingMutation;
+        root.pendingMutation = null;
+
         root.runAsync(command).then(() => {
             root.permissionDenied = false;
             root.isMutating = false;
             root.refresh();
+            root.drainReads();
         }).catch(error => {
             root.handleMutationError(error);
             root.errorFromMutation = root.lastError !== "";
             root.isMutating = false;
             root.refresh();
+            root.drainReads();
         });
-        return true;
     }
 
     function handleMutationError(error): void {
@@ -512,6 +579,11 @@ Singleton {
             root.ensureKeys();
         else
             root.keysLoaded = false;
+
+        // Logging in is also the event that makes connect legal, so a status read is worth
+        // taking promptly rather than up to a poll interval later.
+        if (parsed.credentialsConfigured && root.available)
+            root.refresh();
     }
 
     // ---------------------------------------------------------------- timers
@@ -533,15 +605,29 @@ Singleton {
 
     Timer {
         id: mutationWatchdog
-        interval: (root.mutationTimeoutSecs + 5) * 1000
+        // Includes the gate's own worst case: a mutation may sit behind a read for up to the
+        // read timeout before it even starts.
+        interval: (root.mutationTimeoutSecs + root.readTimeoutSecs + 5) * 1000
         repeat: false
         running: root.isMutating
         onTriggered: {
+            // Drop the queued command too. Leaving it set would fire it later, out of context,
+            // after the UI had already reported the failure.
+            root.pendingMutation = null;
+            mutationGate.stop();
             root.isMutating = false;
             root.lastError = "AirVPN command timed out";
             root.errorFromMutation = true;
             root.refresh();
         }
+    }
+
+    // Re-checks whether goldcrest has come free for a mutation that is already accepted.
+    Timer {
+        id: mutationGate
+        interval: 250
+        repeat: false
+        onTriggered: root.startPendingMutation()
     }
 
     // A mutation error is preserved against the refresh it triggers, but not forever: without
@@ -742,9 +828,10 @@ Singleton {
 
             root.finishRead();
 
-            // Re-drive a country fetch that ensureCountries() had to defer, either because the
-            // availability probe had not answered yet or because a mutation was in flight.
-            root.tryFetchCountries();
+            // goldcrest is free again: re-drive any read that had to yield to this one, and let
+            // a mutation waiting on the gate proceed without waiting out its 250 ms retry.
+            root.startPendingMutation();
+            root.drainReads();
         }
     }
 
@@ -776,6 +863,12 @@ Singleton {
             root.syncCountries(parsed.countries);
             root.countriesLoaded = true;
         }
+
+        // Whatever the outcome, goldcrest is free again.
+        onRunningChanged: if (!countriesProc.running) {
+            root.startPendingMutation();
+            Qt.callLater(() => root.drainReads());
+        }
     }
 
     CliRead {
@@ -801,6 +894,11 @@ Singleton {
             root.keys = parsed.keys;
             root.keysLoaded = true;
         }
+
+        onRunningChanged: if (!keysProc.running) {
+            root.startPendingMutation();
+            Qt.callLater(() => root.drainReads());
+        }
     }
 
     Component {
@@ -812,14 +910,16 @@ Singleton {
     onEnabledChanged: {
         if (root.enabled && root.available) {
             root.refresh();
-            root.tryFetchCountries();
+            root.drainReads();
         }
     }
 
-    // The probe answering is the event ensureCountries() may have been waiting on.
+    // The probe answering is the event ensureCountries() / ensureKeys() may have been waiting
+    // on. Deferred so the status read that refresh() queues gets goldcrest first - the panel's
+    // state copy matters more than its list.
     onAvailableChanged: {
         if (root.available)
-            root.tryFetchCountries();
+            Qt.callLater(() => root.drainReads());
     }
 
     Component.onCompleted: availabilityProbe.running = true
