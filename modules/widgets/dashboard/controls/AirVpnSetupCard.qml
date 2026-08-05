@@ -19,6 +19,14 @@ import qs.modules.theme
 StyledRect {
     id: root
 
+    property bool revealPassword: false
+
+    function submitCredentials(): void {
+        if (AirVpnService.saveCredentials(usernameInput.text, passwordInput.text)) {
+            passwordInput.text = "";
+        }
+    }
+
     // Hard blockers: nothing on the page can work.
     readonly property bool hardBlocked: !AirVpnService.available
         || AirVpnService.permissionDenied
@@ -39,9 +47,8 @@ StyledRect {
                 + "inherit the new group before it can talk to Bluetit."
         : !AirVpnService.daemonReachable
             ? "Start the bluetit service, then refresh."
-        // The honest version of the credentials case: say what still works.
-            : "You can browse countries now, but connecting needs your AirVPN account. Add your "
-                + "credentials to the Goldcrest run-control file, then refresh.";
+            : "Sign in once with your AirVPN account. Your password is stored only in "
+                + "Goldcrest's private credentials file on this device.";
 
     visible: root.hardBlocked || root.credentialsMissing
     implicitHeight: contentColumn.implicitHeight + 20
@@ -77,56 +84,69 @@ StyledRect {
             wrapMode: Text.Wrap
         }
 
-        // ---------------------------------------------------------- credentials detail
-        // There is deliberately no password field here. Goldcrest reads credentials from one
-        // place only, that file has a documented 0600 contract, and this is a public repo whose
-        // Config is plain JSON in the user's home. Showing the exact path and the two directive
-        // names is the whole instruction; the widget never handles the secret.
-        StyledRect {
+        ColumnLayout {
             Layout.fillWidth: true
             Layout.topMargin: 2
             visible: root.credentialsMissing
-            implicitHeight: rcColumn.implicitHeight + 16
-            variant: "common"
-            radius: Styling.radius(-2)
+            spacing: 6
 
-            ColumnLayout {
-                id: rcColumn
+            SearchInput {
+                id: usernameInput
+                Layout.fillWidth: true
+                implicitHeight: 40
+                placeholderText: "AirVPN username"
+                variant: "common"
+                enabled: !AirVpnService.credentialSaveInProgress
+                onAccepted: passwordInput.focusInput()
+            }
 
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.verticalCenter: parent.verticalCenter
-                anchors.leftMargin: 10
-                anchors.rightMargin: 10
-                spacing: 2
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 6
 
-                Text {
+                SearchInput {
+                    id: passwordInput
                     Layout.fillWidth: true
-                    text: AirVpnService.rcPath
-                    font.family: Config.theme.font
-                    font.pixelSize: Styling.fontSize(-3)
-                    color: Colors.overBackground
-                    elide: Text.ElideMiddle
+                    implicitHeight: 40
+                    placeholderText: "Password"
+                    passwordMode: !root.revealPassword
+                    variant: "common"
+                    enabled: !AirVpnService.credentialSaveInProgress
+                    onAccepted: root.submitCredentials()
                 }
 
-                Text {
-                    Layout.fillWidth: true
-                    text: "air-user      <your username>\nair-password  <your password>"
-                    font.family: Config.theme.font
-                    font.pixelSize: Styling.fontSize(-3)
-                    color: Colors.overSurfaceVariant
-                    wrapMode: Text.Wrap
-                }
+                Button {
+                    id: revealButton
+                    flat: true
+                    implicitWidth: 54
+                    implicitHeight: 40
 
-                Text {
-                    Layout.fillWidth: true
-                    Layout.topMargin: 4
-                    text: "Then: chmod 600 that file. The panel notices on its own."
-                    font.family: Config.theme.font
-                    font.pixelSize: Styling.fontSize(-3)
-                    color: Colors.overSurfaceVariant
-                    wrapMode: Text.Wrap
+                    background: StyledRect {
+                        variant: revealButton.hovered ? "focus" : "common"
+                        radius: Styling.radius(-2)
+                    }
+
+                    contentItem: Text {
+                        text: root.revealPassword ? "Hide" : "Show"
+                        font.family: Config.theme.font
+                        font.pixelSize: Styling.fontSize(-2)
+                        color: Colors.overBackground
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+
+                    onClicked: root.revealPassword = !root.revealPassword
                 }
+            }
+
+            Text {
+                Layout.fillWidth: true
+                visible: AirVpnService.credentialSaveError !== ""
+                text: AirVpnService.credentialSaveError
+                font.family: Config.theme.font
+                font.pixelSize: Styling.fontSize(-2)
+                color: Colors.error
+                wrapMode: Text.Wrap
             }
         }
 
@@ -137,31 +157,27 @@ StyledRect {
             spacing: 6
 
             Button {
-                id: clientAreaButton
+                id: signInButton
                 flat: true
                 implicitHeight: 30
                 Layout.fillWidth: true
+                enabled: !AirVpnService.credentialSaveInProgress
 
                 background: StyledRect {
-                    variant: clientAreaButton.hovered ? "focus" : "common"
+                    variant: "primary"
                     radius: Styling.radius(-2)
                 }
 
                 contentItem: Text {
-                    text: "AirVPN client area"
+                    text: AirVpnService.credentialSaveInProgress ? "Signing in…" : "Sign in"
                     font.family: Config.theme.font
                     font.pixelSize: Styling.fontSize(-1)
-                    color: Colors.overBackground
+                    color: Styling.srItem("primary")
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
                 }
 
-                onClicked: AirVpnService.openClientArea()
-
-                StyledToolTip {
-                    visible: clientAreaButton.hovered
-                    tooltipText: "Open airvpn.org/client in your browser"
-                }
+                onClicked: root.submitCredentials()
             }
 
             Button {
@@ -176,7 +192,7 @@ StyledRect {
                 }
 
                 contentItem: Text {
-                    text: AirVpnService.isUpdating ? "Checking…" : "I've logged in"
+                    text: "Create account"
                     font.family: Config.theme.font
                     font.pixelSize: Styling.fontSize(-1)
                     color: Colors.overBackground
@@ -184,11 +200,23 @@ StyledRect {
                     verticalAlignment: Text.AlignVCenter
                 }
 
-                // refresh() re-reads the run-control file, which is the credentials signal, so
-                // this is the whole re-check. The FileView also watches the file, making this a
-                // convenience rather than the only path.
-                onClicked: AirVpnService.refresh()
+                onClicked: AirVpnService.openClientArea()
+
+                StyledToolTip {
+                    visible: recheckButton.hovered
+                    tooltipText: "Open the AirVPN client area in your browser"
+                }
             }
+        }
+
+        Text {
+            Layout.fillWidth: true
+            visible: root.credentialsMissing
+            text: "Advanced: Goldcrest reads " + AirVpnService.rcPath
+            font.family: Config.theme.font
+            font.pixelSize: Styling.fontSize(-3)
+            color: Colors.overSurfaceVariant
+            elide: Text.ElideMiddle
         }
     }
 }

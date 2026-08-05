@@ -90,6 +90,14 @@ Singleton {
 
     property string lastError: ""
 
+    // Credential writes use a dedicated helper fed over stdin. Neither secret appears in the
+    // process argv, Ambxst Config, or logs, and the helper atomically installs a 0600 rc file.
+    property bool credentialSaveInProgress: false
+    property string credentialSaveError: ""
+    property string pendingCredentialPayload: ""
+    readonly property string credentialWriterPath: Quickshell.shellDir
+        + "/scripts/airvpn_credentials.py"
+
     // Set when lastError came from a mutation. A mutation failure triggers an immediate
     // refresh, and the successful status read that follows would otherwise clear the error
     // within ~200 ms - before VpnService's 500 ms handoff tick ever observed it, leaving the
@@ -562,12 +570,33 @@ Singleton {
         Config.system.airvpn.preferredKey = String(value ?? "");
     }
 
-    // Logging in happens entirely outside this widget: the user needs their AirVPN account
-    // credentials, and the only place Goldcrest reads them from is the run-control file. The
-    // most useful thing the setup card can do is get them to the page that has the credentials.
-    //
-    // Deliberately NOT a password field that writes Config: this is a public repo, Config is
-    // plain JSON in the user's home, and the rc file already has a documented 0600 contract.
+    function saveCredentials(username, password): bool {
+        const cleanUsername = String(username ?? "").trim();
+        const cleanPassword = String(password ?? "");
+        root.credentialSaveError = "";
+
+        if (root.credentialSaveInProgress)
+            return false;
+        if (cleanUsername === "" || cleanPassword === "") {
+            root.credentialSaveError = "Enter both your AirVPN username and password";
+            return false;
+        }
+        if (/\r|\n/.test(cleanUsername) || /\r|\n/.test(cleanPassword)) {
+            root.credentialSaveError = "Credentials cannot contain line breaks";
+            return false;
+        }
+
+        root.pendingCredentialPayload = JSON.stringify({
+            username: cleanUsername,
+            password: cleanPassword
+        }) + "\n";
+        root.credentialSaveInProgress = true;
+        credentialWriter.running = true;
+        return true;
+    }
+
+    // Account creation still happens in the browser. Existing users sign in directly in the
+    // setup card; saveCredentials() puts the result in Goldcrest's 0600 rc file, never Config.
     function openClientArea(): void {
         Quickshell.execDetached(["xdg-open", "https://airvpn.org/client"]);
     }
@@ -581,6 +610,45 @@ Singleton {
     // mirror that path or the two would disagree about whether credentials exist. Using
     // Quickshell.env keeps it correct under lab/run-isolated.sh, which repoints HOME.
     readonly property string rcPath: Quickshell.env("HOME") + "/.config/goldcrest.rc"
+
+    Process {
+        id: credentialWriter
+
+        command: ["python3", root.credentialWriterPath, root.rcPath]
+        stdinEnabled: true
+
+        stdout: StdioCollector {
+            id: credentialWriterStdout
+        }
+
+        stderr: StdioCollector {
+            id: credentialWriterStderr
+        }
+
+        onRunningChanged: if (credentialWriter.running && root.pendingCredentialPayload !== "") {
+            credentialWriter.write(root.pendingCredentialPayload);
+            // Keep the secret only long enough to hand it to the child. The child reads one line
+            // and exits, so closing stdin is unnecessary.
+            root.pendingCredentialPayload = "";
+        }
+
+        onExited: exitCode => {
+            root.credentialSaveInProgress = false;
+            if (exitCode !== 0) {
+                try {
+                    const parsed = JSON.parse(credentialWriterStderr.text);
+                    root.credentialSaveError = parsed.error ?? "Could not save AirVPN credentials";
+                } catch (error) {
+                    root.credentialSaveError = "Could not save AirVPN credentials";
+                }
+                return;
+            }
+
+            root.credentialSaveError = "";
+            rcFile.reload();
+            root.refresh();
+        }
+    }
 
     FileView {
         id: rcFile
