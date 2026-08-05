@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aspect Ambxst — AirVPN Provider Widget Plan v1.1</title>
+<style>
+  :root {
+    --bg:#0f1117; --surface:#181b24; --surface2:#202430; --surface3:#292e3c;
+    --line:#343a4a; --fg:#e7eaf0; --dim:#9ba3b5; --accent:#7aa2f7;
+    --air:#3ecf8e; --nord:#4687ff; --tailscale:#d7dbe5; --ok:#9ece6a;
+    --warn:#e0af68; --err:#f7768e;
+    --sans:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+    --mono:"JetBrains Mono","Fira Code",ui-monospace,monospace;
+  }
+  * { box-sizing:border-box; }
+  html { scroll-behavior:smooth; }
+  body { margin:0; color:var(--fg); background:
+    radial-gradient(900px 500px at 85% -5%,rgba(62,207,142,.14),transparent 58%),var(--bg);
+    font:15px/1.62 var(--sans); }
+  a { color:var(--accent); text-decoration:none; }
+  a:hover { text-decoration:underline; }
+  .layout { display:grid; grid-template-columns:260px minmax(0,1fr); max-width:1480px; margin:auto; }
+  nav { position:sticky; top:0; height:100vh; overflow:auto; padding:28px 18px;
+    background:rgba(24,27,36,.94); border-right:1px solid var(--line); }
+  nav strong { display:block; color:var(--air); font-size:12px; letter-spacing:.12em; text-transform:uppercase; }
+  nav small { display:block; color:var(--dim); margin:3px 0 20px; }
+  nav a { display:block; color:var(--dim); font-size:13px; padding:5px 9px; border-radius:7px; }
+  nav a:hover { color:var(--fg); background:var(--surface2); text-decoration:none; }
+  main { min-width:0; padding:46px 54px 110px; }
+  h1 { margin:0 0 8px; font-size:32px; line-height:1.2; letter-spacing:-.025em; }
+  h2 { margin:52px 0 14px; padding-bottom:8px; border-bottom:1px solid var(--line);
+    font-size:21px; scroll-margin-top:22px; }
+  h3 { margin:28px 0 8px; font-size:16px; scroll-margin-top:22px; }
+  p,li { max-width:90ch; }
+  .lede { color:var(--dim); font-size:16px; max-width:78ch; }
+  .meta { display:flex; flex-wrap:wrap; gap:7px; margin-top:18px; }
+  .chip,.tag { display:inline-block; border:1px solid var(--line); background:var(--surface2);
+    border-radius:999px; padding:3px 9px; color:var(--dim); font-size:11px; }
+  .tag { font-family:var(--mono); padding:2px 7px; }
+  .tag.new { color:var(--ok); border-color:rgba(158,206,106,.5); }
+  .tag.edit { color:var(--warn); border-color:rgba(224,175,104,.5); }
+  .tag.asbuilt { color:#c0a0ff; border-color:rgba(192,160,255,.5); }
+  code { padding:1px 5px; border:1px solid var(--line); border-radius:5px;
+    background:var(--surface2); font:.88em var(--mono); }
+  pre { overflow:auto; padding:15px 17px; border:1px solid var(--line); border-radius:10px;
+    background:var(--surface); color:#d7dce7; font:12.5px/1.6 var(--mono); }
+  pre code { padding:0; border:0; background:none; }
+  table { width:100%; border-collapse:collapse; margin:15px 0; font-size:13.5px; }
+  th,td { padding:9px 11px; border:1px solid var(--line); text-align:left; vertical-align:top; }
+  th { color:var(--dim); background:var(--surface2); font-size:11px; letter-spacing:.06em; text-transform:uppercase; }
+  .callout { margin:16px 0; padding:13px 16px; border:1px solid var(--line);
+    border-left:4px solid var(--accent); border-radius:9px; background:var(--surface); }
+  .callout.warn { border-left-color:var(--warn); }
+  .callout.stop { border-left-color:var(--err); }
+  .callout strong { display:block; margin-bottom:3px; color:var(--fg); }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(310px,1fr)); gap:14px; }
+  .card { padding:16px 18px; border:1px solid var(--line); border-radius:11px; background:var(--surface); }
+  .card h3 { margin-top:0; }
+  .phase { margin:13px 0; padding:16px 19px; border:1px solid var(--line);
+    border-radius:11px; background:var(--surface); }
+  .phase h3 { margin:0 0 8px; }
+  .phase .num { color:var(--accent); font:12px var(--mono); margin-right:8px; }
+  .tight li { margin:3px 0; }
+  .mock-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(330px,1fr)); gap:20px; margin-top:18px; }
+  .stage { padding:16px; border:1px solid var(--line); border-radius:15px; background:#131620;
+    box-shadow:0 18px 42px rgba(0,0,0,.28); }
+  .stage-label { margin:0 0 10px; color:var(--dim); font-size:11px; letter-spacing:.08em; text-transform:uppercase; }
+  .panel { max-width:480px; margin:auto; padding:14px; border:1px solid #303646;
+    border-radius:14px; background:#1a1e28; }
+  .panel-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+  .panel-head b { font-size:15px; }
+  .provider { display:flex; align-items:center; gap:12px; padding:11px; margin:8px 0;
+    border:1px solid #303646; border-radius:11px; background:#222734; }
+  .provider.active { border-color:rgba(62,207,142,.6); background:rgba(62,207,142,.1); }
+  .provider .logo { display:grid; place-items:center; flex:0 0 40px; height:40px; border-radius:10px;
+    background:#303646; font-weight:800; font-size:12px; }
+  .provider.active .logo { background:var(--air); color:#0b1210; }
+  .provider .copy { min-width:0; flex:1; }
+  .provider .copy b,.provider .copy small { display:block; }
+  .provider .copy small { color:var(--dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .status { color:var(--ok); font-size:11px; }
+  .switch { width:34px; height:20px; padding:3px; border-radius:99px; background:#4a5163; }
+  .switch::after { content:""; display:block; width:14px; height:14px; border-radius:50%; background:white; }
+  .switch.on { background:var(--air); }
+  .switch.on::after { margin-left:14px; }
+  .seg { display:grid; grid-template-columns:1fr 1fr; gap:3px; padding:3px; border-radius:9px; background:#10131a; }
+  .seg span { padding:7px; border-radius:7px; color:var(--dim); text-align:center; font-size:12px; }
+  .seg .selected { color:white; background:#303646; }
+  .search { margin:10px 0; padding:8px 10px; color:var(--dim); border:1px solid #303646;
+    border-radius:9px; background:#141720; font-size:12px; }
+  .country { display:flex; align-items:center; gap:10px; padding:8px 4px; border-bottom:1px solid #2a2f3d; }
+  .flag { width:26px; font-size:19px; text-align:center; }
+  .country .name { flex:1; font-size:13px; }
+  .country small { color:var(--dim); }
+  .badge { padding:2px 7px; border-radius:99px; color:#b9ffe0; background:rgba(62,207,142,.16); font-size:10px; }
+  .handoff { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:8px;
+    margin:12px 0; padding:10px; border:1px solid rgba(224,175,104,.45); border-radius:10px; }
+  .handoff div { text-align:center; font-size:11px; color:var(--dim); }
+  .handoff b { display:block; color:var(--fg); }
+  .arrow { color:var(--warn); }
+  .footer { margin-top:55px; padding-top:15px; border-top:1px solid var(--line); color:var(--dim); font-size:12px; }
+  @media(max-width:900px) {
+    .layout { grid-template-columns:1fr; }
+    nav { position:static; height:auto; border-right:0; border-bottom:1px solid var(--line); }
+    main { padding:30px 20px 80px; }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+<nav>
+  <strong>Aspect Ambxst</strong>
+  <small>AirVPN provider widget<br>implementation plan &middot; v1.1</small>
+  <a href="#outcome">1 &middot; Product outcome</a>
+  <a href="#asbuilt">2 &middot; As-built NordVPN lessons</a>
+  <a href="#data">3 &middot; Data availability</a>
+  <a href="#model">4 &middot; Provider model</a>
+  <a href="#contract">5 &middot; Service contract</a>
+  <a href="#state">6 &middot; State &amp; display text</a>
+  <a href="#ux">7 &middot; UX specification</a>
+  <a href="#files">8 &middot; Component plan</a>
+  <a href="#conventions">9 &middot; Conventions &amp; hazards</a>
+  <a href="#phases">10 &middot; Delivery gates</a>
+  <a href="#tests">11 &middot; Test protocol</a>
+  <a href="#risks">12 &middot; Risks</a>
+  <a href="#acceptance">13 &middot; Acceptance criteria</a>
+  <a href="#install">Appendix A &middot; Bostrom install</a>
+  <a href="#creds">Appendix B &middot; Account login</a>
+</nav>
+
+<main>
+<h1>AirVPN as a first-class VPN provider</h1>
+<p class="lede">A third VPN provider card beside Tailscale and NordVPN, backed by AirVPN Suite
+(<code>bluetit</code> + <code>goldcrest</code>) on Bostrom. This plan is grounded in the
+<strong>as-built</strong> NordVPN implementation on <code>feature/nordvpn-live-widget</code>, not only
+the NordVPN HTML plan &mdash; several patterns that matter were discovered during implementation and
+are not obvious from the plan alone.</p>
+
+<div class="meta">
+  <span class="chip">Plan only &mdash; no QML yet</span>
+  <span class="chip">v1.1 &mdash; as-built + gluetun recon</span>
+  <span class="chip">Backend: AirVPN Suite 2.1.0</span>
+  <span class="chip">Anchor: NordVpnService / VpnService / NordVpnPanel</span>
+  <span class="chip">Suite installed on Bostrom</span>
+  <span class="chip">Gluetun: arr-stack device keys only</span>
+  <span class="chip">User must log in with AirVPN account</span>
+</div>
+
+<div class="callout stop">
+  <strong>Read &sect;2 before writing any QML</strong>
+  Copy the as-built NordVPN shapes, not a fresh invention. The NordVPN HTML plan was necessary but
+  incomplete: the shipped code adds <code>isReading</code>/<code>isMutating</code> separation,
+  mutation-error TTL, city fetch queues, login URL extraction, pinned titlebar/search outside the
+  ListView, and a floating <code>VpnHandoffCard</code> sibling. AirVPN must inherit those fixes.
+  <strong>Auth:</strong> Jay has a real AirVPN account. Gluetun on the arr stack only holds
+  WireGuard <em>device</em> keys for that stack &mdash; not account login. The Ambxst panel must
+  treat credentials as missing until the user logs in (writes account user/password into
+  <code>~/.config/goldcrest.rc</code>). Do not try to reuse or import the gluetun keys as a
+  substitute for login.
+</div>
+
+<h2 id="outcome">1 &middot; Product outcome</h2>
+<p>VPN settings stays a provider hub. Tailscale, NordVPN, and AirVPN each get a provider page and
+share <code>VpnService</code>. AirVPN exposes Quick Connect, a searchable flagged country list,
+WireGuard/OpenVPN selection, connection details, and Network Lock (default <strong>off</strong>).</p>
+
+<table>
+<tr><th>Need</th><th>Planned behavior</th><th>As-built precedent</th></tr>
+<tr><td>Countries + flags</td><td><code>goldcrest --air-list --air-country all</code> &rarr; ISO codes; emoji flag / badge like NordVPN. Never use <code>/etc/airvpn/country_names.csv</code> as the browse source (world list, not AirVPN footprint).</td><td><code>NordVpnCountry</code> + <code>searchKey</code> + <code>matchesStatusName()</code></td></tr>
+<tr><td>Quick Connect</td><td><code>goldcrest --air-connect --async --network-lock off</code> (+ optional country/key/type). Bluetit owns the tunnel after goldcrest exits.</td><td><code>NordVpnPanelHeader</code> Quick Connect &rarr; <code>VpnService.requestProvider</code></td></tr>
+<tr><td>Provider toggle</td><td>Hub card + primary toggle go through <code>VpnService</code>, never straight to the CLI when another provider owns egress.</td><td><code>NordVpnPanel</code> <code>onToggleChanged</code>; country row <code>MouseArea</code></td></tr>
+<tr><td>Same settings menu</td><td>Subsection <code>"airvpn"</code> in section 10.</td><td><code>VpnPanel.currentSection</code> + Loader</td></tr>
+</table>
+
+<div class="callout">
+  <strong>Explicit non-goals for v1</strong>
+  No per-server load browser in the primary list. No Cuckoo. No Hummingbird. No
+  <code>airconnectatboot</code>. No tray icon until settings are stable. No WireGuard private keys
+  in Ambxst Config or git.
+</div>
+
+<h2 id="asbuilt">2 &middot; As-built NordVPN lessons (mandatory copy)</h2>
+<p>Tags marked <span class="tag asbuilt">as-built</span> are patterns that exist in the shipped
+QML and must be reproduced for AirVPN. Citing the plan alone is not enough.</p>
+
+<table>
+<tr><th>Pattern</th><th>Where it lives</th><th>Why AirVPN needs it</th></tr>
+<tr>
+  <td><span class="tag asbuilt">as-built</span> <code>isReading</code> vs <code>isMutating</code></td>
+  <td><code>NordVpnService.qml:47-58</code></td>
+  <td>Gating UI on a combined <code>isUpdating</code> greys out every button on each poll. Only <code>isMutating</code> may disable controls or reject mutations. <code>isUpdating</code> is spinner-only.</td>
+</tr>
+<tr>
+  <td><span class="tag asbuilt">as-built</span> <code>runMutation()</code> returns <code>bool</code></td>
+  <td><code>NordVpnService.qml:267-288</code>, consumed by <code>VpnService.beginHandoff</code></td>
+  <td>Coordinator must detect "silently dropped" vs "started", or it shows "Disconnecting&hellip;" for 12&nbsp;s against a command that never ran.</td>
+</tr>
+<tr>
+  <td><span class="tag asbuilt">as-built</span> <code>errorFromMutation</code> + 10&nbsp;s TTL</td>
+  <td><code>NordVpnService.qml:66-70, 432-442, 601-606</code></td>
+  <td>A failed connect triggers an immediate refresh; without the latch the successful status read clears <code>lastError</code> before <code>VpnService</code>'s 500&nbsp;ms tick sees it.</td>
+</tr>
+<tr>
+  <td><span class="tag asbuilt">as-built</span> <code>CliRead</code> component</td>
+  <td><code>NordVpnService.qml:504-541</code></td>
+  <td>One shape for every read: accumulate stdout/stderr, snapshot, clear, <code>Qt.callLater</code> &rarr; parse. Do not paste five Process blocks.</td>
+</tr>
+<tr>
+  <td><span class="tag asbuilt">as-built</span> Pure <code>.pragma library</code> parsers + node harness</td>
+  <td><code>nordvpn-parse.js</code>, <code>lab/test-nordvpn-parse.sh</code></td>
+  <td><code>airvpn-parse.js</code> + <code>lab/test-airvpn-parse.sh</code>. Service file must contain <strong>no</strong> string-scraping of its own.</td>
+</tr>
+<tr>
+  <td><span class="tag asbuilt">as-built</span> Reconcile countries by identity</td>
+  <td><code>syncCountries()</code> splice/destroy/push</td>
+  <td>Clear-and-rebuild collapses expanded rows and breaks <code>reuseItems</code>.</td>
+</tr>
+<tr>
+  <td><span class="tag asbuilt">as-built</span> Pin titlebar + search <em>outside</em> ListView</td>
+  <td><code>NordVpnPanel.qml:99-152</code></td>
+  <td>ListView re-lays-out its header on every model reset; model resets on every keystroke &rarr; search loses focus. Header content (cards, Quick Connect, mode) stays in <code>ListView.header</code>.</td>
+</tr>
+<tr>
+  <td><span class="tag asbuilt">as-built</span> Floating <code>VpnHandoffCard</code> sibling</td>
+  <td><code>VpnPanel.qml:254-267</code>, <code>z: 1</code></td>
+  <td>Confirm controls cannot live only in the hub column (hidden when a provider page is open) or under the Loader (painted over). One card, sibling of both.</td>
+</tr>
+<tr>
+  <td><span class="tag asbuilt">as-built</span> Connect goes through <code>VpnService.requestProvider</code></td>
+  <td>Panel toggle, Quick Connect, country row click</td>
+  <td>Direct <code>AirVpnService.connectTo</code> bypasses confirmation and NordVPN teardown when Nord owns the route.</td>
+</tr>
+<tr>
+  <td><span class="tag asbuilt">as-built</span> Setup card branches on distinct blockers</td>
+  <td><code>NordVpnSetupCard.qml</code></td>
+  <td><code>available</code> / <code>permissionDenied</code> / <code>daemonReachable</code> / <code>needsCredentials</code> are separate. A D-Bus denial must never offer a password form.</td>
+</tr>
+<tr>
+  <td><span class="tag asbuilt">as-built</span> Optimistic <code>state = "connecting"|"disconnecting"</code></td>
+  <td><code>connectTo</code> / <code>disconnect</code></td>
+  <td>Applied even when already connected (country switch). Corrected by next status read.</td>
+</tr>
+<tr>
+  <td><span class="tag asbuilt">as-built</span> Read + mutation watchdogs</td>
+  <td>20&nbsp;s / 45&nbsp;s timers</td>
+  <td>A wedged goldcrest/bluetit must not freeze the session latches forever.</td>
+</tr>
+<tr>
+  <td><span class="tag asbuilt">as-built</span> IP dropped at parser boundary</td>
+  <td><code>nordvpn-parse.js</code> comment block</td>
+  <td>No assigned-IP property on the service. Same for AirVPN exit IPs.</td>
+</tr>
+<tr>
+  <td><span class="tag asbuilt">as-built</span> Deferred service init</td>
+  <td><code>shell.qml:306-307</code> (2&nbsp;s tier)</td>
+  <td>Touch <code>AirVpnService.available</code> and keep <code>VpnService.routeOwner</code> on the deferred tier.</td>
+</tr>
+<tr>
+  <td><span class="tag asbuilt">as-built</span> <code>preferredMode !== "p2p"</code> means standard</td>
+  <td><code>NordVpnService.p2pPreferred</code></td>
+  <td>For AirVPN: anything other than <code>"openvpn"</code> means WireGuard, so a typo or old value cannot flip the default.</td>
+</tr>
+</table>
+
+<div class="callout warn">
+  <strong>VpnService today is binary</strong>
+  <code>otherProvider()</code>, <code>providerConnected()</code>, <code>providerSettled()</code>, and
+  <code>providerError()</code> are hard-coded NordVPN &harr; Tailscale. Extending to AirVPN means
+  making those table-driven (or switch on three ids). Do not leave a third provider half-wired
+  through the binary helpers &mdash; that is how handoff text and settle detection will lie.
+</div>
+
+<h2 id="data">3 &middot; Data availability matrix</h2>
+<p><strong>Phase 01 (2026-08-01):</strong> Suite 2.1.0 installed; bluetit active; disconnected
+status verified; Network Lock disabled. Credentialed AirVPN API commands still
+<span class="tag edit">assumed</span>.</p>
+<p><strong>Auth model:</strong> Jay has a real AirVPN account. It is not logged in on Bostrom yet.
+Gluetun on the arr stack only stores WireGuard device keys for that stack (provider confirmed
+<code>airvpn</code>, preferred country Switzerland). Those keys are irrelevant to Goldcrest login.
+The panel’s default first-run state is <code>needsCredentials</code> &mdash; the user must log in.</p>
+
+<table>
+<tr><th>UI element</th><th>Field</th><th>Source</th><th>If absent</th></tr>
+<tr><td>Suite available</td><td><code>available</code></td><td><code>which goldcrest</code> + bluetit active <span class="tag new">verified</span></td><td>Setup card</td></tr>
+<tr><td>Connection state</td><td><code>state</code></td><td><code>goldcrest --bluetit-status</code> disconnected form <span class="tag new">verified</span>; connected form <span class="tag edit">assumed</span></td><td>Blocking</td></tr>
+<tr><td>Country / server / tech</td><td><code>country</code>, <code>server</code>, <code>technology</code></td><td>Connected status/stats <span class="tag edit">assumed</span></td><td>Omit each row</td></tr>
+<tr><td>Login / credentials</td><td><code>credentialsConfigured</code></td><td>Non-empty <code>air-user</code>+<code>air-password</code> in <code>~/.config/goldcrest.rc</code> (0600), or successful <code>--air-user-info</code> <span class="tag edit">assumed</span></td><td>Blocking for browse/connect. Show setup card: <strong>“Log in required”</strong> &mdash; user must supply AirVPN account credentials (not gluetun device keys).</td></tr>
+<tr><td>Country list</td><td><code>countries</code></td><td><code>--air-list --air-country all</code> <span class="tag edit">assumed</span></td><td>Quick Connect only. Never fall back to world CSV.</td></tr>
+<tr><td>Flags</td><td><code>flag</code>/<code>badge</code></td><td>ISO alpha-2 from list row (AirVPN already uses ISO)</td><td>Two-letter badge</td></tr>
+<tr><td>Key list</td><td><code>keys</code></td><td><code>--air-key-list</code> <span class="tag edit">assumed</span></td><td>Hide picker; use account default</td></tr>
+<tr><td>VPN type</td><td><code>technology</code></td><td><code>--air-vpn-type</code>; default WireGuard <span class="tag new">verified</span> (docs + gluetun)</td><td>Hide SegmentedSwitch</td></tr>
+<tr><td>Network Lock</td><td><code>settings.networkLock</code></td><td>Status line verified disabled; mutate with <code>--network-lock</code> <span class="tag new">verified</span></td><td>Hide row; mutation default <code>off</code></td></tr>
+<tr><td>Preferred country seed</td><td><code>Config.system.airvpn.preferredCountry</code></td><td>Gluetun <code>SERVER_COUNTRIES=Switzerland</code> &rarr; default <code>"CH"</code> or <code>"Switzerland"</code> once list grammar is verified <span class="tag new">verified intent</span></td><td><code>""</code> (Quick Connect chooses)</td></tr>
+</table>
+
+<div class="callout warn">
+  <strong>You need to log in &mdash; gluetun is not a login source</strong>
+  The arr-stack gluetun container proves the account exists and prefers Switzerland, but it does
+  not contain the AirVPN username/password Goldcrest needs. First-run on Bostrom is always
+  <code>needsCredentials</code>. The setup card must say so plainly (mirror NordVPN’s “Log in
+  required”), with guidance to write account credentials into <code>~/.config/goldcrest.rc</code>
+  (or a lab helper that does that). Do not invent a v1 path that imports gluetun WireGuard keys
+  or shells Hummingbird with a hand-built conf &mdash; that skips the country browser the product
+  outcome promises. Device keys stay on the Docker host and out of this repo.
+</div>
+
+<h2 id="model">4 &middot; Provider model &mdash; three providers, one route owner</h2>
+<pre><code>readonly property bool tailscaleUp: TailscaleService.connected
+readonly property bool nordUp:      NordVpnService.connected
+readonly property bool airUp:       AirVpnService.connected
+
+readonly property string routeOwner: {
+    if (root.nordUp) return "nordvpn";
+    if (root.airUp)  return "airvpn";
+    if (root.tailscaleUp &amp;&amp; TailscaleService.exitNodeId !== "") return "tailscale";
+    return "none";
+}</code></pre>
+<ul class="tight">
+  <li>Replace binary <code>otherProvider</code> with the provider that currently owns the route (<code>recoveryProvider</code> / <code>routeOwner</code>), which <code>VpnService</code> already tracks during handoff.</li>
+  <li><code>providerConnected</code> / <code>providerSettled</code> / <code>providerError</code> must switch on all three ids. For AirVPN settle, wait on <code>!airUp &amp;&amp; !AirVpnService.isMutating</code> (same as Nord).</li>
+  <li>Already-connected AirVPN country change: call <code>AirVpnService.connectTo</code> directly (Nord pattern at <code>VpnService.qml:125-128</code>) &mdash; do not re-enter handoff.</li>
+  <li>Persist country-level picks only (no city/server string with spaces), into <code>Config.system.airvpn.preferredCountry</code>.</li>
+</ul>
+
+<h2 id="contract">5 &middot; Service contract</h2>
+<p><code>AirVpnService.qml</code> mirrors <code>NordVpnService.qml</code> structure: availability probe,
+<code>CliRead</code>, debounced refresh, watchdogs, suspend Connections, mutation funnel returning
+bool. Parsing only in <code>airvpn-parse.js</code>.</p>
+
+<table>
+<tr><th>Surface</th><th>Command</th><th>Notes</th></tr>
+<tr><td><code>available</code></td><td><code>["which","goldcrest"]</code> + bluetit active</td><td><span class="tag new">verified</span></td></tr>
+<tr><td><code>state</code></td><td><code>["goldcrest","--bluetit-status"]</code></td><td>Disconnected verified; connected assumed</td></tr>
+<tr><td><code>countries</code></td><td><code>["goldcrest","--air-list","--air-country","all"]</code></td><td>Needs credentials</td></tr>
+<tr><td><code>keys</code></td><td><code>["goldcrest","--air-key-list"]</code></td><td>Needs credentials</td></tr>
+<tr><td><code>connect(country, opts)</code></td><td><code>["goldcrest","--air-connect","--async","--network-lock","off"]</code> + optional <code>--air-country</code> / <code>--air-vpn-type</code> / <code>--air-key</code></td><td>Hard-code <code>--async</code> and default lock off in the only mutation helper; assert in harness</td></tr>
+<tr><td><code>disconnect()</code></td><td><code>["goldcrest","--disconnect"]</code></td><td>Assumed runtime</td></tr>
+</table>
+
+<div class="callout stop">
+  <strong>Never put <code>--air-password</code> on Process argv</strong>
+  Credentials live only in <code>~/.config/goldcrest.rc</code> mode <code>0600</code>. Setup card
+  instructs / uses a lab helper to write that file; Ambxst Config never sees the password.
+</div>
+
+<h3>Environment on Bostrom</h3>
+<ul class="tight">
+  <li>Suite 2.1.0, OpenSSL 3 build, SHA-512 verified.</li>
+  <li><code>bostrom</code> &isin; <code>airvpn</code>; D-Bus client policy allows the group.</li>
+  <li><code>/etc/airvpn</code> owned <code>root:airvpn</code> mode <code>750</code>.</li>
+  <li><code>airconnectatboot</code> / <code>networklockpersist</code> off. Leave them off.</li>
+  <li>Ambxst must call <code>goldcrest</code>, never distro/Suite <code>hummingbird</code>.</li>
+  <li>After <code>usermod -aG airvpn</code>, the graphical session must be restarted so Quickshell inherits the group (same class of bug as NordVPN group membership).</li>
+</ul>
+
+<h2 id="state">6 &middot; State model and display text</h2>
+<pre><code>// AirVpnService.qml — mirror NordVpnService derived booleans
+property string state: "unavailable"
+// unavailable | needsCredentials | disconnected | connecting | connected | disconnecting | error
+
+readonly property bool connected:        state === "connected"
+readonly property bool connecting:       state === "connecting"
+readonly property bool disconnecting:    state === "disconnecting"
+readonly property bool needsCredentials: state === "needsCredentials"
+    || (available &amp;&amp; !credentialsConfigured)</code></pre>
+<p>Reuse <code>VpnService.statusTextFor(provider)</code> direction scoping. Panel
+<code>statusText</code> mirrors <code>NordVpnPanel.qml:38-59</code> (handoff first, then
+permission / available / daemon / credentials / connecting / &hellip;).</p>
+
+<pre><code>connect(country = "", opts = {}):
+  argv = ["goldcrest", "--air-connect", "--async",
+          "--network-lock", opts.networkLock === true ? "on" : "off"]
+  if (opts.vpnType) argv += ["--air-vpn-type", opts.vpnType]
+  if (opts.key)     argv += ["--air-key", opts.key]
+  if (country)      argv += ["--air-country", country]
+  return runMutation(argv)  // bool; set state "connecting" on true</code></pre>
+
+<h2 id="ux">7 &middot; UX specification</h2>
+<div class="mock-grid">
+  <div class="stage">
+    <p class="stage-label">Provider hub</p>
+    <div class="panel">
+      <div class="panel-head"><b>VPN</b></div>
+      <div class="provider">
+        <div class="logo">TS</div>
+        <div class="copy"><b>Tailscale</b><small>Mesh devices, exit nodes, profiles</small></div>
+        <span class="status">Mesh only</span>
+      </div>
+      <div class="provider">
+        <div class="logo" style="background:#4687ff;color:#fff">N</div>
+        <div class="copy"><b>NordVPN</b><small>Live servers, locations, and P2P routing</small></div>
+        <span>&#8250;</span>
+      </div>
+      <div class="provider active">
+        <div class="logo">A</div>
+        <div class="copy"><b>AirVPN</b><small>Countries, WireGuard / OpenVPN</small></div>
+        <span class="status">Connected</span>
+      </div>
+    </div>
+  </div>
+  <div class="stage">
+    <p class="stage-label">AirVPN page</p>
+    <div class="panel">
+      <div class="panel-head"><b>AirVPN</b><span class="switch on"></span></div>
+      <div class="provider active">
+        <div class="copy"><b>&#127464;&#127469; Switzerland</b><small>Achernar &middot; WireGuard &middot; lock off</small></div>
+      </div>
+      <div class="seg"><span class="selected">WireGuard</span><span>OpenVPN</span></div>
+      <div class="search">Search countries</div>
+      <div class="country"><span class="flag">&#9889;</span><span class="name">Quick Connect</span><small>Best available</small></div>
+      <div class="country"><span class="flag">&#127464;&#127469;</span><span class="name">Switzerland</span><span class="badge">Connected</span></div>
+      <div class="country"><span class="flag">&#127475;&#127473;</span><span class="name">Netherlands</span><small>NL</small></div>
+    </div>
+  </div>
+</div>
+
+<ul class="tight">
+  <li>Hub purpose line: match NordVPN's concrete style &mdash; <em>"Countries, WireGuard / OpenVPN"</em>.</li>
+  <li><strong>Setup / login card</strong> when <code>needsCredentials</code> (the expected first-run state): headline <em>“Log in required”</em>, copy that an AirVPN account is needed and that the arr-stack gluetun tunnel is separate. Guidance to put <code>air-user</code> / <code>air-password</code> in <code>~/.config/goldcrest.rc</code> (mode <code>0600</code>) or run a lab helper. Optional “I’ve logged in — Refresh” action that re-probes <code>--air-user-info</code>. No password <code>TextField</code> that writes Ambxst Config.</li>
+  <li>Advanced: Network Lock with explicit warning that enabling it can drop Tailscale/SSH on this host.</li>
+  <li>Seed default preferred country from gluetun once list tokens are verified (Switzerland / CH).</li>
+</ul>
+
+<h3>7.3 State &times; surface matrix</h3>
+<table>
+<tr><th><code>state</code></th><th>Hub</th><th>Page</th><th>Primary action</th></tr>
+<tr><td><code>unavailable</code></td><td>Not installed</td><td>Not installed</td><td>Setup guidance</td></tr>
+<tr><td><code>needsCredentials</code></td><td>Log in required</td><td>Log in required</td><td>Setup / login card</td></tr>
+<tr><td><code>disconnected</code></td><td>Off</td><td>Disconnected</td><td>Quick Connect</td></tr>
+<tr><td><code>connecting</code></td><td>Connecting&hellip;</td><td>Connecting&hellip;</td><td>Disabled</td></tr>
+<tr><td><code>connected</code></td><td>Connected</td><td>country [&middot; server]</td><td>Disconnect</td></tr>
+<tr><td><code>disconnecting</code></td><td>Disconnecting&hellip;</td><td>Disconnecting&hellip;</td><td>Disabled</td></tr>
+<tr><td><code>error</code></td><td>Error</td><td><code>lastError</code></td><td>Retry</td></tr>
+</table>
+
+<h3>7.4 Config</h3>
+<pre><code>"airvpn": {
+    "enabled": true,
+    "showInBar": false,
+    "pollInterval": 20,
+    "preferredVpnType": "wireguard",
+    "preferredCountry": "",
+    "preferredKey": "",
+    "networkLock": false
+}</code></pre>
+<p>Both <code>config/defaults/system.js</code> and <code>config/Config.qml</code>. No secrets.</p>
+
+<h2 id="files">8 &middot; Component plan (mirror NordVPN file set)</h2>
+<table>
+<tr><th></th><th>File</th><th>Copy shape from</th><th>Budget</th></tr>
+<tr><td><span class="tag new">new</span></td><td><code>AirVpnService.qml</code></td><td><code>NordVpnService.qml</code> (CliRead, latches, watchdogs, syncCountries)</td><td>&le; 500</td></tr>
+<tr><td><span class="tag new">new</span></td><td><code>AirVpnCountry.qml</code></td><td><code>NordVpnCountry.qml</code> (ISO already native; may skip iso.js map)</td><td>&le; 60</td></tr>
+<tr><td><span class="tag new">new</span></td><td><code>airvpn-parse.js</code></td><td><code>nordvpn-parse.js</code></td><td>&le; 200</td></tr>
+<tr><td><span class="tag edit">edit</span></td><td><code>VpnService.qml</code></td><td>Add <code>airUp</code>; table-drive connect/disconnect/settle/error/label</td><td>&mdash;</td></tr>
+<tr><td><span class="tag new">new</span></td><td><code>AirVpnPanel.qml</code></td><td><code>NordVpnPanel.qml</code> (pinned titlebar+search)</td><td>&le; 220</td></tr>
+<tr><td><span class="tag new">new</span></td><td><code>AirVpnPanelHeader.qml</code></td><td><code>NordVpnPanelHeader.qml</code></td><td>&le; 200</td></tr>
+<tr><td><span class="tag new">new</span></td><td><code>AirVpnCountryItem.qml</code></td><td><code>NordVpnCountryItem.qml</code></td><td>&le; 180</td></tr>
+<tr><td><span class="tag new">new</span></td><td><code>AirVpnSetupCard.qml</code></td><td><code>NordVpnSetupCard.qml</code></td><td>&le; 120</td></tr>
+<tr><td><span class="tag new">new</span></td><td><code>AirVpnConnectionCard.qml</code></td><td><code>NordVpnConnectionCard.qml</code></td><td>&le; 120</td></tr>
+<tr><td><span class="tag new">new</span></td><td><code>AirVpnAdvancedCard.qml</code></td><td><code>NordVpnAdvancedCard.qml</code></td><td>&le; 160</td></tr>
+<tr><td><span class="tag edit">edit</span></td><td><code>VpnPanel.qml</code></td><td>Third hub card; Loader branch <code>"airvpn"</code></td><td>&mdash;</td></tr>
+<tr><td><span class="tag edit">edit</span></td><td><code>SettingsIndex.qml</code>, defaults, Config, <code>shell.qml</code>, <code>check-prereqs.sh</code></td><td>NordVPN entries as template</td><td>&mdash;</td></tr>
+<tr><td><span class="tag new">new</span></td><td><code>lab/fixtures/airvpn/*</code> + <code>lab/test-airvpn-parse.sh</code></td><td>NordVPN harness</td><td>&mdash;</td></tr>
+</table>
+
+<p>Hard rules unchanged: no inline delegate/header &gt; 40 lines, max nesting 8, budget breach = review failure. NordVPN as-built already overran a few budgets honestly &mdash; AirVPN should aim for the budgets and note overruns the same way.</p>
+
+<h2 id="conventions">9 &middot; Hazards</h2>
+<ul class="tight">
+  <li>All NordVPN &sect;9 hazards still apply (Switch latch, StyledRect, no hardcoded colors, reuseItems reset, Icons catalog).</li>
+  <li><code>--async</code> mandatory on connect.</li>
+  <li>Network Lock default off in Config <em>and</em> in connect argv.</li>
+  <li>No password on argv; no WG keys in Config/git.</li>
+  <li>Group membership requires session restart for Ambxst.</li>
+  <li>Call <code>goldcrest</code> only.</li>
+  <li>Gate controls on <code>isMutating</code>, never on <code>isReading</code>.</li>
+</ul>
+
+<h2 id="phases">10 &middot; Delivery gates</h2>
+<div class="phase">
+  <h3><span class="num">00</span>Branch + this plan</h3>
+  <p>Cut <code>feature/airvpn-provider-widget</code> from current trunk (or stack after NordVPN merges). Commit this document.</p>
+  <p><strong>Gate:</strong> plan on branch; Tailscale + NordVPN unaffected under <code>lab/run-isolated.sh</code>.</p>
+</div>
+<div class="phase">
+  <h3><span class="num">01</span>Install + disconnected fixtures</h3>
+  <p>Mostly done. Commit redacted <code>bluetit-status-disconnected</code> + help fixtures; teach <code>check-prereqs.sh</code>.</p>
+</div>
+<div class="phase">
+  <h3><span class="num">02</span>Log in + credentialed recon</h3>
+  <p><strong>Jay must log in</strong> with the real AirVPN account (Bitwarden or airvpn.org client
+  area) &mdash; gluetun does not provide this. Write user/password only to
+  <code>bostrom:~/.config/goldcrest.rc</code> mode <code>0600</code>; never commit it. Then capture
+  country list, key list, connected status, and one async connect/disconnect with a second SSH
+  session open and Network Lock off.</p>
+</div>
+<div class="phase">
+  <h3><span class="num">03</span>Service + parsers</h3>
+  <p>Clone NordVPN service shape; harness green; inert while dashboard closed.</p>
+</div>
+<div class="phase">
+  <h3><span class="num">04</span>Panel</h3>
+  <p>Hub card, Loader, setup/connection/advanced cards, country list, WireGuard/OpenVPN switch.</p>
+</div>
+<div class="phase">
+  <h3><span class="num">05</span>Three-way handoff</h3>
+  <p>Table-driven <code>VpnService</code>. Test Nord &harr; Air, Tailscale-exit &harr; Air, cancel, recover.</p>
+</div>
+
+<h2 id="tests">11 &middot; Test protocol</h2>
+<pre><code>lab/test-airvpn-parse.sh          # node harness, same shape as NordVPN
+lab/fixtures/airvpn/
+    bluetit-status-disconnected.txt
+    bluetit-status-connected.txt  # Phase 02
+    air-list-countries.txt
+    air-key-list.txt
+    help.txt
+    status-garbage.txt</code></pre>
+<p>Also assert in a small unit/check that every connect argv contains <code>--async</code> and defaults
+<code>--network-lock off</code>.</p>
+
+<h2 id="risks">12 &middot; Risks</h2>
+<table>
+<tr><th>Risk</th><th>Response</th></tr>
+<tr><td>Copying the NordVPN <em>plan</em> but not the as-built latches</td><td>&sect;2 is the checklist; review against NordVpnService line cites</td></tr>
+<tr><td>Binary VpnService helpers left as-is</td><td>Phase 05 gate: every ordered pair of commercial providers</td></tr>
+<tr><td>Connect without <code>--async</code></td><td>Hard-code + harness assert</td></tr>
+<tr><td>Network Lock lockout</td><td>Default off; second SSH during tests; <code>--recover-network</code> break-glass</td></tr>
+<tr><td>Treating gluetun WG keys as login / skipping login UX</td><td>First-run is always “Log in required”; Appendix B; no key-import shortcut in v1</td></tr>
+<tr><td>World CSV as country list</td><td>&sect;3 forbids it</td></tr>
+<tr><td>Password in Config / git</td><td>goldcrest.rc 0600 only; public-repo review</td></tr>
+</table>
+
+<h2 id="acceptance">13 &middot; Acceptance criteria</h2>
+<ul class="tight">
+  <li>Hub shows Tailscale, NordVPN, and AirVPN with live status copy matching each panel's matrix.</li>
+  <li>Before login, hub and page both show <strong>Log in required</strong>; setup card explains the AirVPN account is needed and that arr-stack gluetun is separate.</li>
+  <li>AirVPN Quick Connect uses <code>--async</code>; disconnect works; country search + select works once the user has logged in.</li>
+  <li>Handoffs among all three are confirmed, timeout-bounded, recoverable; no cross-provider phase text.</li>
+  <li>Controls gate on <code>isMutating</code> only; titlebar/search stay focused while filtering.</li>
+  <li>Network Lock off by default; never enabled implicitly.</li>
+  <li>No secrets/IPs in Config, fixtures, logs, or git.</li>
+  <li>Files follow as-built NordVPN decomposition; parsers harnessed under node.</li>
+</ul>
+
+<h2 id="install">Appendix A &middot; Bostrom install (2026-08-01)</h2>
+<pre><code># SHA-512 verified OpenSSL-3 build
+https://eddie.website/repository/AirVPN-Suite/2.1.0/AirVPN-Suite-x86_64-2.1.0.tar.gz
+
+printf 'y\ny\ny\nn\ny\n' | sudo ./install.sh   # install, enable, start, no airvpn user, create group
+sudo usermod -aG airvpn bostrom
+sudo chown -R root:airvpn /etc/airvpn &amp;&amp; sudo chmod 750 /etc/airvpn
+
+systemctl is-active bluetit.service          # active
+sg airvpn -c 'goldcrest --bluetit-status'    # not connected; network lock disabled</code></pre>
+<p>Restart the graphical session so Ambxst inherits group <code>airvpn</code>.</p>
+
+<h2 id="creds">Appendix B &middot; Account login vs arr-stack gluetun</h2>
+
+<div class="callout stop">
+  <strong>You need to log in</strong>
+  There is a real AirVPN account. Bostrom is not logged in. The panel’s first-run state is
+  <em>Log in required</em> until account credentials exist in
+  <code>~/.config/goldcrest.rc</code>. Gluetun on the arr stack is a separate, already-configured
+  WireGuard consumer of that same account &mdash; it is not a credential source for Ambxst.
+</div>
+
+<div class="callout">
+  <strong>Arr-stack gluetun (context only)</strong><br>
+  Host: <code>jay@100.115.232.74lt;arr-stack host, on the Tailnet&gt;</code> &middot;
+  Compose: <code>$HOME/homelab/arr-stack/</code><br>
+  Confirms provider <code>airvpn</code>, type WireGuard, preferred country Switzerland
+  (live Achernar / Zurich). Holds device keys only &mdash; no <code>OPENVPN_USER</code>/<code>PASSWORD</code>.
+  Useful solely as a default-country hint after login; never as a login path.
+</div>
+
+<p><strong>Phase 02 &mdash; log in on Bostrom:</strong> take the AirVPN account username + password from
+Bitwarden (or the airvpn.org client area). Write them only to
+<code>bostrom:~/.config/goldcrest.rc</code> mode <code>0600</code>. Never commit. Then capture
+credentialed fixtures. Arr-stack WireGuard keys stay on the Docker host.</p>
+
+<pre><code># On Bostrom only — never commit
+install -m 700 -d ~/.config
+cat &gt; ~/.config/goldcrest.rc &lt;&lt;'EOF'
+air-user       YOUR_USERNAME
+air-password   YOUR_PASSWORD
+EOF
+chmod 600 ~/.config/goldcrest.rc
+sg airvpn -c 'goldcrest --air-user-info'          # probe; scrub output
+sg airvpn -c 'goldcrest --air-list --air-country all' | head
+</code></pre>
+
+<p class="footer">Aspect Ambxst &middot; AirVPN provider widget plan v1.1 &middot; 2026-08-01<br>
+Grounded in as-built NordVPN on <code>feature/nordvpn-live-widget</code>. First-run requires
+AirVPN account login on Bostrom; arr-stack gluetun is not a substitute.</p>
+</main>
+</div>
+</body>
+</html>

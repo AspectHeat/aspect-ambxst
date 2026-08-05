@@ -1,0 +1,15 @@
+{
+    "parser": "status",
+    "exitCode": 0,
+    "expectExact": {
+        "state": "disconnected",
+        "daemonReachable": true,
+        "needsCredentials": false,
+        "networkLock": false,
+        "networkLockKnown": true,
+        "country": "",
+        "server": "",
+        "technology": ""
+    },
+    "refute": ["ip", "address", "unknownStatus"]
+}

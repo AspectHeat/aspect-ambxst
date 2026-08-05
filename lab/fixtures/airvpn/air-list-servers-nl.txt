@@ -1,0 +1,88 @@
+Goldcrest - AirVPN Bluetit Client 2.1.0 - 15 June 2026
+
+2026-08-04 20:17:25 Reading run control directives from file $HOME/.config/goldcrest.rc
+2026-08-04 20:17:25 Bluetit - AirVPN WireGuard/OpenVPN3 Service 2.1.0 - 15 June 2026
+2026-08-04 20:17:25 OpenVPN core 3.12 AirVPN (20260514) linux x86_64 64-bit
+2026-08-04 20:17:25 Copyright (C) 2012- OpenVPN Inc. All rights reserved.
+2026-08-04 20:17:25 OpenSSL 3.6.3 9 Jun 2026
+2026-08-04 20:17:25 AirVPN WireGuard Client 2.0.0 Linux x86_64 64-bit
+2026-08-04 20:17:25 Bluetit options successfully reset
+2026-08-04 20:17:25 ** AirVPN Server List (76) **
+2026-08-04 20:17:25 Name                 Country                        Location            
+2026-08-04 20:17:25 -------------------- ------------------------------ --------------------
+2026-08-04 20:17:25 Alchiba              Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Alcyone              Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Aljanah              Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Alphard              Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Alphecca             Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Alpheratz            Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Alphirk              Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Alrai                Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Alshat               Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Alterf               Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Alzirr               Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Ancha                Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Andromeda            Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Anser                Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Asellus              Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Aspidiske            Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Atik                 Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Canis                Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Capella              Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Caph                 Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Celaeno              Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Chara                Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Comae                Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Crater               Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Cygnus               Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Dalim                Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Dedalus              Netherlands                    Amsterdam           
+2026-08-04 20:17:25 Diphda               Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Edasich              Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Elnath               Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Eltanin              Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Felix                Netherlands                    Amsterdam           
+2026-08-04 20:17:25 Garnet               Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Gianfar              Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Gienah               Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Hassaleh             Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Horologium           Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Hyadum               Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Hydrus               Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Jabbah               Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Kajam                Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Kocab                Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Larawag              Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Luhman               Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Maasym               Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Matar                Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Melnick              Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Menkent              Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Merga                Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Mirach               Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Miram                Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Muhlifain            Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Muscida              Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Musica               Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Nash                 Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Orion                Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Phaet                Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Piautos              Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Piscium              Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Pleione              Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Pyxis                Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Rukbat               Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Sadr                 Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Salm                 Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Scuti                Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Sheliak              Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Situla               Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Subra                Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Suhail               Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Taiyangshou          Netherlands                    Amsterdam           
+2026-08-04 20:17:25 Talitha              Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Tarazed              Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Tiaki                Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Tianyi               Netherlands                    Alblasserdam        
+2026-08-04 20:17:25 Vindemiatrix         Netherlands                    Amsterdam           
+2026-08-04 20:17:25 Zibal                Netherlands                    Alblasserdam        

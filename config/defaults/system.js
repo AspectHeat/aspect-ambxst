@@ -18,6 +18,16 @@ var data = {
         "preferredCountry": "",
         "favoriteCountries": []
     },
+    "airvpn": {
+        "enabled": true,
+        "showInBar": false,
+        "pollInterval": 20,
+        "preferredVpnType": "wireguard",
+        "preferredCountry": "",
+        "preferredKey": "",
+        "networkLock": false,
+        "favoriteCountries": []
+    },
     "vpn": {
         "handoffPolicy": "confirm"
     },

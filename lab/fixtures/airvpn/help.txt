@@ -1,0 +1,86 @@
+Goldcrest - AirVPN Bluetit Client 2.1.0 - 15 June 2026
+
+2026-08-04 20:17:26 Reading run control directives from file $HOME/.config/goldcrest.rc
+usage: goldcrest [options] [config-file]
+
+--help, -h                    : Show the help page
+--version, -v                 : Show version info
+--bluetit-status              : Show Bluetit status and exit
+--bluetit-stats               : Show Bluetit connection statistics and exit
+--air-connect, -O             : Start AirVPN connection
+--air-server, -S              : AirVPN server name <pattern>
+--air-country, -Z             : AirVPN country or continent <pattern|country ISO code|continent code>
+--air-vpn-type, -f            : VPN type for AirVPN connection <wireguard|openvpn>
+--air-tls-mode, -T            : TLS mode for AirVPN connection <auto|auth|crypt>
+--air-ipv6, -V                : IPv6 mode for AirVPN connection <on|off>
+--air-4to6, -n                : Enable IPv4 over IPv6 tunnel for AirVPN connection <on|off>
+--air-6to4, -B                : Enable IPv6 over IPv4 tunnel for AirVPN connection <on|off>
+--air-user, -U                : AirVPN user name
+--air-password, -P            : AirVPN user password
+--air-key, -F                 : AirVPN user key <name>
+--air-key-list, -K            : AirVPN user key list
+--air-key-load, -Q            : Load (use) AirVPN user key from local file <file_name>
+--air-user-info               : Show information about an AirVPN user
+--air-save, -W                : Save an AirVPN server, country profile or user key to local file <file_name>
+--air-info, -I                : AirVPN info (requires --air-server or --air-country)
+--air-list, -L                : AirVPN server or country list <pattern>
+--air-sort                    : Ascending order sort criterion for AirVPN server list <name|location|score|load|users|bandwidth|maxbandwidth> Default name (requires --air-list and --air-server)
+--air-rsort                   : Descending order sort criterion for AirVPN server list <name|location|score|load|users|bandwidth|maxbandwidth> (requires --air-list and --air-server)
+--air-limit                   : AirVPN server or country list items limit <number> (requires --air-list)
+--air-white-server-list, -G   : AirVPN white server list <list>
+--air-black-server-list, -M   : AirVPN black server list <list>
+--air-white-country-list, -J  : AirVPN white country list <list>
+--air-black-country-list, -X  : AirVPN black country list <list>
+--air-bootserver-info         : List AirVPN boot server information and ranking
+--async                       : Enable asynchronous connection for --air-connect option and user VPN profiles
+--cipher, -C                  : Encrypt packets with specific cipher algorithm <alg>
+--list-data-ciphers, -D       : List supported data ciphers
+--server, -s                  : Server override
+--proto, -p                   : Protocol override <udp|tcp>
+--port, -R                    : Port override
+--tcp-queue-limit, -l         : Size of TCP packet queue <1-65535> default 8192
+--allowuaf, -6                : Allow unused address families <yes|no|default>
+--mtu, -r                     : WireGuard MTU
+--network-lock, -N            : Network filter and lock mode <on|iptables|nftables|pf|off> Default on
+--network-lock (async), -N    : Network filter and lock mode (asynchronous mode) <on|off|noprivate>
+--allow-private-network       : Allow private IPv4 and IPv6 network classes to pass to and from the network filter. Default on
+--allow-ping                  : Allow ping to pass to and from the network filter. <on|off|input|output> Default output
+--allow-ipv6ndp               : Allow IPv6 NDP to pass to and from the network filter. <on|off> Default on
+--ignore-dns-push, -i         : Ignore DNS push request and use system DNS settings
+--timeout, -t                 : Connection timeout <seconds>
+--compress, -c                : Compression mode <yes|no|asym>
+--pk-password, -z             : Private key password
+--tvm-override, -m            : tls-version-min override <disabled|default|tls_1_x>
+--tcprof-override, -o         : tls-cert-profile override <legacy|preferred|...>
+--proxy-host, -y              : HTTP proxy hostname/IP
+--proxy-port, -q              : HTTP proxy port
+--proxy-username, -u          : HTTP proxy username
+--proxy-password, -w          : HTTP proxy password
+--proxy-basic, -b             : Allow HTTP basic auth
+--alt-proxy, -A               : Enable alternative proxy module
+--no-cert, -x                 : Disable client certificate
+--def-keydir, -k              : Default key direction <bi|0|1>
+--ssl-debug                   : SSL debug level
+--auto-sess, -a               : Request autologin session
+--auth-retry, -Y              : Retry connection on auth failure
+--persist-tun, -j             : Keep TUN interface open across reconnections
+--peer-info, -e               : Peer information key/value list in the form K1=V1,K2=V2,...
+--gremlin, -g                 : Gremlin information <send_delay_ms|recv_delay_ms|send_drop_prob|recv_drop_prob>
+--epki-ca                     : Simulate external PKI certificate supporting intermediate/root certificates
+--epki-cert                   : Simulate external PKI certificate
+--epki-key                    : Simulate external PKI private key
+--gui-version, -E             : Set custom gui version <text>
+--recover-network, -H         : Recover network settings after a crash or unexpected exit
+--remove-wireguard-device     : Remove any existing WireGuard tunnel device after a crash or unexpected exit
+--disconnect                  : Disconnect the VPN session, including Bluetit boot connection
+--pause                       : Pause the VPN connection, including Bluetit boot connection
+--resume                      : Resume a paused VPN connection, including Bluetit boot connection
+--reconnect                   : Reconnect the VPN connection, including Bluetit boot connection
+
+Open Source Project by AirVPN (https://airvpn.org)
+
+Linux and macOS design, development and coding by ProMIND
+
+Special thanks to the AirVPN community for the valuable help,
+support, suggestions and testing.
+

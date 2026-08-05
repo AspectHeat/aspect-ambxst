@@ -1,0 +1,29 @@
+{
+    "parser": "countries",
+    "count": 23,
+    "countKey": "countries",
+    "declaredCountMatchesRows": true,
+    "expect": {
+        "error": "",
+        "needsCredentials": false,
+        "declaredCount": 23,
+        "countries.0.code": "AT",
+        "countries.0.name": "Austria",
+        "countries.0.servers": 3,
+        "countries.0.users": 487,
+        "countries.0.load": 64,
+        "countries.22.code": "US",
+        "countries.22.name": "United States of America",
+        "countries.22.servers": 48,
+        "countries.22.load": 35
+    },
+    "includesCodes": ["CH", "NL", "JP", "TW", "GB", "US"],
+    "includesNames": [
+        "Switzerland",
+        "Netherlands",
+        "Republic of China (Taiwan)",
+        "United Kingdom",
+        "New Zealand",
+        "Czech Republic"
+    ]
+}

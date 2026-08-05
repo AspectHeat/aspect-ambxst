@@ -1,0 +1,10 @@
+{
+    "parser": "countries",
+    "exitCode": 1,
+    "count": 0,
+    "countKey": "countries",
+    "expect": {
+        "error": "AirVPN country not found",
+        "needsCredentials": false
+    }
+}

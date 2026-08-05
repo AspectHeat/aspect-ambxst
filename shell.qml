@@ -304,6 +304,7 @@ ShellRoot {
             // modules/services/AGENTS.md:40, which lists unregistered services as an
             // anti-pattern. Reading a property is what forces singleton construction.
             _ = NordVpnService.available;
+            _ = AirVpnService.available;
             _ = VpnService.routeOwner;
         }
     }

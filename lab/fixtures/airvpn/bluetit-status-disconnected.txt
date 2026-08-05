@@ -1,0 +1,10 @@
+Goldcrest - AirVPN Bluetit Client 2.1.0 - 15 June 2026
+
+2026-08-04 20:17:18 Reading run control directives from file $HOME/.config/goldcrest.rc
+2026-08-04 20:17:18 Bluetit - AirVPN WireGuard/OpenVPN3 Service 2.1.0 - 15 June 2026
+2026-08-04 20:17:18 OpenVPN core 3.12 AirVPN (20260514) linux x86_64 64-bit
+2026-08-04 20:17:18 Copyright (C) 2012- OpenVPN Inc. All rights reserved.
+2026-08-04 20:17:18 OpenSSL 3.6.3 9 Jun 2026
+2026-08-04 20:17:18 AirVPN WireGuard Client 2.0.0 Linux x86_64 64-bit
+2026-08-04 20:17:18 Network filter and lock is disabled
+2026-08-04 20:17:18 Bluetit is not connected

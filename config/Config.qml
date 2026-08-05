@@ -1027,6 +1027,28 @@ Singleton {
                 // stable country identity and valid connect targets.
                 property list<string> favoriteCountries: []
             }
+            property JsonObject airvpn: JsonObject {
+                property bool enabled: true
+                property bool showInBar: false
+                property int pollInterval: 20
+                // "wireguard" | "openvpn". Consumers must treat anything that is not
+                // "openvpn" as WireGuard rather than comparing against "wireguard"
+                // exactly, so a typo cannot flip the default away from the Suite's own.
+                property string preferredVpnType: "wireguard"
+                // ISO alpha-2, e.g. "CH". AirVPN prints ISO codes natively and accepts
+                // them as --air-country arguments, so one string is both identity and
+                // connect target.
+                property string preferredCountry: ""
+                // An AirVPN device key NAME, never key material. Empty means the
+                // account default.
+                property string preferredKey: ""
+                // Network filter and lock. A CONNECT-TIME preference, applied on the
+                // next connect rather than mutated live: enabling the filter on a
+                // running session can drop Tailscale and SSH, which is the only remote
+                // access to the test machine. Off by default, never enabled implicitly.
+                property bool networkLock: false
+                property list<string> favoriteCountries: []
+            }
             property JsonObject vpn: JsonObject {
                 // "confirm" | "immediate" - whether switching providers asks first.
                 property string handoffPolicy: "confirm"

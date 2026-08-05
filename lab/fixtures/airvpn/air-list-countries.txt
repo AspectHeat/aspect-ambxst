@@ -1,0 +1,35 @@
+Goldcrest - AirVPN Bluetit Client 2.1.0 - 15 June 2026
+
+2026-08-04 20:17:24 Reading run control directives from file $HOME/.config/goldcrest.rc
+2026-08-04 20:17:24 Bluetit - AirVPN WireGuard/OpenVPN3 Service 2.1.0 - 15 June 2026
+2026-08-04 20:17:24 OpenVPN core 3.12 AirVPN (20260514) linux x86_64 64-bit
+2026-08-04 20:17:25 Copyright (C) 2012- OpenVPN Inc. All rights reserved.
+2026-08-04 20:17:25 OpenSSL 3.6.3 9 Jun 2026
+2026-08-04 20:17:25 AirVPN WireGuard Client 2.0.0 Linux x86_64 64-bit
+2026-08-04 20:17:25 Bluetit options successfully reset
+2026-08-04 20:17:25 ** AirVPN Country List (23) **
+2026-08-04 20:17:25 ISO Code Name                           Servers Users Bandwidth    Max BW    Load
+2026-08-04 20:17:25 -------- ------------------------------ ------- ----- ------------ ---------- ----
+2026-08-04 20:17:25 AT       Austria                              3   487  3.87 Gbit/s 6.00 Gbit/s  64%
+2026-08-04 20:17:25 BE       Belgium                              5   832  8.10 Gbit/s 10.00 Gbit/s  80%
+2026-08-04 20:17:25 BG       Bulgaria                             2   313  2.64 Gbit/s 4.00 Gbit/s  66%
+2026-08-04 20:17:25 BR       Brazil                               1   149  1.92 Gbit/s 2.00 Gbit/s  96%
+2026-08-04 20:17:25 CA       Canada                              38  7232 83.59 Gbit/s 148.00 Gbit/s  56%
+2026-08-04 20:17:25 CH       Switzerland                          8  2364 24.16 Gbit/s 52.00 Gbit/s  46%
+2026-08-04 20:17:25 CZ       Czech Republic                       3   345  4.07 Gbit/s 6.00 Gbit/s  67%
+2026-08-04 20:17:25 DE       Germany                             14  2608 31.85 Gbit/s 82.00 Gbit/s  38%
+2026-08-04 20:17:25 EE       Estonia                              1   121  1.94 Gbit/s 2.00 Gbit/s  96%
+2026-08-04 20:17:25 ES       Spain                                4   522  7.06 Gbit/s 8.00 Gbit/s  88%
+2026-08-04 20:17:25 GB       United Kingdom                       6  1557 26.76 Gbit/s 120.00 Gbit/s  22%
+2026-08-04 20:17:25 IE       Ireland                              1   160 882.56 Mbit/s 2.00 Gbit/s  44%
+2026-08-04 20:17:25 JP       Japan                                8   905 10.08 Gbit/s 16.00 Gbit/s  62%
+2026-08-04 20:17:25 LV       Latvia                               4   374  3.05 Gbit/s 8.00 Gbit/s  38%
+2026-08-04 20:17:25 NL       Netherlands                         76 11639 116.12 Gbit/s 278.00 Gbit/s  41%
+2026-08-04 20:17:25 NO       Norway                               5   630  7.59 Gbit/s 10.00 Gbit/s  75%
+2026-08-04 20:17:25 NZ       New Zealand                          4   714  5.33 Gbit/s 8.00 Gbit/s  66%
+2026-08-04 20:17:25 RO       Romania                              3   566  7.08 Gbit/s 24.00 Gbit/s  29%
+2026-08-04 20:17:25 RS       Serbia                               2   267  2.10 Gbit/s 4.00 Gbit/s  52%
+2026-08-04 20:17:25 SE       Sweden                              13  1663 10.73 Gbit/s 44.00 Gbit/s  24%
+2026-08-04 20:17:25 SG       Singapore                            7   797  8.40 Gbit/s 14.00 Gbit/s  59%
+2026-08-04 20:17:25 TW       Republic of China (Taiwan)           1   112  1.10 Gbit/s 2.00 Gbit/s  55%
+2026-08-04 20:17:25 US       United States of America            48 10711 158.07 Gbit/s 446.00 Gbit/s  35%
