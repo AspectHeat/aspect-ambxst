@@ -120,9 +120,9 @@ function parseRunControl(text) {
 //     Network filter and lock is disabled
 //     Bluetit is not connected
 //
-// The connected/connecting forms are UNVERIFIED - they need an account. Per the NordVPN
-// lesson, an unrecognized status becomes "error", never "disconnected": that default is what
-// let v1 of the NordVPN widget report a live tunnel as merely off.
+// Connected and disconnected forms are verified against Goldcrest 2.1 fixtures. Per the
+// NordVPN lesson, an unrecognized status becomes "error", never "disconnected": that default
+// is what let v1 of the NordVPN widget report a live tunnel as merely off.
 function parseBluetitStatus(output, exitCode) {
     var text = stripTimestamps(output);
     var lines = contentLines(output).filter(function (line) { return !isBoilerplate(line); });
@@ -182,7 +182,7 @@ function parseBluetitStatus(output, exitCode) {
         result.state = "disconnecting";
         return result;
     }
-    if (/bluetit is (?:now )?connected/i.test(text)) {            // UNVERIFIED
+    if (/bluetit is (?:now )?connected|connected to airvpn server/i.test(text)) {
         result.state = "connected";
         Object.assign(result, parseConnectionDetail(output, lines));
         return result;
@@ -199,9 +199,6 @@ function parseBluetitStatus(output, exitCode) {
     return result;
 }
 
-// UNVERIFIED in its entirety. Two shapes are tried because the connected form was never
-// captured: "Key: Value" detail lines, and a trailing "connected to <server>" clause.
-//
 // Deliberately NOT surfaced: the assigned/exit IP. Dropped at the parser boundary exactly as
 // nordvpn-parse.js does, so no property downstream could leak it into a log or a screenshot
 // of a public repo.
@@ -215,7 +212,14 @@ function parseConnectionDetail(output, lines) {
 
     if (detail.server === "") {
         for (var i = 0; i < lines.length; i++) {
-            var match = lines[i].match(/bluetit is (?:now )?connected to ([^\s,]+)/i);
+            var match = lines[i].match(/connected to airvpn server\s+([^\s(,]+)\s*\(([^)]+)\)/i);
+            if (match) {
+                detail.server = match[1];
+                var locationParts = match[2].split(",");
+                detail.country = locationParts[locationParts.length - 1].trim();
+                break;
+            }
+            match = lines[i].match(/bluetit is (?:now )?connected to ([^\s,]+)/i);
             if (match) {
                 detail.server = match[1];
                 break;
@@ -237,9 +241,9 @@ function parseConnectionDetail(output, lines) {
 // returned trimmed rather than forced, so an added type shows through instead of vanishing.
 function normalizeVpnType(value) {
     var normalized = String(value ?? "").trim().toLowerCase();
-    if (normalized === "wireguard")
+    if (/^wireguard\b/.test(normalized))
         return "WireGuard";
-    if (normalized === "openvpn")
+    if (/^openvpn\b/.test(normalized))
         return "OpenVPN";
     return String(value ?? "").trim();
 }

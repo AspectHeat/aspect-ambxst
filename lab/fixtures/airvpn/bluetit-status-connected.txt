@@ -1,0 +1,23 @@
+Goldcrest - AirVPN Bluetit Client 2.1.0 - 15 June 2026
+
+2026-08-05 00:01:00 Reading run control directives from file $HOME/.config/goldcrest.rc
+2026-08-05 00:01:00 Bluetit - AirVPN WireGuard/OpenVPN3 Service 2.1.0 - 15 June 2026
+2026-08-05 00:01:00 OpenVPN core 3.12 AirVPN (20260514) linux x86_64 64-bit
+2026-08-05 00:01:00 Copyright (C) 2012- OpenVPN Inc. All rights reserved.
+2026-08-05 00:01:00 OpenSSL 3.6.3 9 Jun 2026
+2026-08-05 00:01:00 AirVPN WireGuard Client 2.0.0 Linux x86_64 64-bit
+2026-08-05 00:01:00 Network filter and lock is disabled
+2026-08-05 00:01:00 Traffic splitting is disabled
+2026-08-05 00:01:00 ----------------------
+2026-08-05 00:01:00 Connected to AirVPN server Castor (Brussels, Belgium)
+2026-08-05 00:01:00 Users: 161 - Load: 47% - Bandwidth: 953.81 Mbit/s - Max: 2.00 Gbit/s
+2026-08-05 00:01:00 AirVPN user: user@example.com - Key: Default
+2026-08-05 00:01:00 VPN type: WireGuard - Cipher: CHACHA20-POLY1305 - Connection mode: asynchronous
+2026-08-05 00:01:00 Server IP address: 2001:db8::1 - Port: 1637 - Protocol: UDPv6
+2026-08-05 00:01:00 Pushed DNS: 2001:db8::1 (IPv6)
+2026-08-05 00:01:00 Connection time: 00:04:12
+2026-08-05 00:01:00 Connection started at: Wed, 05 August 2026 00:00:00
+2026-08-05 00:01:00 Connection started by Goldcrest - AirVPN Bluetit Client 2.1.0, user user@example.com
+2026-08-05 00:01:00 Transferred data: In 28.63 KB, Out 76.56 KB
+2026-08-05 00:01:00 Current rate: In 0 bit/s, Out 376 bit/s
+2026-08-05 00:01:00 Maximum rate: In 3.55 Kbit/s, Out 3.17 Kbit/s

@@ -1,0 +1,15 @@
+{
+    "parser": "status",
+    "exitCode": 0,
+    "expectExact": {
+        "state": "connected",
+        "daemonReachable": true,
+        "needsCredentials": false,
+        "networkLock": false,
+        "networkLockKnown": true,
+        "country": "Belgium",
+        "server": "Castor",
+        "technology": "WireGuard"
+    },
+    "refute": ["ip", "address", "unknownStatus"]
+}
