@@ -178,14 +178,6 @@ Singleton {
     
 
     function launchApp(app) {
-        const path = app.fileName || app.path || app.filePath;
-        
-        if (path && path.toString().endsWith('.desktop')) {
-            const escapedPath = path.toString().replace(/'/g, "'\\''");
-            runInActiveWorkspace("gio launch '" + escapedPath + "'");
-            return;
-        }
-
         if (app.command && app.command.length > 0) {
             const safeArgs = [];
             for (let i = 0; i < app.command.length; i++) {
@@ -198,6 +190,13 @@ Singleton {
                 runInActiveWorkspace(safeArgs.join(" "));
                 return;
             }
+        }
+
+        const path = app.fileName || app.path || app.filePath;
+        if (path && path.toString().endsWith('.desktop')) {
+            const escapedPath = path.toString().replace(/'/g, "'\\''");
+            runInActiveWorkspace("gio launch '" + escapedPath + "'");
+            return;
         }
 
         app.execute();

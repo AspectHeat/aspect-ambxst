@@ -9,6 +9,9 @@ LOCATION="${1:-}"
 MAX_RETRIES=3
 RETRY_DELAY=2
 
+# Kill entire process group on SIGTERM so curl/subshell children don't leak
+trap 'trap "" SIGTERM SIGINT; kill -- -$$' SIGTERM SIGINT
+
 # Function to make HTTP request with retries
 http_get() {
 	local url="$1"

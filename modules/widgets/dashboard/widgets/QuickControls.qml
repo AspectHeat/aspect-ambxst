@@ -126,6 +126,14 @@ StyledRect {
                     onClicked: GameModeService.toggle()
                 }
 
+                ControlButton {
+                    Layout.preferredWidth: 48
+                    Layout.preferredHeight: 48
+                    iconName: Icons.airplane
+                    isActive: AirplaneService.active
+                    tooltipText: AirplaneService.active ? "Airplane Mode: On" : "Airplane Mode: Off"
+                    onClicked: AirplaneService.toggle()
+                }
             }
         }
         
