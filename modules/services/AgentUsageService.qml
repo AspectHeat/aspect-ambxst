@@ -10,8 +10,10 @@ Singleton {
 
     readonly property string scriptPath: Quickshell.shellDir + "/scripts/agent_usage.py"
     readonly property int refreshIntervalMs: 15 * 60 * 1000
+    readonly property string settingsPath: (Quickshell.env("XDG_CONFIG_HOME") || (Quickshell.env("HOME") + "/.config")) + "/ambxst/agents.json"
 
     property var providers: []
+    property string defaultAgentId: ""
     property bool loading: false
     property string errorText: ""
     property string updatedAt: ""
@@ -20,6 +22,24 @@ Singleton {
     property bool forceQueued: false
 
     signal refreshed
+
+    function loadSettings() {
+        try {
+            const parsed = JSON.parse(agentSettings.text() || "{}");
+            root.defaultAgentId = String(parsed.defaultAgent || "");
+        } catch (error) {
+            root.defaultAgentId = "";
+        }
+    }
+
+    function setDefaultAgent(providerId) {
+        const value = String(providerId || "");
+        if (value !== "" && !root.providers.some(provider => provider && String(provider.id || "") === value))
+            return;
+        root.defaultAgentId = value;
+        agentSettings.setText(JSON.stringify({ defaultAgent: value }, null, 2) + "\n");
+        CrashDiagnosticsService.refreshStatus();
+    }
 
     function refresh(force) {
         const forceRefresh = force === true;
@@ -105,6 +125,15 @@ Singleton {
                 Qt.callLater(() => root.refresh(queuedForce));
             }
         }
+    }
+
+    FileView {
+        id: agentSettings
+        path: root.settingsPath
+        watchChanges: true
+        printErrors: false
+        onLoaded: root.loadSettings()
+        onFileChanged: reload()
     }
 
     Timer {

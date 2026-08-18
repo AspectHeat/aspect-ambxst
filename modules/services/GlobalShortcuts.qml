@@ -91,6 +91,10 @@ QtObject {
         function run(command: string) {
             root.run(command);
         }
+
+        function crash(pid: string, processName: string, executable: string, signalName: string, happenedAt: string) {
+            CrashDiagnosticsService.notifyCrash(pid, processName, executable, signalName, happenedAt);
+        }
     }
 
     function toggleSettings(screenName) {

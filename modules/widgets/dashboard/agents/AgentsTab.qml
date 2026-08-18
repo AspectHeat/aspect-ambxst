@@ -78,6 +78,30 @@ Rectangle {
         return tier === "" ? "Subscription" : tier.charAt(0).toUpperCase() + tier.slice(1);
     }
 
+    function crashStatusText() {
+        if (!CrashDiagnosticsService.available)
+            return "systemd-coredump unavailable";
+        if (AgentUsageService.defaultAgentId === "")
+            return "Choose a default agent";
+        if (!CrashDiagnosticsService.installed)
+            return "Crash capture is not set up";
+        if (!CrashDiagnosticsService.enabled)
+            return "Crash notifications are off";
+        return CrashDiagnosticsService.running ? "Watching for process crashes" : "Crash watcher is stopped";
+    }
+
+    function crashDetailText() {
+        if (CrashDiagnosticsService.isolated)
+            return "Preview only: run ambxst agent setup from a normal terminal to install the user service.";
+        if (AgentUsageService.defaultAgentId === "")
+            return "The selected agent opens crash records in plan, ask, or read-only mode.";
+        if (!CrashDiagnosticsService.installed)
+            return "Set up the user service and shared Ambxst diagnosis skills.";
+        if (!CrashDiagnosticsService.skillsInstalled)
+            return "The watcher is installed, but one or more agent skill links are missing.";
+        return "Click a crash notification to diagnose its retained coredump with your default agent.";
+    }
+
     function resetText(value) {
         if (!value)
             return "Reset time unavailable";
@@ -154,11 +178,17 @@ Rectangle {
     }
 
     onProvidersChanged: selectInitialProvider()
-    onVisibleChanged: if (visible) AgentUsageService.ensureFresh()
+    onVisibleChanged: {
+        if (visible) {
+            AgentUsageService.ensureFresh();
+            CrashDiagnosticsService.refreshStatus();
+        }
+    }
 
     Component.onCompleted: {
         selectInitialProvider();
         AgentUsageService.ensureFresh();
+        CrashDiagnosticsService.refreshStatus();
     }
 
     Timer {
@@ -289,7 +319,8 @@ Rectangle {
 
                                 Text {
                                     Layout.fillWidth: true
-                                    text: root.planText(providerButton.modelData)
+                                    text: (AgentUsageService.defaultAgentId === String(providerButton.modelData.id || "")
+                                        ? "Default · " : "") + root.planText(providerButton.modelData)
                                     elide: Text.ElideRight
                                     font.family: Config.theme.font
                                     font.pixelSize: Styling.fontSize(-3)
@@ -453,6 +484,35 @@ Rectangle {
                             }
 
                             Button {
+                                id: defaultButton
+                                readonly property bool isDefault: AgentUsageService.defaultAgentId
+                                    === String(root.provider ? root.provider.id || "" : "")
+                                Layout.preferredWidth: 88
+                                Layout.preferredHeight: 38
+                                flat: true
+                                hoverEnabled: true
+                                enabled: !isDefault && root.provider !== null
+
+                                background: StyledRect {
+                                    variant: defaultButton.isDefault ? "primary"
+                                        : (defaultButton.hovered ? "focus" : "internalbg")
+                                    radius: Styling.radius(3)
+                                }
+
+                                contentItem: Text {
+                                    text: defaultButton.isDefault ? "Default" : "Set default"
+                                    font.family: Config.theme.font
+                                    font.pixelSize: Styling.fontSize(-2)
+                                    font.weight: Font.DemiBold
+                                    color: defaultButton.isDefault ? Styling.srItem("primary") : Colors.overBackground
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+
+                                onClicked: AgentUsageService.setDefaultAgent(String(root.provider.id || ""))
+                            }
+
+                            Button {
                                 id: refreshButton
                                 Layout.preferredWidth: 38
                                 Layout.preferredHeight: 38
@@ -516,6 +576,97 @@ Rectangle {
                                 font.family: Config.theme.font
                                 font.pixelSize: Styling.fontSize(-2)
                                 color: Colors.overSurfaceVariant
+                            }
+                        }
+                    }
+
+                    StyledRect {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: crashColumn.implicitHeight + 20
+                        variant: "internalbg"
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.margins: 10
+                            spacing: 10
+
+                            Text {
+                                text: Icons.shieldCheck
+                                font.family: Icons.font
+                                font.pixelSize: 22
+                                color: CrashDiagnosticsService.enabled && CrashDiagnosticsService.running
+                                    ? Colors.primary : Colors.overSurfaceVariant
+                            }
+
+                            ColumnLayout {
+                                id: crashColumn
+                                Layout.fillWidth: true
+                                spacing: 2
+
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: root.crashStatusText()
+                                    elide: Text.ElideRight
+                                    font.family: Config.theme.font
+                                    font.pixelSize: Styling.fontSize(-1)
+                                    font.weight: Font.DemiBold
+                                    color: Colors.overBackground
+                                }
+
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: root.crashDetailText()
+                                    wrapMode: Text.Wrap
+                                    font.family: Config.theme.font
+                                    font.pixelSize: Styling.fontSize(-3)
+                                    color: Colors.overSurfaceVariant
+                                }
+
+                                Text {
+                                    Layout.fillWidth: true
+                                    visible: CrashDiagnosticsService.errorText !== ""
+                                    text: CrashDiagnosticsService.errorText
+                                    wrapMode: Text.Wrap
+                                    font.family: Config.theme.font
+                                    font.pixelSize: Styling.fontSize(-3)
+                                    color: Colors.error
+                                }
+                            }
+
+                            Button {
+                                id: crashActionButton
+                                Layout.preferredWidth: 86
+                                Layout.preferredHeight: 38
+                                flat: true
+                                hoverEnabled: true
+                                enabled: CrashDiagnosticsService.available
+                                    && AgentUsageService.defaultAgentId !== ""
+                                    && !CrashDiagnosticsService.isolated
+                                    && !CrashDiagnosticsService.loading
+
+                                background: StyledRect {
+                                    variant: crashActionButton.hovered ? "focus" : "common"
+                                    radius: Styling.radius(3)
+                                }
+
+                                contentItem: Text {
+                                    text: CrashDiagnosticsService.loading ? "Working…"
+                                        : !CrashDiagnosticsService.installed ? "Set up"
+                                        : CrashDiagnosticsService.enabled ? "Turn off" : "Turn on"
+                                    font.family: Config.theme.font
+                                    font.pixelSize: Styling.fontSize(-2)
+                                    font.weight: Font.DemiBold
+                                    color: Colors.overBackground
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+
+                                onClicked: {
+                                    if (!CrashDiagnosticsService.installed)
+                                        CrashDiagnosticsService.install();
+                                    else
+                                        CrashDiagnosticsService.setCaptureEnabled(!CrashDiagnosticsService.enabled);
+                                }
                             }
                         }
                     }

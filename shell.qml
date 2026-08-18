@@ -306,6 +306,7 @@ ShellRoot {
             _ = NordVpnService.available;
             _ = VpnService.routeOwner;
             _ = AgentUsageService.providers.length;
+            _ = CrashDiagnosticsService.available;
         }
     }
 }
