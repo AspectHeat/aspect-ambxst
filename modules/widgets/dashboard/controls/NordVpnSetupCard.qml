@@ -114,7 +114,7 @@ StyledRect {
             // then hand privileged package work to a transparent terminal flow. The script
             // prompts before changing the system and explains the required session restart.
             onClicked: TerminalService.execDetached(
-                "bash " + root.shellQuote(root.installerPath) + "; exec $SHELL")
+                "bash " + root.shellQuote(root.installerPath))
         }
 
         Button {
