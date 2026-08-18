@@ -76,6 +76,10 @@ Singleton {
     // produced a Continue button to copy, so pasting cannot help there.
     property bool loginNeedsManual: false
 
+    // NordVPN 5.3 asks for analytics consent on the first login. A background Process has
+    // no interactive stdin, so detect that prompt and let the setup card collect the choice.
+    property bool analyticsConsentRequired: false
+
     // Set when lastError came from a mutation. A mutation failure triggers an immediate
     // refresh, and the successful status read that follows would otherwise clear the error
     // within ~200ms - before VpnService's 500ms handoff tick ever observed it, leaving the
@@ -153,6 +157,8 @@ Singleton {
             property var reject
             property string buffer: ""
             property string errorBuffer: ""
+            property bool detectAnalyticsConsent: false
+            property bool analyticsConsentDetected: false
 
             environment: ({
                 LANG: "C.UTF-8",
@@ -160,7 +166,14 @@ Singleton {
             })
 
             stdout: SplitParser {
-                onRead: data => internalProc.buffer += data + "\n"
+                onRead: data => {
+                    internalProc.buffer += data + "\n";
+                    if (internalProc.detectAnalyticsConsent
+                            && /collect and use limited app performance data/i.test(internalProc.buffer)) {
+                        internalProc.analyticsConsentDetected = true;
+                        internalProc.running = false;
+                    }
+                }
             }
 
             stderr: SplitParser {
@@ -168,7 +181,9 @@ Singleton {
             }
 
             onExited: (exitCode, exitStatus) => {
-                if (exitCode === 0)
+                if (analyticsConsentDetected)
+                    reject("analytics-consent-required");
+                else if (exitCode === 0)
                     resolve(buffer.trim());
                 else
                     reject(errorBuffer.trim() || buffer.trim() || `Process exited with code ${exitCode}`);
@@ -177,10 +192,11 @@ Singleton {
         }
     }
 
-    function runAsync(command) {
+    function runAsync(command, detectAnalyticsConsent = false) {
         return new Promise((resolve, reject) => {
             const proc = asyncProcessComp.createObject(root, {
                 command: command,
+                detectAnalyticsConsent: detectAnalyticsConsent,
                 resolve: resolve,
                 reject: reject
             });
@@ -404,7 +420,7 @@ Singleton {
         root.loginNeedsManual = false;
         loginPollTimer.restart();
 
-        root.runAsync(["nordvpn", "login"]).then(output => {
+        root.runAsync(["nordvpn", "login"], true).then(output => {
             const url = root.extractLoginUrl(output);
             if (url !== "") {
                 Quickshell.execDetached(["xdg-open", url]);
@@ -417,8 +433,32 @@ Singleton {
             root.loginPending = false;
         }).catch(error => {
             root.loginPending = false;
+            if (error === "analytics-consent-required") {
+                loginPollTimer.stop();
+                root.analyticsConsentRequired = true;
+                root.lastError = "";
+                return;
+            }
             root.handleMutationError(error);
         });
+    }
+
+    function setAnalyticsConsent(allowPerformanceData): void {
+        if (!root.analyticsConsentRequired || root.isMutating)
+            return;
+
+        root.isMutating = true;
+        root.lastError = "";
+        root.runAsync(["nordvpn", "set", "analytics", allowPerformanceData ? "on" : "off"])
+            .then(() => {
+                root.isMutating = false;
+                root.analyticsConsentRequired = false;
+                root.login();
+            })
+            .catch(error => {
+                root.isMutating = false;
+                root.handleMutationError(error);
+            });
     }
 
     // The manual completion path, for when the browser's hand-back never reaches the CLI.
@@ -716,10 +756,9 @@ Singleton {
                 // the card shows the real problem instead of "Waiting for browser".
                 root.loginPending = false;
             } else if (code === 0) {
-                // A successful status read means we are past the logged-out state, so a
-                // pending browser login has resolved. Clearing this only on the 3-minute
-                // timeout left the setup card stuck on "Waiting for browser".
-                root.loginPending = false;
+                // Do not clear loginPending here. `nordvpn status` exits 0 with
+                // "Status: Disconnected" even for a logged-out account, so only the
+                // authoritative account read below may confirm that browser login finished.
                 const parsed = Parse.parseStatus(output);
                 root.state = parsed.state;
                 root.country = parsed.country;

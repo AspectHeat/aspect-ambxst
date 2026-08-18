@@ -98,6 +98,8 @@ ColumnLayout {
         id: favoritesButton
 
         Layout.fillWidth: true
+        visible: NordVpnService.available && !NordVpnService.needsLogin
+            && !NordVpnService.permissionDenied && NordVpnService.daemonReachable
         flat: true
         implicitHeight: 32
         leftPadding: 12

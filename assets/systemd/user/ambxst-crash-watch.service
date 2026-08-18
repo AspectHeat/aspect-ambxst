@@ -1,0 +1,16 @@
+# Managed by Aspect Ambxst crash diagnostics
+[Unit]
+Description=Watch process crashes and offer Ambxst agent diagnosis
+After=graphical-session.target
+PartOf=graphical-session.target
+ConditionEnvironment=WAYLAND_DISPLAY
+ConditionPathExists=!%h/.local/state/ambxst/crash-capture-off
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/env ambxst crash-watch
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target

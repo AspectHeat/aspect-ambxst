@@ -24,6 +24,7 @@ StyledRect {
         : NordVpnService.permissionDenied ? "Permission denied"
         : !NordVpnService.daemonReachable ? "NordVPN daemon is not reachable"
         : NordVpnService.loginPending ? "Waiting for you to finish logging in"
+        : NordVpnService.analyticsConsentRequired ? "Choose your data preference"
         : "Log in required"
 
     readonly property string guidance: !NordVpnService.available
@@ -34,6 +35,8 @@ StyledRect {
             ? "Start the nordvpnd service, then refresh."
         : NordVpnService.loginPending
             ? "A browser window should have opened. Finish signing in there and this will update on its own."
+        : NordVpnService.analyticsConsentRequired
+            ? "NordVPN asks whether it may collect limited app-performance data. Browsing activity is never included."
             : "Log in to NordVPN to browse locations and connect."
 
     // Only offered when logging in is actually the blocker.
@@ -45,6 +48,13 @@ StyledRect {
     // succeeding - never on a healthy desktop, where leading with "paste a link" would make
     // the ordinary one-click flow look unreliable. The service owns that judgement.
     readonly property bool showManualLogin: root.canLogIn && NordVpnService.loginNeedsManual
+
+    readonly property string installerPath: decodeURIComponent(
+        Qt.resolvedUrl("../../../../scripts/setup-nordvpn.sh").toString().replace("file://", ""))
+
+    function shellQuote(value): string {
+        return "'" + String(value).replace(/'/g, "'\\''") + "'";
+    }
 
     visible: root.blocked
     implicitHeight: contentColumn.implicitHeight + 20
@@ -81,8 +91,38 @@ StyledRect {
         }
 
         Button {
+            id: installButton
+            visible: !NordVpnService.available
+            Layout.topMargin: 2
+            flat: true
+            implicitHeight: 30
+            implicitWidth: 150
+
+            background: StyledRect {
+                variant: installButton.hovered ? "primaryfocus" : "primary"
+                radius: Styling.radius(-2)
+            }
+
+            contentItem: Text {
+                text: "Install NordVPN"
+                font.family: Config.theme.font
+                font.pixelSize: Styling.fontSize(-1)
+                font.weight: Font.Medium
+                color: Styling.srItem("primary")
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+            }
+
+            // Mirrors Omarchy's optional-service pattern: keep the integration visible,
+            // then hand privileged package work to a transparent terminal flow. The script
+            // prompts before changing the system and explains the required session restart.
+            onClicked: TerminalService.execDetached(
+                "bash " + root.shellQuote(root.installerPath))
+        }
+
+        Button {
             id: loginButton
-            visible: root.canLogIn
+            visible: root.canLogIn && !NordVpnService.analyticsConsentRequired
             Layout.topMargin: 2
             flat: true
             implicitHeight: 30
@@ -108,6 +148,46 @@ StyledRect {
             // Opens a browser flow out of process; the panel then waits for the next poll
             // to observe the new login state rather than assuming success.
             onClicked: NordVpnService.login()
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            Layout.topMargin: 2
+            visible: root.canLogIn && NordVpnService.analyticsConsentRequired
+            spacing: 6
+
+            Repeater {
+                model: [
+                    { label: "Essential only", allow: false },
+                    { label: "Allow performance data", allow: true }
+                ]
+
+                delegate: Button {
+                    id: consentButton
+                    required property var modelData
+
+                    Layout.fillWidth: true
+                    flat: true
+                    implicitHeight: 32
+                    enabled: !NordVpnService.isMutating
+
+                    background: StyledRect {
+                        variant: consentButton.hovered ? "focus" : "common"
+                        radius: Styling.radius(-2)
+                    }
+
+                    contentItem: Text {
+                        text: consentButton.modelData.label
+                        font.family: Config.theme.font
+                        font.pixelSize: Styling.fontSize(-2)
+                        color: consentButton.enabled ? Colors.overBackground : Colors.outline
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+
+                    onClicked: NordVpnService.setAnalyticsConsent(consentButton.modelData.allow)
+                }
+            }
         }
 
         // ---------------------------------------------------------- manual completion

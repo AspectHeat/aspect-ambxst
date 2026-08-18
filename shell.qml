@@ -305,6 +305,8 @@ ShellRoot {
             // anti-pattern. Reading a property is what forces singleton construction.
             _ = NordVpnService.available;
             _ = VpnService.routeOwner;
+            _ = AgentUsageService.providers.length;
+            _ = CrashDiagnosticsService.available;
         }
     }
 }

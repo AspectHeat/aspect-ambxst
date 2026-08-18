@@ -1,0 +1,4 @@
+interface:
+  display_name: "Diagnose Crash"
+  short_description: "Investigate systemd-coredump crashes safely"
+  default_prompt: "Use $diagnose-crash to investigate this systemd-coredump crash."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Ambxst"
+  short_description: "Safely customize an Ambxst desktop"
+  default_prompt: "Use $ambxst to plan a safe Ambxst desktop customization."

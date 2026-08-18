@@ -55,6 +55,11 @@ Commands:
     brightness -s [monitor]           Save current brightness
     brightness -r [monitor]           Restore saved brightness
     brightness -l                     List monitors and their brightness
+    agent crash <pid>                 Diagnose a retained systemd-coredump crash
+    agent setup                       Install shared agent skills and crash capture
+    agent status                      Show agent integration status
+    agent install-skills              Refresh shared agent skill links
+    toggle crash-capture              Toggle crash notifications
     help                              Show this help message
     version, -v, --version            Show Ambxst version
     goodbye                           Uninstall Ambxst :(
@@ -233,6 +238,61 @@ update)
 refresh)
 	echo "Refreshing Ambxst profile..."
 	exec nix profile upgrade Ambxst --refresh --impure
+	;;
+agent)
+	SUB="${2:-}"
+	case "$SUB" in
+	crash)
+		shift 2
+		exec python3 "$SCRIPT_DIR/scripts/agent_crash.py" "$@"
+		;;
+	setup)
+		exec python3 "$SCRIPT_DIR/scripts/agent_integration.py" install
+		;;
+	status)
+		exec python3 "$SCRIPT_DIR/scripts/agent_integration.py" status
+		;;
+	install-skills)
+		exec python3 "$SCRIPT_DIR/scripts/agent_integration.py" install-skills
+		;;
+	*)
+		echo "Usage: ambxst agent [crash <pid>|setup|status|install-skills]" >&2
+		exit 1
+		;;
+	esac
+	;;
+toggle)
+	case "${2:-}" in
+	crash-capture)
+		STATUS_JSON=$(python3 "$SCRIPT_DIR/scripts/agent_integration.py" status)
+		if jq -e '.installed == true and .enabled == true' >/dev/null 2>&1 <<<"$STATUS_JSON"; then
+			exec python3 "$SCRIPT_DIR/scripts/agent_integration.py" toggle off
+		elif jq -e '.installed == true' >/dev/null 2>&1 <<<"$STATUS_JSON"; then
+			exec python3 "$SCRIPT_DIR/scripts/agent_integration.py" toggle on
+		else
+			echo "Crash capture is not installed. Run: ambxst agent setup" >&2
+			exit 1
+		fi
+		;;
+	*)
+		echo "Usage: ambxst toggle crash-capture" >&2
+		exit 1
+		;;
+	esac
+	;;
+crash-watch)
+	exec python3 "$SCRIPT_DIR/scripts/crash_watch.py"
+	;;
+crash-notify)
+	if [ "$#" -ne 6 ] || [[ ! ${2:-} =~ ^[0-9]+$ ]]; then
+		echo "Usage: ambxst crash-notify <pid> <name> <executable> <signal> <time>" >&2
+		exit 1
+	fi
+	PID=$(find_ambxst_pid_cached)
+	if [ -z "$PID" ]; then
+		exit 1
+	fi
+	qs ipc --pid "$PID" call ambxst crash "$2" "$3" "$4" "$5" "$6" >/dev/null 2>&1
 	;;
 run)
 	CMD="${2:-}"
