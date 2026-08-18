@@ -6,17 +6,18 @@ import qs.modules.globals
 import qs.modules.services
 import qs.config
 
+import Quickshell
 import Quickshell.Io
 
 QtObject {
     id: root
 
     readonly property string appId: "ambxst"
-    readonly property string ipcPipe: "/tmp/ambxst_ipc.pipe"
+    readonly property string ipcPipe: Quickshell.env("AMBXST_IPC_PIPE") || "/tmp/ambxst_ipc.pipe"
 
     // High-performance Pipe Listener (Daemon mode)
     property Process pipeListener: Process {
-        command: ["bash", "-c", "rm -f " + root.ipcPipe + "; mkfifo " + root.ipcPipe + "; tail -f " + root.ipcPipe]
+        command: ["bash", "-c", "rm -f -- \"$1\"; mkfifo -- \"$1\"; exec tail -f -- \"$1\"", "ambxst-ipc", root.ipcPipe]
         running: true
         
         stdout: SplitParser {

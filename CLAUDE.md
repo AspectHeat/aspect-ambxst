@@ -95,8 +95,10 @@ checkout.
 `lab/run-isolated.sh` runs a checkout under a sandboxed `HOME` at
 `~/.local/share/ambxst-lab/home`, because Ambxst hard-codes several
 `$HOME/.cache/ambxst` and `$HOME/.local/share/ambxst` paths that `XDG_*` alone
-does not redirect. It runs *beside* the live shell, so the live desktop is
-unaffected by anything the sandbox instance does.
+does not redirect. It also gives each run distinct IPC and PID files beneath
+`XDG_RUNTIME_DIR`, so it cannot replace the live shell's command endpoint. The
+lab still shares the compositor, D-Bus, system services, and hardware controls;
+see `docs/LAB.md` for that boundary.
 
 ```bash
 ./lab/check-prereqs.sh   # read-only; lists what is missing, installs nothing

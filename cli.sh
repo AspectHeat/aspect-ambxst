@@ -4,6 +4,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+AMBXST_IPC_PIPE="${AMBXST_IPC_PIPE:-/tmp/ambxst_ipc.pipe}"
+AMBXST_PID_FILE="${AMBXST_PID_FILE:-/tmp/ambxst.pid}"
 
 # Use environment variables if set by flake, otherwise fall back to PATH
 QS_BIN="${AMBXST_QS:-qs}"
@@ -183,12 +185,12 @@ find_ambxst_pid() {
 
 find_ambxst_pid_cached() {
 	# Optimized PID lookup: check cache file first, then fall back to pgrep
-	local pid_file="/tmp/ambxst.pid"
+	local pid_file="$AMBXST_PID_FILE"
 	local pid=""
 
 	# Check if cache file exists and process is alive
 	if [ -f "$pid_file" ]; then
-		pid=$(<"$pid_file" 2>/dev/null)
+		pid=$(<"$pid_file")
 		# Verify process still exists using kill -0 (no signal, just test)
 		if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
 			echo "$pid"
@@ -234,17 +236,19 @@ refresh)
 	;;
 run)
 	CMD="${2:-}"
-	PIPE="/tmp/ambxst_ipc.pipe"
+	PIPE="$AMBXST_IPC_PIPE"
 
 	if [ -z "$CMD" ]; then
 		echo "Error: No command specified for run"
 		exit 1
 	fi
 
-	# Fast path: Write directly to pipe if it exists (Zero latency)
+	# Fast path: write directly to the pipe, but never hang on an orphaned FIFO.
+	# A short timeout lets us fall back to QS IPC if the reader has disappeared.
 	if [ -p "$PIPE" ]; then
-		echo "$CMD" >"$PIPE" &
-		exit 0
+		if timeout 0.25 bash -c 'printf "%s\n" "$1" >"$2"' bash "$CMD" "$PIPE"; then
+			exit 0
+		fi
 	fi
 
 	# Fallback path: Use QS IPC with cached PID lookup
@@ -650,8 +654,10 @@ help | --help | -h)
 	export QT_QPA_PLATFORMTHEME=qt6ct
 	unset HL_INITIAL_WORKSPACE_TOKEN
 
-	# Cache this script's PID before exec (for fast PID lookups in future CLI calls)
-	echo $$ >/tmp/ambxst.pid
+	# Cache this script's PID before exec (for fast PID lookups in future CLI calls).
+	# Lab instances override the path so they cannot replace the production PID.
+	mkdir -p "$(dirname "$AMBXST_PID_FILE")"
+	printf '%s\n' "$$" >"$AMBXST_PID_FILE"
 
 	# Launch QuickShell with the main shell.qml
 	# If NIXGL_BIN is set (NixOS/Nix setup), use it. Otherwise, just run qs directly.

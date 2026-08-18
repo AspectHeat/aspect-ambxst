@@ -89,17 +89,19 @@ variables do not cover.
 |---|---|
 | Sandbox `HOME` | `~/.local/share/ambxst-lab/home` |
 | Run log | `~/.local/state/ambxst-lab/latest.log` |
+| Per-run IPC and PID files | `$XDG_RUNTIME_DIR/ambxst-lab/<launcher-pid>/` |
 
 `XDG_RUNTIME_DIR`, `WAYLAND_DISPLAY`, `DBUS_SESSION_BUS_ADDRESS` and the
 `HYPRLAND_*`/UWSM variables are inherited unchanged, since they address the live
-compositor rather than user state.
+compositor rather than user state. The launcher sets `AMBXST_IPC_PIPE` and
+`AMBXST_PID_FILE` to unique paths beneath `XDG_RUNTIME_DIR`, preventing a lab
+shell from replacing the production shell's `/tmp/ambxst_ipc.pipe` or
+`/tmp/ambxst.pid`.
 
-Known escapes, all in `/tmp` and all transient:
+Remaining shared paths are transient locks used to prevent duplicate helpers:
 
 ```text
-/tmp/ambxst_ipc.pipe
 /tmp/ambxst_loginlock.lock
-/tmp/ambxst.pid
 /tmp/ambxst_sleep_monitor.lock
 ```
 

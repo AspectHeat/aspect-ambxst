@@ -61,6 +61,13 @@ stop_ambxst() {
         rm -f "$AXCTL_SOCKET"
     fi
 
+    # Each lab run owns its IPC and PID files. Remove only this run's directory;
+    # the production shell keeps its backward-compatible paths under /tmp.
+    if [[ -n "${LAB_RUNTIME_DIR:-}" && -d "$LAB_RUNTIME_DIR" ]]; then
+        rm -f -- "${AMBXST_IPC_PIPE:-}" "${AMBXST_PID_FILE:-}"
+        rmdir -- "$LAB_RUNTIME_DIR" 2>/dev/null || true
+    fi
+
     printf '[lab] no shell running; SUPER+Return for a terminal\n'
     exit "$rc"
 }
@@ -78,13 +85,21 @@ for var in XDG_RUNTIME_DIR WAYLAND_DISPLAY; do
     fi
 done
 
+# Fixed /tmp paths are shared even when HOME is redirected. Give every lab run
+# its own runtime directory so parallel tests cannot replace production IPC.
+LAB_RUNTIME_DIR="$XDG_RUNTIME_DIR/ambxst-lab/$$"
+export AMBXST_IPC_PIPE="$LAB_RUNTIME_DIR/ipc.pipe"
+export AMBXST_PID_FILE="$LAB_RUNTIME_DIR/ambxst.pid"
+
 mkdir -p "$LAB_HOME"/{.config,.cache} \
          "$LAB_HOME/.local"/{share,state} \
-         "$LOG_DIR"
+         "$LOG_DIR" \
+         "$LAB_RUNTIME_DIR"
 
 printf '[lab] repo:      %s\n' "$REPO_DIR"
 printf '[lab] sandbox:   %s\n' "$LAB_HOME"
 printf '[lab] log:       %s\n' "$LOG_FILE"
+printf '[lab] runtime:   %s\n' "$LAB_RUNTIME_DIR"
 
 # A previous shell killed without its trap (SIGKILL, crash) leaves an axctl
 # socket that no daemon is listening on. Clear it before Ambxst spawns its own.
