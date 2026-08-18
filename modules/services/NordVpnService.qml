@@ -756,10 +756,9 @@ Singleton {
                 // the card shows the real problem instead of "Waiting for browser".
                 root.loginPending = false;
             } else if (code === 0) {
-                // A successful status read means we are past the logged-out state, so a
-                // pending browser login has resolved. Clearing this only on the 3-minute
-                // timeout left the setup card stuck on "Waiting for browser".
-                root.loginPending = false;
+                // Do not clear loginPending here. `nordvpn status` exits 0 with
+                // "Status: Disconnected" even for a logged-out account, so only the
+                // authoritative account read below may confirm that browser login finished.
                 const parsed = Parse.parseStatus(output);
                 root.state = parsed.state;
                 root.country = parsed.country;
