@@ -46,6 +46,13 @@ StyledRect {
     // the ordinary one-click flow look unreliable. The service owns that judgement.
     readonly property bool showManualLogin: root.canLogIn && NordVpnService.loginNeedsManual
 
+    readonly property string installerPath: decodeURIComponent(
+        Qt.resolvedUrl("../../../../scripts/setup-nordvpn.sh").toString().replace("file://", ""))
+
+    function shellQuote(value): string {
+        return "'" + String(value).replace(/'/g, "'\\''") + "'";
+    }
+
     visible: root.blocked
     implicitHeight: contentColumn.implicitHeight + 20
     variant: "internalbg"
@@ -78,6 +85,36 @@ StyledRect {
             font.pixelSize: Styling.fontSize(-2)
             color: Colors.overSurfaceVariant
             wrapMode: Text.Wrap
+        }
+
+        Button {
+            id: installButton
+            visible: !NordVpnService.available
+            Layout.topMargin: 2
+            flat: true
+            implicitHeight: 30
+            implicitWidth: 150
+
+            background: StyledRect {
+                variant: installButton.hovered ? "primaryfocus" : "primary"
+                radius: Styling.radius(-2)
+            }
+
+            contentItem: Text {
+                text: "Install NordVPN"
+                font.family: Config.theme.font
+                font.pixelSize: Styling.fontSize(-1)
+                font.weight: Font.Medium
+                color: Styling.srItem("primary")
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+            }
+
+            // Mirrors Omarchy's optional-service pattern: keep the integration visible,
+            // then hand privileged package work to a transparent terminal flow. The script
+            // prompts before changing the system and explains the required session restart.
+            onClicked: TerminalService.execDetached(
+                "bash " + root.shellQuote(root.installerPath) + "; exec $SHELL")
         }
 
         Button {
