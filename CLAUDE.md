@@ -58,114 +58,151 @@ Install dependencies explicitly with `pacman -S --needed` instead. When a tool i
 only distributed via a `curl | sh` installer, read the script first and replicate
 its steps by hand — that is how `axctl` was installed.
 
-## Where work happens — three checkouts, three distinct roles
+## Where work happens — one machine, one checkout
 
-Confusing these is the main way two agents end up fighting each other. Respect the
-roles:
+Bostrom is gone (it did not survive the 2026-08 move to the UK). There is no
+remote test target and no push/pull loop. Everything happens on zephyrus.
 
-| Checkout | Role | Rule |
+**The authoritative checkout is `~/.local/src/ambxst`.** Three things hardcode
+that path and you do not want to fight any of them:
+
+| Thing | Hardcodes |
+|---|---|
+| `/usr/local/bin/ambxst` | `exec "$HOME/.local/src/ambxst/cli.sh" "$@"` |
+| Autostart | `exec-once = ambxst` in `~/.config/hypr/hyprland.conf` |
+| **Every hotkey** | `ambxst run launcher`, `run dashboard`, … in `~/.local/share/ambxst/hyprland.lua` |
+
+So whichever checkout sits at `~/.local/src/ambxst` is the one the desktop runs
+and the one the keybinds drive.
+
+### Transition state (2026-08-18)
+
+Two checkouts still exist. This is temporary and is the main source of confusion:
+
+| Path | Remote | Contents |
 |---|---|---|
-| Zephyrus `~/Projects/aspect-ambxst` | **Authoring.** The T3 Code project. | Edit and commit here. |
-| Bostrom `~/Projects/aspect-ambxst` | **Test target.** Where the shell runs. | **Pull-only — never edit or commit here.** |
-| Zephyrus `~/.local/src/ambxst` | Unrelated upstream production install. | **Never touch.** Dirty tree, installer hard-resets. |
+| `~/.local/src/ambxst` | `Axenide/Ambxst` | upstream `c5c943dd` + uncommitted local files. **This is what runs.** |
+| `~/Projects/aspect-ambxst` | `AspectHeat/aspect-ambxst` | the fork: upstream + 55 commits of features |
 
-Normal loop: edit and commit on Zephyrus → `git push` → on Bostrom
-`git pull` → Quickshell hot-reloads (or `./cli.sh reload`) → observe over Moonlight.
+Target: one checkout at `~/.local/src/ambxst` with `origin` = the fork and
+`upstream` = `Axenide/Ambxst`. Until that lands, `lab/check-prereqs.sh` will warn
+that `ambxst` drives a different checkout than the one you are editing — that
+warning is correct and is the signal that the transition is unfinished.
 
-If Bostrom's tree is ever dirty, someone broke the rule. Reconcile deliberately —
-commit and push it from there, or discard it — rather than letting the two diverge.
-
-Bostrom is reachable as `ssh bostrom` (Tailnet) or `ssh bostrom-lan`, has
-passwordless sudo, and authenticates to `origin` with a repo-scoped deploy key
-(`github-aspect-ambxst`). An agent driven from T3 Code on Zephyrus can do the
-Bostrom half of the loop over SSH; nothing needs to be installed on Bostrom.
-
-Ambxst runs under a sandboxed `HOME` at
+`lab/run-isolated.sh` runs a checkout under a sandboxed `HOME` at
 `~/.local/share/ambxst-lab/home`, because Ambxst hard-codes several
-`$HOME/.cache/ambxst` and `$HOME/.local/share/ambxst` paths that `XDG_*` alone does
-not redirect. Live config therefore lives under the sandbox, not the real home.
+`$HOME/.cache/ambxst` and `$HOME/.local/share/ambxst` paths that `XDG_*` alone
+does not redirect. It runs *beside* the live shell, so the live desktop is
+unaffected by anything the sandbox instance does.
 
 ```bash
 ./lab/check-prereqs.sh   # read-only; lists what is missing, installs nothing
-./lab/run-isolated.sh    # sandboxed run; leaves bare Hyprland on exit
+./lab/check-qml-syntax.sh # local qmllint (/usr/lib/qt6/bin/qmllint)
+./lab/run-isolated.sh    # sandboxed run beside the live shell; Ctrl+C to exit
 ```
 
-Logs: `~/.local/state/ambxst-lab/latest.log` (runs) and `boot.log` (boot).
+Logs: `~/.local/state/ambxst-lab/latest.log`.
 
-## Ambxst is Bostrom's primary shell
+## Ambxst is zephyrus's primary shell
 
-Set via `~/.config/hypr/config/autostart.lua` → `lab/autostart-shell.sh`. **A bad
-change costs the desktop on next boot.** Layers of protection, in order:
+Autostarted by `exec-once = ambxst` in `~/.config/hypr/hyprland.conf`, which runs
+`/usr/local/bin/ambxst` → `~/.local/src/ambxst/cli.sh`. This is a normal upstream
+install, not a lab arrangement.
 
-1. `SUPER+Return` opens a terminal from bare Hyprland, with no shell running at
+Because Quickshell hot-reloads on save, **editing the live checkout changes the
+running desktop immediately.** That is the fast feedback loop, and also the risk.
+Layers of protection, in order:
+
+1. `git checkout -- <file>` — the fastest undo. Commit early and often.
+2. `lab/run-isolated.sh` — try risky changes in a sandbox beside the live shell,
+   so the live one never sees them.
+3. `SUPER+Return` opens a terminal from bare Hyprland with no shell running at
    all — the compositor's own bind, independent of Ambxst.
-2. SSH over Tailscale, independent of the graphical session.
-3. Sunshine/Moonlight for visual access.
-4. Revert: `cp ~/Backups/autostart.lua.before-ambxst ~/.config/hypr/config/autostart.lua`
-   (that file predates the Noctalia removal — it execs `noctalia`, which is gone.
-   Edit it to exec `lab/autostart-shell.sh`, or just fix the shell by hand.)
+4. SSH over Tailscale, independent of the graphical session.
+5. `~/.config/hypr` is a git repo, so compositor config mistakes are revertible.
 
-**There is no longer a fallback shell.** Noctalia was removed on 2026-07-29 —
+**There is no fallback shell, by design.** Noctalia was removed on 2026-07-29 —
 package and all — because it caused more breakage than it prevented: a second
-shell drew behind Ambxst, and a resurrection race in `autostart-shell.sh`
-restarted it on every compositor restart. Do not reintroduce an automatic
-fallback that launches a *competing* shell into the same session; if a failsafe
-is wanted again, it has to be one that cannot run concurrently with Ambxst.
+shell drew behind Ambxst, and a resurrection race restarted it on every
+compositor restart. Do not reintroduce an automatic fallback that launches a
+*competing* shell into the same session; if a failsafe is wanted again, it has to
+be one that cannot run concurrently with Ambxst.
 
-Test risky changes with `./lab/run-isolated.sh` before they can affect boot.
+### Keybinds go through `/usr/local/bin/ambxst`
 
-### Keybinds go through `lab/ambxst-shim.sh`
+Every hotkey calls bare `ambxst` (`ambxst run launcher`, `run dashboard`,
+`run clipboard`, … in `~/.local/share/ambxst/hyprland.lua`), so without that
+command on PATH **every hotkey is a silent no-op**.
 
-Upstream expects an `ambxst` command on PATH, supplied by the installer we never
-run. Both `~/.config/hypr/config/binds.lua` and the keybind table Ambxst writes
-to `axctl.toml` call bare `ambxst`, so without it **every hotkey is a silent
-no-op** — which is why Noctalia was quietly servicing them all.
+On zephyrus the normal installer provides it:
 
 ```bash
-sudo ln -sfn ~/Projects/aspect-ambxst/lab/ambxst-shim.sh /usr/local/bin/ambxst
+cat /usr/local/bin/ambxst
+#!/usr/bin/env bash
+export PATH="$HOME/.local/bin:$PATH"
+export QML2_IMPORT_PATH="$HOME/.local/lib/qml:$QML2_IMPORT_PATH"
+exec "$HOME/.local/src/ambxst/cli.sh" "$@"
 ```
 
 `/usr/local/bin` is used because the graphical session's PATH does not include
-`~/.local/bin`. The shim refuses `update`/`install`/`remove`/`goodbye`/`refresh`,
-which are exactly the "Never run" commands above.
+`~/.local/bin`.
 
-Note that axctl's own keybind table never reaches Hyprland here — `hyprctl binds`
-shows only `__lua` binds from the CachyOS Lua config. `binds.lua` is the single
-source of truth for hotkeys on Bostrom.
+`lab/ambxst-shim.sh` is the **fallback** for a machine where Ambxst is not
+installed but you still want hotkeys to drive a checkout. It refuses
+`update`/`install`/`remove`/`goodbye`/`refresh`, which are exactly the "Never run"
+commands above. It is not needed on zephyrus.
 
-## Hardware: what Bostrom can and cannot validate
+```bash
+# only on a machine with no real install:
+sudo ln -sfn "$PWD/lab/ambxst-shim.sh" /usr/local/bin/ambxst
+```
 
-Bostrom is an **Acer** (Intel UHD 630 + GTX 1050 Max-Q). Zephyrus is an **ASUS ROG
-G14** (AMD + NVIDIA). Upstream Ambxst contains **zero** references to `asusctl` or
-`supergfxctl`, so any vendor-control widget is new development.
+Note that axctl's own keybind table never reaches Hyprland — `hyprctl binds` shows
+only `__lua` binds. `~/.config/hypr/hyprland.lua` plus the ambxst-generated
+`~/.local/share/ambxst/hyprland.lua` it `dofile`s are the source of truth for
+hotkeys.
 
-| | Zephyrus (ASUS) | Bostrom (Acer) |
-|---|---|---|
-| `supergfxctl` | `Integrated, Hybrid, AsusMuxDgpu` | `Integrated, Hybrid` |
-| `asus-nb-wmi` | present | **absent** (`acer-wmi`) |
-| ACPI `platform_profile` | `quiet balanced performance` | **absent** |
-| `power-profiles-daemon` | yes | yes (`intel_pstate`) |
+## Hardware
 
-- `supergfxctl` mostly transfers; Integrated ↔ Hybrid is testable. `AsusMuxDgpu` is
-  not. iGPU vendor differs, so driver-name-sensitive code still needs Zephyrus.
-  `supergfxd` is installed but **not enabled at boot** on Bostrom.
-- `asusctl` does **not** transfer — fan curves, Aura/RGB, battery limit and ASUS
-  throttle profiles all bind to firmware Bostrom lacks. Build against a mock here,
-  validate on Zephyrus.
-- Generic power profiles do transfer.
+**ASUS ROG Zephyrus G14 GA403WR** — AMD Strix (Radeon 880M/890M iGPU) plus an
+NVIDIA dGPU at `0000:64:00.0` `[10de:2f58]`.
+
+Upstream Ambxst contains **zero** references to `asusctl` or `supergfxctl`, so any
+vendor-control widget is new development.
+
+- **The dGPU is deliberately EC-disabled for battery** via ROG Control Center
+  (`asusctl`/`asusd`): `dgpu_disable = 1`. The iGPU is therefore the only DRM
+  device and enumerates as `/dev/dri/card1`. **Never hardcode card numbers** —
+  numbering is not stable across Hybrid and Integrated boots.
+- **`supergfxctl` is deprecated and not installed.** `asusd` owns dGPU power
+  state. `docs/supergfxctl-widget-plan.html` is dead work.
+- A phantom `nvidia_wmi_ec_backlight` exists even with the dGPU off, which is why
+  `Brightness.qml` matches the backlight to the shell screen's DRM connector
+  instead of calling `brightnessctl --class backlight` bare.
+- `asusctl` targets available here: fan curves, Aura/RGB, battery charge limit,
+  ACPI `platform_profile` (`quiet balanced performance`), `power-profiles-daemon`.
+- `nordvpn` is **not installed**; the NordVPN panel shows its setup card. AirVPN
+  is the active provider thread.
 
 ## Upstream sync
 
-Run from the **Zephyrus authoring clone**, never from Bostrom.
+See `docs/UPSTREAM-SYNC.md` for the full workflow, conflict hotspots, and why
+`rerere`/`zdiff3` are configured.
 
 ```bash
 git fetch upstream
-git switch main
+git log --oneline main..upstream/main         # what landed
+git switch -c sync/upstream-$(date +%Y%m%d) main
 git merge upstream/main        # a real merge — NOT --ff-only; main has diverged
-# resolve conflicts, then:
-./lab/check-prereqs.sh         # on Bostrom, after pulling
+# resolve conflicts, then verify before adopting:
+./lab/check-qml-syntax.sh
+./lab/run-isolated.sh
+git switch main && git merge --ff-only sync/upstream-YYYYMMDD
 git push origin main
 ```
+
+Upstream ships in bursts (0 commits in June 2026, 64 in July), so sync
+deliberately after a burst rather than continuously.
 
 Expect conflicts in exactly two places, both ours by design:
 
@@ -230,9 +267,11 @@ own `update` command in this clone. After any sync, re-run the shell under
    `QT_QPA_PLATFORM=offscreen` as above — that surfaces `ReferenceError`s and bad
    property names that `qmllint` silently passes.
 
-7. Three krfoss CachyOS mirrors are commented out after repeated signature 404s
-   (backups at `/etc/pacman.d/*.bak-20260726`).
-10. **`hyprctl dispatch` does not work on Bostrom.** The CachyOS Lua config wraps every
+10. **`hyprctl dispatch` does not work here.** Re-verified on zephyrus 2026-08-18:
+    `hyprctl dispatch exec true` returns
+    `error: [string "return hl.dispatch(exec true)"]:1: ')' expected near 'true'`.
+    This is **not** a bostrom quirk — it is a property of the CachyOS Lua config,
+    which zephyrus also uses. The Lua config wraps every
     command as `hl.dispatch(<args>)`, so `hyprctl dispatch dpms on` fails with
     `')' expected near 'on'` — a Lua syntax error, not a Hyprland error. Writing to
     Hyprland's IPC socket directly fails the same way, because the wrapper sits under
@@ -244,23 +283,22 @@ own `update` command in this clone. After any sync, re-run the shell under
     hyprctl monitors -j       # QUERIES are fine; only `dispatch` is wrapped
     ```
     This matters most in an emergency, when `hyprctl dispatch` is the reflex.
-11. **A black screen over Moonlight is usually DPMS, not a broken shell.** Check
+11. **A blank screen is usually DPMS, not a broken shell.** Check
     `hyprctl monitors -j` for `"dpmsStatus": false` before suspecting a QML change —
-    Ambxst's own idle listeners power the display down, and Sunshine faithfully streams
-    the result. Also check `"scale"` before reading anything into layer geometry: at
-    scale 1.5 a correct full-screen layer reads `1280x720` on a 1920x1080 monitor, which
-    looks alarming and is not.
-    Bostrom's idle listeners are currently **all disabled** in the sandboxed config at
-    `~/.local/share/ambxst-lab/home/.config/ambxst/config/system.json` (timestamped
-    backups sit beside it), because the 330 s screen-off and 1800 s suspend both broke
-    remote sessions — suspend takes SSH and Tailscale with it. Do not "helpfully" restore
-    them. Note this is the live machine config, not `config/defaults/system.js`; the
-    shipped defaults still carry the listeners, which is correct for other users.
-12. **A `Terminal=true` desktop file cannot be launched on Bostrom at all.** GLib only
+    Ambxst's own idle listeners power the display down. Also check `"scale"` before
+    reading anything into layer geometry: at scale 1.5 a correct full-screen layer
+    reads `1280x720` on a 1920x1080 monitor, which looks alarming and is not.
+    zephyrus's live listeners are in `~/.config/ambxst/config/system.json` and are
+    **active** (dim via `brightnessctl -d amdgpu_bl1` at 150 s, lock at 300 s) —
+    correct for a laptop you sit in front of. Note the explicit `-d amdgpu_bl1`:
+    same reasoning as `Brightness.qml`, name the backlight rather than letting
+    brightnessctl guess.
+12. **A `Terminal=true` desktop file cannot be launched here at all.** GLib only
     launches terminal applications through a terminal it recognizes, and its built-in
-    list (`xdg-terminal-exec`, `gnome-terminal`, `xterm`, …) matches nothing here —
-    Bostrom has only kitty and alacritty, and `$TERMINAL` is unset. `gio launch` fails
-    with *"Unable to find terminal required for application"*.
+    list (`xdg-terminal-exec`, `gnome-terminal`, `xterm`, …) matches nothing on this
+    machine — zephyrus has kitty and ghostty, and `$TERMINAL` is unset (re-verified
+    2026-08-18). `gio launch` fails with
+    *"Unable to find terminal required for application"*.
 
     This bit NordVPN login, and the failure is silent in the worst way: browser login
     ends by handing `nordvpn://login?…&exchange_token=…` back to the desktop for

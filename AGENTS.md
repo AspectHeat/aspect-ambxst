@@ -16,9 +16,11 @@
 > 3. **`/home/adriano/Repos/Axenide/web/` does not exist here.** We do not
 >    maintain upstream's changelog site. Ignore all changelog instructions.
 >
-> Testing happens on the Bostrom host under a sandboxed `HOME` via `lab/`
-> scripts — never against a real home directory. This repo is public: no
-> secrets, tokens, or personal paths in commits.
+> Development happens on **zephyrus** (ASUS ROG Zephyrus G14 GA403WR, CachyOS,
+> Hyprland). There is no remote test host — bostrom is gone. Risky changes run
+> under a sandboxed `HOME` via `lab/run-isolated.sh`, beside the live shell.
+> See `docs/LAB.md` for the loop and which checkout is authoritative. This repo
+> is public: no secrets, tokens, or personal paths in commits.
 
 # PROJECT KNOWLEDGE BASE
 

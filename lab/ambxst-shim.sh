@@ -2,10 +2,14 @@
 # `ambxst` entry point for keybinds and interactive use.
 #
 # Ambxst upstream expects an `ambxst` command on PATH; its installer provides
-# one, and we never run the installer (it hard-resets the checkout). Keybinds
-# in ~/.config/hypr/config/binds.lua and the keybind table Ambxst writes to
-# axctl.toml both call bare `ambxst`, so without this shim every hotkey is a
-# silent no-op.
+# one, and we never run the installer (it hard-resets the checkout). Your
+# Hyprland keybind config and the keybind table Ambxst writes to axctl.toml both
+# call bare `ambxst` (`ambxst run launcher`, `run dashboard`, …), so without it
+# every hotkey is a silent no-op.
+#
+# NOT needed on zephyrus, where a real install already provides
+# /usr/local/bin/ambxst -> ~/.local/src/ambxst/cli.sh. This shim is the fallback
+# for a machine with no install, where you want hotkeys to drive a checkout.
 #
 # Install as a symlink so edits here take effect without reinstalling:
 #   sudo ln -sfn "$PWD/lab/ambxst-shim.sh" /usr/local/bin/ambxst
