@@ -3,8 +3,9 @@
 > This is **Aspect Ambxst**, a personal fork of `Axenide/Ambxst`. The document
 > below is upstream's and remains authoritative for QML architecture and
 > conventions, but parts of it describe the *upstream maintainer's* machine and
-> are wrong here. Full fork rules: **`CLAUDE.md` in this repo — read it before
-> making changes.** The three that can destroy work:
+> are wrong here. Before changing anything, read the provider-neutral canonical
+> workflow in **`docs/DEVELOPMENT-WORKFLOW.md`**. `CLAUDE.md` contains the wider
+> machine and fork context. Critical rules:
 >
 > 1. **NEVER run `curl -L get.axeni.de/ambxst | sh`, `install.sh`,
 >    `ambxst update`, `./cli.sh update`, or `ambxst goodbye`.** The update path
@@ -15,12 +16,18 @@
 >    locally; ignore the build-and-install instruction below.
 > 3. **`/home/adriano/Repos/Axenide/web/` does not exist here.** We do not
 >    maintain upstream's changelog site. Ignore all changelog instructions.
+> 4. **Do not edit features directly in `~/.local/src/ambxst`.** That is the live
+>    runtime checkout and changes can hot-reload the production shell. Create a
+>    sibling worktree under `~/.local/src/ambxst-worktrees/<topic>` from
+>    `origin/main`, test there, and request approval before changing the live
+>    branch, restarting the production shell, or merging to `main`.
 >
 > Development happens on **zephyrus** (ASUS ROG Zephyrus G14 GA403WR, CachyOS,
 > Hyprland). There is no remote test host — bostrom is gone. Risky changes run
 > under a sandboxed `HOME` via `lab/run-isolated.sh`, beside the live shell.
-> See `docs/LAB.md` for the loop and which checkout is authoritative. This repo
-> is public: no secrets, tokens, or personal paths in commits.
+> See `docs/DEVELOPMENT-WORKFLOW.md` for the Git and test loop and `docs/LAB.md`
+> for isolation details. This repo is public: no secrets, tokens, or personal
+> paths in commits.
 
 # PROJECT KNOWLEDGE BASE
 

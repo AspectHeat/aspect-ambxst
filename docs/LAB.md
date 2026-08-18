@@ -8,11 +8,8 @@ daemons that no VM provides.
 
 ## Which checkout am I working from?
 
-**Answer: `~/.local/src/ambxst` should be the one and only checkout, and it
-should track this fork.**
-
-Not `~/Projects/aspect-ambxst`. The install path is baked into three places you
-do not want to fight:
+`~/.local/src/ambxst` is the authoritative **runtime checkout** and tracks this
+fork. The install path is baked into three places:
 
 | Thing | Hardcodes the path |
 |---|---|
@@ -20,55 +17,45 @@ do not want to fight:
 | Autostart | `exec-once = ambxst` in `~/.config/hypr/hyprland.conf` |
 | **Every hotkey** | `ambxst run launcher`, `run dashboard`, `run clipboard`, … in `~/.local/share/ambxst/hyprland.lua` |
 
-So whichever checkout lives at `~/.local/src/ambxst` is the one your desktop
-runs and the one your keybinds drive. Point that path at your fork and there is
-a single source of truth. Move the shell to `~/Projects/` instead and you are
-rewriting a root-owned wrapper and re-fighting it after every `install.sh`.
+That checkout is what the desktop and keybinds drive. Ordinary feature editing,
+however, happens in a sibling Git worktree under
+`~/.local/src/ambxst-worktrees/<topic>`. This separation is necessary because
+the live Quickshell process watches the runtime checkout and may hot-reload a
+saved file before it has passed isolated testing.
 
-`lab/check-prereqs.sh` tells you which checkout is live:
+`lab/check-prereqs.sh` reports whether the checkout being tested is also the
+one driven by the installed `ambxst` command. A difference is expected from a
+feature worktree; it is informational, not a reason to redirect the live shell.
 
-```
-warn  ambxst drives a DIFFERENT checkout (/home/jayr/.local/src/ambxst/cli.sh),
-      not /home/jayr/Projects/aspect-ambxst -- hotkeys will exercise that
-      install, not your edits
-```
-
-### Current state (2026-08-18): mid-transition
-
-There are still **two** checkouts, which is the confusing part:
-
-| Path | Remote | Contents |
-|---|---|---|
-| `~/.local/src/ambxst` | `Axenide/Ambxst` | upstream `c5c943dd` + 13 uncommitted local files. **This is what runs.** |
-| `~/Projects/aspect-ambxst` | `AspectHeat/aspect-ambxst` | the fork: upstream + 55 commits of features |
-
-The target is one checkout at `~/.local/src/ambxst` with `origin` = the fork and
-`upstream` = `Axenide/Ambxst`. See `docs/UPSTREAM-SYNC.md` for the remote setup
-and merge workflow.
+The full Git procedure and approval boundary are canonical in
+`docs/DEVELOPMENT-WORKFLOW.md`.
 
 ## The loop
 
 ```bash
-cd ~/.local/src/ambxst          # once it tracks the fork
-
-git switch -c feature/my-thing  # branch per change
+cd ~/.local/src/ambxst
+mkdir -p ~/.local/src/ambxst-worktrees
+git worktree add -b feature/my-thing \
+  ~/.local/src/ambxst-worktrees/my-thing origin/main
+cd ~/.local/src/ambxst-worktrees/my-thing
 
 # edit QML...
 
 ./lab/check-qml-syntax.sh       # local qmllint, seconds, catches syntax
-./lab/run-isolated.sh           # run this checkout beside the live shell
+./lab/check-qml-syntax.sh --all # full gate before handoff or merge
+./lab/run-isolated.sh           # run this worktree beside the live shell
                                 # Ctrl+C to exit; live shell is untouched
 
-git add -p && git commit        # when it survives real use
+git add -p && git commit        # publish the branch after verification
+git push -u origin feature/my-thing
 ```
 
-Quickshell hot-reloads on save, so the live shell picks up edits immediately.
-That is the fast path. `run-isolated.sh` is for when you want to try something
-without the live shell reacting at all.
+The feature worktree is not watched by the production shell. `run-isolated.sh`
+starts that worktree's QML with a sandboxed `HOME`, beside the live shell.
 
-`git checkout -- <file>` is your undo. Commit early; the whole reason this fork
-exists is that uncommitted work in `~/.local/src/ambxst` is one `ambxst update`
-away from gone.
+The test instance still reaches real hardware and system daemons, so configuration
+is isolated but rfkill, NetworkManager, brightness, Tailscale, and VPN mutations
+are not. Do not exercise destructive controls without explicit approval.
 
 ## Why not a VM
 

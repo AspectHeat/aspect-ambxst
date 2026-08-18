@@ -1,0 +1,9 @@
+---
+description: Canonical Aspect Ambxst development and Git workflow
+alwaysApply: true
+---
+
+Read `AGENTS.md` and follow `docs/DEVELOPMENT-WORKFLOW.md` as the single source of
+truth for repository roles, feature worktrees, tests, production gates, merges,
+and upstream synchronization. Never invent a Cursor-specific workflow or edit
+the live runtime checkout for ordinary feature development.

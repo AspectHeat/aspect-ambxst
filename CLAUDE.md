@@ -5,9 +5,15 @@ good and still authoritative for QML architecture, conventions, and anti-pattern
 This file only records what differs because this is a fork, plus corrections where
 upstream's instructions describe the maintainer's machine rather than ours.
 
-Do not edit `AGENTS.md` or any `modules/**/AGENTS.md`. Upstream changes them roughly
-monthly (7 commits in the last 6 months); editing them here would cause a merge
-conflict on nearly every sync. Fork-specific guidance goes in this file instead.
+**Canonical Git and development procedure:** `docs/DEVELOPMENT-WORKFLOW.md`.
+Follow it for branch creation, worktrees, testing, production gates, merges, and
+handoffs. It is provider-neutral and overrides older examples elsewhere.
+
+Do not edit the upstream-generated body of `AGENTS.md` or any
+`modules/**/AGENTS.md`. The short fork-override header at the top of root
+`AGENTS.md` is intentionally maintained here for providers that do not read
+`CLAUDE.md`; all detailed workflow remains canonical in
+`docs/DEVELOPMENT-WORKFLOW.md`.
 
 ## What this repo is
 
@@ -58,12 +64,12 @@ Install dependencies explicitly with `pacman -S --needed` instead. When a tool i
 only distributed via a `curl | sh` installer, read the script first and replicate
 its steps by hand — that is how `axctl` was installed.
 
-## Where work happens — one machine, one checkout
+## Where work happens — one machine, one live checkout
 
 Bostrom is gone (it did not survive the 2026-08 move to the UK). There is no
 remote test target and no push/pull loop. Everything happens on zephyrus.
 
-**The authoritative checkout is `~/.local/src/ambxst`.** Three things hardcode
+**The authoritative runtime checkout is `~/.local/src/ambxst`.** Three things hardcode
 that path and you do not want to fight any of them:
 
 | Thing | Hardcodes |
@@ -75,19 +81,16 @@ that path and you do not want to fight any of them:
 So whichever checkout sits at `~/.local/src/ambxst` is the one the desktop runs
 and the one the keybinds drive.
 
-### Transition state (2026-08-18)
+The migration completed on 2026-08-18: this checkout now uses
+`AspectHeat/aspect-ambxst` as `origin` and fetch-only `Axenide/Ambxst` as
+`upstream`. `~/Projects/aspect-ambxst` is a temporary duplicate, not a development
+path.
 
-Two checkouts still exist. This is temporary and is the main source of confusion:
-
-| Path | Remote | Contents |
-|---|---|---|
-| `~/.local/src/ambxst` | `Axenide/Ambxst` | upstream `c5c943dd` + uncommitted local files. **This is what runs.** |
-| `~/Projects/aspect-ambxst` | `AspectHeat/aspect-ambxst` | the fork: upstream + 55 commits of features |
-
-Target: one checkout at `~/.local/src/ambxst` with `origin` = the fork and
-`upstream` = `Axenide/Ambxst`. Until that lands, `lab/check-prereqs.sh` will warn
-that `ambxst` drives a different checkout than the one you are editing — that
-warning is correct and is the signal that the transition is unfinished.
+Feature development uses sibling Git worktrees under
+`~/.local/src/ambxst-worktrees/<topic>`. This keeps edits away from the live
+Quickshell watcher until the user approves a production test. See the canonical
+workflow rather than creating branches or editing files directly in this live
+checkout.
 
 `lab/run-isolated.sh` runs a checkout under a sandboxed `HOME` at
 `~/.local/share/ambxst-lab/home`, because Ambxst hard-codes several
@@ -110,7 +113,8 @@ Autostarted by `exec-once = ambxst` in `~/.config/hypr/hyprland.conf`, which run
 install, not a lab arrangement.
 
 Because Quickshell hot-reloads on save, **editing the live checkout changes the
-running desktop immediately.** That is the fast feedback loop, and also the risk.
+running desktop immediately.** Normal feature work therefore happens in a sibling
+worktree; direct live edits are reserved for an explicitly approved live-use gate.
 Layers of protection, in order:
 
 1. `git checkout -- <file>` — the fastest undo. Commit early and often.

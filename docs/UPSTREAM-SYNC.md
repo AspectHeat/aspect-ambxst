@@ -47,7 +47,7 @@ Upstream ships in bursts (0 commits in June 2026, 64 in July), so sync deliberat
 burst rather than continuously.
 
 ```bash
-cd ~/Projects/aspect-ambxst
+cd ~/.local/src/ambxst
 
 # 1. See what landed upstream
 git fetch upstream
