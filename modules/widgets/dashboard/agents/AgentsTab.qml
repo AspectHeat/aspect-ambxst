@@ -92,7 +92,7 @@ Rectangle {
 
     function crashDetailText() {
         if (CrashDiagnosticsService.isolated)
-            return "Preview only: run ambxst agent setup from a normal terminal to install the user service.";
+            return "Setup applies to your real user account and follows this test checkout.";
         if (AgentUsageService.defaultAgentId === "")
             return "The selected agent opens crash records in plan, ask, or read-only mode.";
         if (!CrashDiagnosticsService.installed)
@@ -640,8 +640,7 @@ Rectangle {
                                 flat: true
                                 hoverEnabled: true
                                 enabled: CrashDiagnosticsService.available
-                                    && AgentUsageService.defaultAgentId !== ""
-                                    && !CrashDiagnosticsService.isolated
+                                    && root.provider !== null
                                     && !CrashDiagnosticsService.loading
 
                                 background: StyledRect {
@@ -663,7 +662,7 @@ Rectangle {
 
                                 onClicked: {
                                     if (!CrashDiagnosticsService.installed)
-                                        CrashDiagnosticsService.install();
+                                        CrashDiagnosticsService.install(String(root.provider.id || ""));
                                     else
                                         CrashDiagnosticsService.setCaptureEnabled(!CrashDiagnosticsService.enabled);
                                 }

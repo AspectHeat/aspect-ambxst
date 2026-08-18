@@ -155,6 +155,13 @@ class AgentIntegrationTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "existing symlink"):
                 agent_integration.safe_symlink(source, target)
 
+            target.unlink()
+            (source / agent_integration.SKILL_MARKER).touch()
+            (other / agent_integration.SKILL_MARKER).touch()
+            target.symlink_to(other)
+            agent_integration.safe_symlink(source, target)
+            self.assertEqual(target.resolve(), source.resolve())
+
     def test_install_skills_links_one_repo_copy_into_each_harness(self):
         with tempfile.TemporaryDirectory() as directory:
             destinations = [Path(directory) / "one", Path(directory) / "two"]
@@ -169,10 +176,11 @@ class AgentIntegrationTest(unittest.TestCase):
                     self.assertTrue((destination / name).is_symlink())
                     self.assertTrue((destination / name / "SKILL.md").is_file())
 
-    def test_isolated_lab_refuses_live_mutation(self):
+    def test_isolated_lab_resolves_agent_state_into_real_home(self):
         with patch.dict(os.environ, {"AMBXST_AGENT_DATA_HOME": "/real/home"}):
-            with self.assertRaisesRegex(RuntimeError, "normal terminal"):
-                agent_integration.install_skills()
+            self.assertEqual(agent_common.agent_home(), Path("/real/home"))
+            self.assertEqual(agent_common.config_home(), Path("/real/home/.config"))
+            self.assertEqual(agent_common.state_home(), Path("/real/home/.local/state"))
 
     def test_setup_requires_an_explicit_default_agent_before_mutating(self):
         with (
@@ -182,6 +190,21 @@ class AgentIntegrationTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "Choose a default"):
                 agent_integration.install()
         install_skills.assert_not_called()
+
+    def test_ui_setup_persists_selected_provider(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / "agents.json"
+            with (
+                patch.object(agent_integration, "agent_state_path", return_value=state),
+                patch.object(agent_integration, "provider_executable", return_value="/usr/bin/codex"),
+                patch.object(agent_integration, "install_skills"),
+                patch.object(agent_integration, "install_unit"),
+                patch.object(agent_integration, "capture_disabled_path", return_value=Path(directory) / "off"),
+                patch.object(agent_integration, "run_systemctl"),
+            ):
+                agent_integration.install("codex")
+
+            self.assertEqual(json.loads(state.read_text(encoding="utf-8")), {"defaultAgent": "codex"})
 
     def test_setup_links_unit_and_enables_user_service(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -201,7 +224,11 @@ class AgentIntegrationTest(unittest.TestCase):
                 agent_integration.install()
 
             install_skills.assert_called_once_with()
-            self.assertTrue(unit.is_symlink())
+            self.assertTrue(unit.is_file())
+            self.assertFalse(unit.is_symlink())
+            content = unit.read_text(encoding="utf-8")
+            self.assertIn(agent_integration.UNIT_MARKER, content)
+            self.assertIn(str(agent_integration.ROOT / "scripts" / "crash_watch.py"), content)
             self.assertFalse(flag.exists())
             self.assertEqual(
                 systemctl.call_args_list,
@@ -210,6 +237,14 @@ class AgentIntegrationTest(unittest.TestCase):
                     unittest.mock.call("enable", "--now", "ambxst-crash-watch.service", check=True),
                 ],
             )
+
+    def test_unit_install_refuses_unmanaged_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            unit = Path(directory) / "ambxst-crash-watch.service"
+            unit.write_text("[Unit]\nDescription=User owned\n", encoding="utf-8")
+            with patch.object(agent_integration, "unit_target", return_value=unit):
+                with self.assertRaisesRegex(RuntimeError, "existing unit"):
+                    agent_integration.install_unit()
 
     def test_capture_toggle_uses_state_flag_and_user_service(self):
         with tempfile.TemporaryDirectory() as directory:

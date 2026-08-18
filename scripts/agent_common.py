@@ -21,11 +21,20 @@ PROVIDER_NAMES = {
 }
 
 
+def agent_home() -> Path:
+    """Return the real account home when called from the isolated shell lab."""
+    return Path(os.environ.get("AMBXST_AGENT_DATA_HOME") or Path.home()).expanduser()
+
+
 def config_home() -> Path:
+    if os.environ.get("AMBXST_AGENT_DATA_HOME"):
+        return agent_home() / ".config"
     return Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
 
 
 def state_home() -> Path:
+    if os.environ.get("AMBXST_AGENT_DATA_HOME"):
+        return agent_home() / ".local" / "state"
     return Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state")
 
 
@@ -76,7 +85,8 @@ def working_directory() -> Path:
     configured = os.environ.get("AMBXST_AGENT_WORKDIR")
     if configured and Path(configured).is_dir():
         return Path(configured)
-    for candidate in (Path.home() / "Projects", Path.home() / "Work", Path.home()):
+    home = agent_home()
+    for candidate in (home / "Projects", home / "Work", home):
         if candidate.is_dir():
             return candidate
     return Path.cwd()

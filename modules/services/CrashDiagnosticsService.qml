@@ -43,12 +43,16 @@ Singleton {
         statusProcess.running = true;
     }
 
-    function install() {
+    function install(providerId) {
         if (mutationProcess.running)
             return;
         root.loading = true;
         root.errorText = "";
-        mutationProcess.command = ["python3", root.integrationScript, "install"];
+        let command = ["python3", root.integrationScript, "install"];
+        const provider = String(providerId || "");
+        if (provider !== "")
+            command.push("--provider", provider);
+        mutationProcess.command = command;
         mutationProcess.running = true;
     }
 

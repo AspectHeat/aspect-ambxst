@@ -9,12 +9,15 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
 from agent_common import (
     PROVIDER_NAMES,
     ROOT,
+    agent_home,
+    agent_state_path,
     capture_disabled_path,
     config_home,
     default_agent,
@@ -23,6 +26,8 @@ from agent_common import (
 
 
 SKILL_NAMES = ("ambxst", "diagnose-crash")
+UNIT_MARKER = "# Managed by Aspect Ambxst crash diagnostics"
+SKILL_MARKER = ".ambxst-managed"
 
 
 def isolated_session() -> bool:
@@ -30,13 +35,8 @@ def isolated_session() -> bool:
     return bool(os.environ.get("AMBXST_AGENT_DATA_HOME"))
 
 
-def require_live_session() -> None:
-    if isolated_session():
-        raise RuntimeError("Run 'ambxst agent setup' from a normal terminal, outside the isolated lab")
-
-
 def skill_directories() -> list[Path]:
-    home = Path.home()
+    home = agent_home()
     return [
         home / ".agents" / "skills",
         home / ".claude" / "skills",
@@ -60,10 +60,49 @@ def safe_symlink(source: Path, target: Path) -> None:
     if target.is_symlink():
         if target.resolve(strict=False) == source.resolve():
             return
-        raise RuntimeError(f"Refusing to replace existing symlink: {target}")
+        previous_source = target.resolve(strict=False)
+        if not ((previous_source / SKILL_MARKER).is_file() and (source / SKILL_MARKER).is_file()):
+            raise RuntimeError(f"Refusing to replace existing symlink: {target}")
+        target.unlink()
     elif target.exists():
         raise RuntimeError(f"Refusing to replace existing path: {target}")
     target.symlink_to(source)
+
+
+def systemd_quote(value: str) -> str:
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def rendered_unit() -> str:
+    python = shutil.which("python3") or sys.executable
+    watcher = ROOT / "scripts" / "crash_watch.py"
+    content = unit_source().read_text(encoding="utf-8")
+    command = f"ExecStart={systemd_quote(python)} {systemd_quote(str(watcher))}"
+    return content.replace("ExecStart=/usr/bin/env ambxst crash-watch", command)
+
+
+def install_unit() -> None:
+    target = unit_target()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if target.is_symlink():
+        if target.resolve(strict=False) != unit_source().resolve():
+            raise RuntimeError(f"Refusing to replace existing symlink: {target}")
+        target.unlink()
+    elif target.exists():
+        existing = target.read_text(encoding="utf-8", errors="replace")
+        if UNIT_MARKER not in existing:
+            raise RuntimeError(f"Refusing to replace existing unit: {target}")
+    content = rendered_unit()
+    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{target.name}.", dir=target.parent)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as temporary:
+            temporary.write(content)
+        os.replace(temporary_name, target)
+    finally:
+        try:
+            Path(temporary_name).unlink()
+        except FileNotFoundError:
+            pass
 
 
 def run_systemctl(*arguments: str, check: bool = False) -> subprocess.CompletedProcess[str]:
@@ -76,7 +115,6 @@ def run_systemctl(*arguments: str, check: bool = False) -> subprocess.CompletedP
 
 
 def install_skills() -> None:
-    require_live_session()
     source_root = ROOT / "assets" / "agents" / "skills"
     for directory in skill_directories():
         for name in SKILL_NAMES:
@@ -87,7 +125,6 @@ def install_skills() -> None:
 
 
 def set_capture(enabled: bool) -> None:
-    require_live_session()
     flag = capture_disabled_path()
     if enabled:
         flag.unlink(missing_ok=True)
@@ -101,14 +138,34 @@ def set_capture(enabled: bool) -> None:
         raise RuntimeError(detail)
 
 
-def install() -> None:
-    provider = default_agent()
+def write_default_agent(provider: str) -> None:
+    path = agent_state_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as temporary:
+            json.dump({"defaultAgent": provider}, temporary, indent=2)
+            temporary.write("\n")
+        os.replace(temporary_name, path)
+    finally:
+        try:
+            Path(temporary_name).unlink()
+        except FileNotFoundError:
+            pass
+
+
+def install(provider_override: str = "") -> None:
+    provider = provider_override or default_agent()
     if not provider:
         raise RuntimeError("Choose a default coding agent in Dashboard → Agents before setup")
+    if provider not in PROVIDER_NAMES:
+        raise RuntimeError(f"Unsupported coding agent: {provider}")
     if not provider_executable(provider):
         raise RuntimeError(f"{PROVIDER_NAMES[provider]} is not installed")
+    if provider_override:
+        write_default_agent(provider)
     install_skills()
-    safe_symlink(unit_source(), unit_target())
+    install_unit()
     capture_disabled_path().unlink(missing_ok=True)
     run_systemctl("daemon-reload", check=True)
     run_systemctl("enable", "--now", unit_source().name, check=True)
@@ -116,8 +173,10 @@ def install() -> None:
 
 def status() -> dict[str, Any]:
     target = unit_target()
-    source = unit_source().resolve()
-    unit_installed = target.is_symlink() and target.resolve(strict=False) == source
+    try:
+        unit_installed = target.is_file() and target.read_text(encoding="utf-8") == rendered_unit()
+    except OSError:
+        unit_installed = False
     skills = 0
     total = len(skill_directories()) * len(SKILL_NAMES)
     source_root = ROOT / "assets" / "agents" / "skills"
@@ -145,16 +204,17 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("status")
-    subparsers.add_parser("install")
+    install_parser = subparsers.add_parser("install")
+    install_parser.add_argument("--provider", choices=tuple(PROVIDER_NAMES))
     toggle = subparsers.add_parser("toggle")
     toggle.add_argument("state", choices=("on", "off"))
     subparsers.add_parser("install-skills")
     args = parser.parse_args()
     try:
         if args.command == "install":
-            install()
+            install(args.provider or "")
         elif args.command == "toggle":
-            if not unit_target().is_symlink():
+            if not status()["installed"]:
                 raise RuntimeError("Agent integration is not installed")
             set_capture(args.state == "on")
         elif args.command == "install-skills":

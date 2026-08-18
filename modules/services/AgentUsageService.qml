@@ -10,7 +10,10 @@ Singleton {
 
     readonly property string scriptPath: Quickshell.shellDir + "/scripts/agent_usage.py"
     readonly property int refreshIntervalMs: 15 * 60 * 1000
-    readonly property string settingsPath: (Quickshell.env("XDG_CONFIG_HOME") || (Quickshell.env("HOME") + "/.config")) + "/ambxst/agents.json"
+    readonly property string agentConfigHome: Quickshell.env("AMBXST_AGENT_DATA_HOME")
+        ? Quickshell.env("AMBXST_AGENT_DATA_HOME") + "/.config"
+        : (Quickshell.env("XDG_CONFIG_HOME") || (Quickshell.env("HOME") + "/.config"))
+    readonly property string settingsPath: agentConfigHome + "/ambxst/agents.json"
 
     property var providers: []
     property string defaultAgentId: ""
