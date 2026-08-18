@@ -64,9 +64,28 @@ heading "Installation complete"
 printf 'A new login session is required before Ambxst can use the nordvpn group.\n'
 printf 'After signing back in, open VPN → NordVPN and press Log in. Ambxst will open\n'
 printf 'NordVPN authentication in your browser; you will not need to copy commands.\n\n'
-read -r -p "Reboot now? [y/N] " reboot_answer
-if [[ "$reboot_answer" =~ ^[Yy]$ ]]; then
-    systemctl reboot
-else
-    printf 'Reboot or log out when convenient, then finish login from the NordVPN panel.\n'
-fi
+printf 'Choose how to start a fresh session:\n'
+printf '  1) Reboot now (recommended)\n'
+printf '  2) Log out now\n'
+printf '  3) Do it later\n\n'
+
+while true; do
+    read -r -p "Choice [1/2/3]: " session_choice
+    case "$session_choice" in
+        1)
+            systemctl reboot
+            break
+            ;;
+        2)
+            axctl system exit
+            break
+            ;;
+        3)
+            printf 'Log out and back in, or reboot, before finishing login from the NordVPN panel.\n'
+            break
+            ;;
+        *)
+            printf 'Enter 1 to reboot, 2 to log out, or 3 to finish later.\n'
+            ;;
+    esac
+done
