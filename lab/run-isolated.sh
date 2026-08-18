@@ -97,6 +97,10 @@ fi
 # XDG_RUNTIME_DIR, WAYLAND_DISPLAY, DBUS_SESSION_BUS_ADDRESS, HYPRLAND_* and
 # the UWSM variables are intentionally inherited unchanged: they address the
 # live compositor session, not user state.
+# Agent usage collectors get one explicit, read-only account root. They read
+# provider credentials/history and call provider usage APIs, while every shell
+# config, cache, and state write remains under the disposable lab HOME.
+export AMBXST_AGENT_DATA_HOME="$REAL_HOME"
 export HOME="$LAB_HOME"
 export XDG_CONFIG_HOME="$LAB_HOME/.config"
 export XDG_DATA_HOME="$LAB_HOME/.local/share"
