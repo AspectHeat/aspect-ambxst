@@ -90,6 +90,7 @@ QtObject {
     readonly property string nightLight: ""
     readonly property string caffeine: ""
     readonly property string gameMode: ""
+    readonly property string airplane: ""
 
     // Toolbox
     readonly property string toolbox: ""

@@ -174,6 +174,7 @@ Singleton {
         }
         readonly property bool isDdc: !useBrightnessctl && !!ddcEntry
         readonly property string busNum: isDdc ? ddcEntry.busNum : ""
+        property string brightnessctlDevice: ""
         property int rawMaxBrightness: 100
         property real brightness
         property bool ready: false
@@ -186,11 +187,26 @@ Singleton {
 
         function initialize() {
             monitor.ready = false;
+            monitor.brightnessctlDevice = "";
             if (!useBrightnessctl && !isDdc)
                 return;
             if (isDdc && !busNum)
                 return;
-            initProc.command = isDdc ? ["ddcutil", "-b", busNum, "getvcp", "10"] : ["sh", "-c", `echo "a b c $(brightnessctl g) $(brightnessctl m)"`];
+            // Match the shell screen to the DRM connector behind each sysfs
+            // backlight. This avoids brightnessctl selecting a fake dGPU
+            // backlight when the internal panel is connected to the iGPU.
+            const detectBacklight = "for device_path in /sys/class/backlight/*; do "
+                + "[ -e \"$device_path\" ] || continue; "
+                + "target=$(readlink -f \"$device_path/device\"); "
+                + "case \"$target\" in *-\"$1\") "
+                + "device=${device_path##*/}; "
+                + "current=$(brightnessctl -d \"$device\" g); "
+                + "max=$(brightnessctl -d \"$device\" m); "
+                + "printf '%s %s %s\\n' \"$device\" \"$current\" \"$max\"; "
+                + "exit 0;; esac; done";
+            initProc.command = isDdc
+                ? ["ddcutil", "-b", busNum, "getvcp", "10"]
+                : ["sh", "-c", detectBacklight, "ambxst-brightness", screen.name];
             initProc.running = true;
         }
 
@@ -215,6 +231,11 @@ Singleton {
                     const tokens = trimmed.split(/\s+/);
                     if (tokens.length < 2)
                         return;
+                    if (!isDdc) {
+                        if (tokens.length < 3)
+                            return;
+                        monitor.brightnessctlDevice = tokens[0];
+                    }
                     const currentRaw = parseInt(tokens[tokens.length - 2]);
                     const maxRaw = parseInt(tokens[tokens.length - 1]);
                     if (isNaN(currentRaw) || isNaN(maxRaw) || maxRaw <= 0)
@@ -239,8 +260,12 @@ Singleton {
         function syncBrightness() {
             if (isDdc && !busNum)
                 return;
+            if (useBrightnessctl && !brightnessctlDevice)
+                return;
             const rounded = Math.round(monitor.brightness * monitor.rawMaxBrightness);
-            setProc.command = isDdc ? ["ddcutil", "-b", busNum, "setvcp", "10", rounded] : ["brightnessctl", "--class", "backlight", "s", rounded, "--quiet"];
+            setProc.command = isDdc
+                ? ["ddcutil", "-b", busNum, "setvcp", "10", rounded]
+                : ["brightnessctl", "-d", brightnessctlDevice, "s", rounded, "--quiet"];
             setProc.startDetached();
         }
 

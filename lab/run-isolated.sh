@@ -1,9 +1,16 @@
 #!/usr/bin/env bash
-# Launch Ambxst from this checkout inside a sandboxed HOME.
+# Launch Ambxst from this checkout inside a sandboxed HOME, beside whatever
+# shell is already running. This is the main dev loop on zephyrus: your live
+# desktop keeps running, and this instance is the disposable one.
 #
-# There is no fallback shell: exiting leaves bare Hyprland, where SUPER+Return
-# still opens a terminal. Noctalia used to be stopped on entry and restarted on
-# every exit path; see lab/autostart-shell.sh for why that was removed.
+# There is no fallback shell: exiting leaves the live shell untouched, and if
+# nothing is running at all, bare Hyprland still opens a terminal on
+# SUPER+Return. On bostrom this script used to stop Noctalia on entry and
+# restart it on every exit path. That was removed because the recovery it bought
+# was worth less than the two failure modes it caused: a second shell drawing
+# behind Ambxst, and a resurrection race where a dying session's
+# `sleep 1; pgrep noctalia || start it` check fired AFTER the next session had
+# already started Ambxst, leaving two shells running per compositor restart.
 #
 # A sandbox HOME is used rather than XDG_* alone because Ambxst hard-codes
 # several $HOME/.cache/ambxst and $HOME/.local/share/ambxst paths that XDG
@@ -90,6 +97,10 @@ fi
 # XDG_RUNTIME_DIR, WAYLAND_DISPLAY, DBUS_SESSION_BUS_ADDRESS, HYPRLAND_* and
 # the UWSM variables are intentionally inherited unchanged: they address the
 # live compositor session, not user state.
+# Agent usage collectors get one explicit, read-only account root. They read
+# provider credentials/history and call provider usage APIs, while every shell
+# config, cache, and state write remains under the disposable lab HOME.
+export AMBXST_AGENT_DATA_HOME="$REAL_HOME"
 export HOME="$LAB_HOME"
 export XDG_CONFIG_HOME="$LAB_HOME/.config"
 export XDG_DATA_HOME="$LAB_HOME/.local/share"

@@ -42,6 +42,7 @@ Singleton {
     property int retryCount: 0
     readonly property int maxRetries: 3
     property bool wasCancelled: false
+    property bool pendingUpdate: false
 
     property var suspendConnections: Connections {
         target: SuspendManager
@@ -477,14 +478,15 @@ Singleton {
         }
 
         onExited: function (code) {
-            // SIGTERM (15) = intentional cancellation
-            if (code !== 0 && code !== 15) {
+            root.wasCancelled = false;
+            if (root.pendingUpdate) {
+                root.pendingUpdate = false;
+                Qt.callLater(() => root.updateWeather());
+            } else if (code !== 0 && code !== 15) {
                 console.warn("WeatherService: Script exited with code", code);
                 root.dataAvailable = false;
                 root.handleError();
             }
-            // Reset cancelled flag after process fully exits
-            root.wasCancelled = false;
         }
     }
 
@@ -506,10 +508,13 @@ Singleton {
     }
 
     function updateWeather() {
-        // Cancel existing process if running
+        // If a process is still alive, cancel it and wait for onExited to re-invoke us.
+        // Spawning immediately after setting running=false races the async SIGTERM.
         if (weatherProcess.running) {
             root.wasCancelled = true;
+            root.pendingUpdate = true;
             weatherProcess.running = false;
+            return;
         }
 
         // Safety check for config
@@ -520,12 +525,13 @@ Singleton {
 
         root.isLoading = true;
         root.hasFailed = false;
+        root.pendingUpdate = false;
 
         var locationStr = Config.weather.location || "";
         var location = locationStr.trim();
-        
+
         console.log("WeatherService: Fetching weather for '" + location + "'");
-        
+
         weatherProcess.command = [scriptPath, location];
         weatherProcess.running = true;
     }

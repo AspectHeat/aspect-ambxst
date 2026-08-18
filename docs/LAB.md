@@ -1,72 +1,111 @@
-# Bostrom Aspect Ambxst lab
+# Ambxst dev loop on zephyrus
 
-Isolated Quickshell/QML test environment. Native Noctalia stays the known-good
-desktop; Ambxst runs beside it from this checkout under a sandboxed `HOME`, and
-Noctalia is restored whenever the lab exits.
+Ambxst is QML running in Quickshell. It hot-reloads, there is no build step, and
+a bad edit kills a shell instance rather than a machine. That makes on-machine
+development the right default — and on zephyrus it is the *only* option that
+actually works, because most of this fork's features need real hardware and real
+daemons that no VM provides.
 
-## Layout
+## Which checkout am I working from?
 
-| Purpose | Path |
+**Answer: `~/.local/src/ambxst` should be the one and only checkout, and it
+should track this fork.**
+
+Not `~/Projects/aspect-ambxst`. The install path is baked into three places you
+do not want to fight:
+
+| Thing | Hardcodes the path |
 |---|---|
-| This checkout | `/home/bostrom/Projects/aspect-ambxst` |
-| Sandbox `HOME` | `/home/bostrom/.local/share/ambxst-lab/home` |
-| Run log | `/home/bostrom/.local/state/ambxst-lab/latest.log` |
-| Baseline snapshot | `/home/bostrom/Backups/noctalia-baseline-2026-07-26.tar.zst` |
-| Autostart backup | `/home/bostrom/Backups/autostart.lua.before-ambxst` |
+| `/usr/local/bin/ambxst` | `exec "$HOME/.local/src/ambxst/cli.sh" "$@"` |
+| Autostart | `exec-once = ambxst` in `~/.config/hypr/hyprland.conf` |
+| **Every hotkey** | `ambxst run launcher`, `run dashboard`, `run clipboard`, … in `~/.local/share/ambxst/hyprland.lua` |
 
-Remote access from Zephyrus: `ssh bostrom` (Tailnet) or `ssh bostrom-lan` (LAN).
-Git remote uses the repo-scoped deploy key alias `github-aspect-ambxst`.
+So whichever checkout lives at `~/.local/src/ambxst` is the one your desktop
+runs and the one your keybinds drive. Point that path at your fork and there is
+a single source of truth. Move the shell to `~/Projects/` instead and you are
+rewriting a root-owned wrapper and re-fighting it after every `install.sh`.
 
-## Run
+`lab/check-prereqs.sh` tells you which checkout is live:
 
-From a graphical terminal on Bostrom:
-
-```bash
-cd ~/Projects/aspect-ambxst
-./lab/check-prereqs.sh     # read-only; exits nonzero and lists what is missing
-./lab/run-isolated.sh      # Ctrl+C to exit and restore Noctalia
+```
+warn  ambxst drives a DIFFERENT checkout (/home/jayr/.local/src/ambxst/cli.sh),
+      not /home/jayr/Projects/aspect-ambxst -- hotkeys will exercise that
+      install, not your edits
 ```
 
-Over SSH the graphical session must be addressed explicitly first:
+### Current state (2026-08-18): mid-transition
+
+There are still **two** checkouts, which is the confusing part:
+
+| Path | Remote | Contents |
+|---|---|---|
+| `~/.local/src/ambxst` | `Axenide/Ambxst` | upstream `c5c943dd` + 13 uncommitted local files. **This is what runs.** |
+| `~/Projects/aspect-ambxst` | `AspectHeat/aspect-ambxst` | the fork: upstream + 55 commits of features |
+
+The target is one checkout at `~/.local/src/ambxst` with `origin` = the fork and
+`upstream` = `Axenide/Ambxst`. See `docs/UPSTREAM-SYNC.md` for the remote setup
+and merge workflow.
+
+## The loop
 
 ```bash
-export XDG_RUNTIME_DIR=/run/user/1000
-export WAYLAND_DISPLAY=wayland-1
-export HYPRLAND_INSTANCE_SIGNATURE="$(ls /run/user/1000/hypr | head -1)"
-export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
+cd ~/.local/src/ambxst          # once it tracks the fork
+
+git switch -c feature/my-thing  # branch per change
+
+# edit QML...
+
+./lab/check-qml-syntax.sh       # local qmllint, seconds, catches syntax
+./lab/run-isolated.sh           # run this checkout beside the live shell
+                                # Ctrl+C to exit; live shell is untouched
+
+git add -p && git commit        # when it survives real use
 ```
 
-## Recovery
+Quickshell hot-reloads on save, so the live shell picks up edits immediately.
+That is the fast path. `run-isolated.sh` is for when you want to try something
+without the live shell reacting at all.
 
-The launcher restores Noctalia on `EXIT`, `INT`, `TERM`, and `HUP`, stopping
-Ambxst first. If something escapes it:
+`git checkout -- <file>` is your undo. Commit early; the whole reason this fork
+exists is that uncommitted work in `~/.local/src/ambxst` is one `ambxst update`
+away from gone.
 
-```bash
-pkill -f '[q]s -p .*aspect-ambxst'   # note the [q] — see gotcha 2
-noctalia -d
-```
+## Why not a VM
 
-To restore the whole desktop configuration from the baseline:
+A VM cannot exercise most of what this fork does:
 
-```bash
-cd ~ && tar --zstd -xf ~/Backups/noctalia-baseline-2026-07-26.tar.zst
-```
+| Feature | Needs |
+|---|---|
+| `Brightness.qml` backlight matching | real sysfs backlight + DRM connector, *and* a phantom NVIDIA backlight to disambiguate from |
+| Airplane mode | real rfkill / NetworkManager |
+| NordVPN / AirVPN panels | real provider daemons |
+| Tailscale panel | real `tailscaled` |
+| Power / battery widgets | real EC and battery |
 
-Bostrom's Hyprland autostart is deliberately **not** modified — Ambxst is never
-imported permanently during the lab phase. `autostart.lua` is verified identical
-to its backup after every run.
+The brightness fix is the clearest case: its entire purpose is picking the
+correct backlight when `nvidia_wmi_ec_backlight` also exists. That bug does not
+reproduce anywhere but this laptop.
+
+**Use a VM for exactly one class of work:** anything that can leave you without a
+desktop — `install.sh`, SDDM themes and greeters, boot/kernel changes,
+packaging. That is what the bostrom-era rescue scripts were all cleaning up
+after, and it is not widget work. A GPU-accelerated `omarchy-quattro` VM already
+exists in libvirt for that.
 
 ## Isolation
 
-Ambxst hard-codes several `$HOME/.cache/ambxst` and `$HOME/.local/share/ambxst`
-paths, so `XDG_*` alone is insufficient — the launcher redirects `HOME` itself.
+`run-isolated.sh` redirects `HOME`, not just `XDG_*`, because Ambxst hard-codes
+several `$HOME/.cache/ambxst` and `$HOME/.local/share/ambxst` paths that the XDG
+variables do not cover.
+
+| Purpose | Path |
+|---|---|
+| Sandbox `HOME` | `~/.local/share/ambxst-lab/home` |
+| Run log | `~/.local/state/ambxst-lab/latest.log` |
+
 `XDG_RUNTIME_DIR`, `WAYLAND_DISPLAY`, `DBUS_SESSION_BUS_ADDRESS` and the
 `HYPRLAND_*`/UWSM variables are inherited unchanged, since they address the live
 compositor rather than user state.
-
-Verified after a full run: `~/.config/ambxst`, `~/.local/share/ambxst` and
-`~/.cache/ambxst` in the real home were all still absent, with 5.7 MB of state
-in the sandbox instead.
 
 Known escapes, all in `/tmp` and all transient:
 
@@ -77,95 +116,70 @@ Known escapes, all in `/tmp` and all transient:
 /tmp/ambxst_sleep_monitor.lock
 ```
 
-The launcher never calls `install.sh`, `ambxst update`, `ambxst goodbye`, or
-`ambxst install hyprland`. One of those runs `git reset --hard origin/main`.
+## Recovery
 
-## Installed dependency delta (2026-07-26)
+The live shell is unaffected by `run-isolated.sh` exiting. If the sandbox
+instance wedges:
 
-Base system already provided 37 of Ambxst's listed packages. Added:
-
-```text
-quickshell qt6-declarative qt6-wayland qt6-svg qt6-tools jq git      # Task 6
-tmux fuzzel network-manager-applet blueman easyeffects playerctl
-qt6-imageformats libavif ddcutil wlsunset wtype python-pipx zenity
-tesseract tesseract-data-eng ttf-roboto ttf-roboto-mono
-ttf-nerd-fonts-symbols matugen gpu-screen-recorder wl-clip-persist
-supergfxctl unzip
+```bash
+pkill -f '[q]s -p .*aspect-ambxst'   # note the [q] - see gotcha 2
 ```
 
-Plus, outside pacman:
+If the *live* shell dies, bare Hyprland still gives you `SUPER+Return` for a
+terminal, and `ambxst` restarts it. `~/.config/hypr` is a git repo, so config
+mistakes are revertible.
 
-- `axctl v0.0.19` → `/usr/local/bin/axctl`. Installed by downloading the release
-  binary from `Axenide/axctl` and `install -m 755`, replicating what
-  `get.axeni.de/axctl` does, rather than piping a remote script into a shell.
-- Phosphor icon fonts v2.1.2 → `<sandbox>/.local/share/fonts/phosphor` (6 TTFs),
-  mirroring `install.sh`'s `install_phosphor_fonts()`. Kept inside the sandbox so
-  isolation holds.
+## Never run these in a checkout you care about
 
-**Deliberately not installed:**
+`ambxst update`, `install.sh`, `ambxst goodbye`, `ambxst install hyprland`.
 
-- `mpvpaper` — needs `luajit-2.1.1784902473+346ab58-1.1`, which no longer exists
-  on any mirror; the local sync DB references a superseded build. Needs a full
-  `pacman -Syu` (and a reboot) to resolve. Only affects video wallpapers; Ambxst
-  logs `Killed mpvpaper processes ... exit code: 1` and continues.
-- `gradia`, `ttf-league-gothic`, `python312` — AUR-only, all optional. No AUR
-  helper is installed on Bostrom and none is required.
-
-Three CachyOS mirrors (`mirror5.krfoss.org`, `mirror.krfoss.org`) were commented
-out of `cachyos-{,v3-,v4-}mirrorlist` after repeated 404s on package signatures.
-Backups: `/etc/pacman.d/*.bak-20260726`.
-
-## Hardware transfer: what Bostrom can and cannot test
-
-Bostrom is an **Acer Nitro AN515-54** (Intel UHD 630 + NVIDIA GTX 1050 Max-Q).
-Zephyrus is an **ASUS ROG Zephyrus G14 GA403WR** (AMD + NVIDIA). This matters for
-any shell work touching vendor control tooling.
-
-| | Zephyrus (ASUS) | Bostrom (Acer) |
-|---|---|---|
-| `supergfxctl` modes | `Integrated, Hybrid, AsusMuxDgpu` | `Integrated, Hybrid` |
-| `asus-nb-wmi` platform device | present (`ASUS2018:00`, `ASUS9001:00`) | **absent** (`acer-wmi` only) |
-| ACPI `platform_profile` | `quiet balanced performance` | **absent** |
-| `power-profiles-daemon` | yes | yes (`intel_pstate`: power-saver/balanced/performance) |
-
-- **`supergfxctl` — mostly transfers.** `supergfxd` runs correctly on Bostrom,
-  detects the dGPU (`10DE:1C91`), and manages nvidia module loading and runtime
-  PM. Integrated ↔ Hybrid switching — the common path — is genuinely testable
-  here. `AsusMuxDgpu` (the hardware MUX) is ASUS-only and cannot be. Note the
-  iGPU vendor differs (Intel vs AMD), so anything keying off driver names or GPU
-  enumeration still needs validating on Zephyrus.
-- **`asusctl` — does not transfer at all.** Fan curves, Aura/RGB keyboard,
-  battery charge limit and ASUS throttle profiles are all backed by ASUS firmware
-  interfaces Bostrom does not have; `asusd` has nothing to bind to. Build against
-  a mock here, validate on Zephyrus.
-- **Generic power profiles do transfer.** Ambxst's `PowerProfile` service came up
-  clean on Bostrom and enumerated all three profiles via `powerprofilesctl`.
-
-`supergfxd` is started but **not enabled at boot** on Bostrom. Switching graphics
-mode restarts the display session, so do it deliberately, not mid-test.
-
-## Verified run (2026-07-26)
-
-Full shell launched from a clean sandbox. Ambxst registered eight layer surfaces
-(`ambxst:wallpaper`, `ambxst`, `ambxst:screenCorners`, `ambxst:osd`, and four
-`ambxst:reservation:*`), ran Matugen against the bundled wallpaper, generated 10
-thumbnails in 3.2 s, and detected power profiles. Recovery was tested twice —
-signalling the process group, and signalling only the launcher — and both
-restored Noctalia with no orphaned Ambxst process. Hyprland kept PID 874 the
-whole time and never restarted.
-
-Benign first-run warnings: missing `binds.json`/`general.json`/`ai.json` etc.
-(created on demand), absent `.face.icon`, and `WeatherService` failing GeoIP with
-no location configured.
+At least one runs `git reset --hard origin/main`. `run-isolated.sh` deliberately
+calls none of them.
 
 ## Gotchas
 
 1. **Signal-killing leaves a stale Hyprland layer.** After termination,
    `hyprctl layers` still lists a `pid: -1` entry even though `qs list --all`
-   reports no instances. Seen with both the minimal probe and the full shell.
-   Cosmetic; clears on session restart.
-2. **`pkill -f '<pattern>'` over SSH can kill your own session,** because the
-   remote shell's command line contains the pattern. This killed a live SSH
-   connection during setup. Always bracket a character: `'[q]s ...'`.
-3. **`grim` hangs** when invoked over SSH against this session. Use
-   `hyprctl layers` to verify surfaces instead.
+   reports no instances. Cosmetic; clears on session restart.
+2. **`pkill -f '<pattern>'` can kill your own shell,** because the invoking
+   shell's command line contains the pattern. Always bracket a character:
+   `'[q]s ...'`.
+3. **`nordvpn` is not installed on zephyrus.** The NordVPN panel will show its
+   "not installed" setup card, and the login hand-back check in
+   `lab/check-prereqs.sh` cannot be exercised. The AirVPN work is the active
+   provider thread.
+
+## Machine facts
+
+**ASUS ROG Zephyrus G14 GA403WR** — AMD Strix (Radeon 880M/890M iGPU) plus an
+NVIDIA dGPU at `0000:64:00.0` `[10de:2f58]`.
+
+The dGPU is deliberately EC-disabled for battery via ROG Control Center
+(`asusctl`/`asusd`), so `dgpu_disable = 1` and the iGPU is the only DRM device —
+it enumerates as `/dev/dri/card1`. Do not hardcode card numbers; numbering is not
+stable across Hybrid and Integrated boots.
+
+`supergfxctl` is **deprecated and not installed**. `asusd` owns dGPU power state.
+Anything in this repo referencing supergfxctl is dead work.
+
+## History
+
+This lab was built on **bostrom**, an Acer Nitro AN515-54 that ran Ambxst
+experimentally beside a native Noctalia shell. Bostrom did not survive the
+2026-08 move to the UK.
+
+What that means for this directory:
+
+- `lab/autostart-shell.sh` — **removed.** It was bostrom's boot entry point,
+  starting Ambxst as an experimental shell via `run-isolated.sh`. On zephyrus
+  Ambxst is the real installed shell, autostarted by `exec-once = ambxst`.
+- `lab/check-qml-syntax.sh` — **rewritten to run locally.** It used to tar QML
+  over ssh to bostrom because the authoring machine had no Qt tooling, so it
+  returned exit 2 (SKIPPED) on every invocation once bostrom went away.
+- `lab/check-prereqs.sh` — **rewritten.** It expected `ambxst` to resolve to
+  `lab/ambxst-shim.sh` (correct on bostrom, where Ambxst was not installed) and
+  looked for keybinds in `~/.config/hypr/config/binds.lua` (a path that does not
+  exist here). Both now handle the zephyrus layout, with the bostrom arrangement
+  as the fallback.
+- `lab/ambxst-shim.sh` — kept. Still the right answer for any machine where
+  Ambxst is not installed but you want hotkeys to drive a checkout.
