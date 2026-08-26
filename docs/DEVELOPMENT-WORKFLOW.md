@@ -20,6 +20,32 @@ Keep the live checkout clean and on a reviewed branch. Editing files there can
 hot-reload the production shell immediately, so an isolated runner does not make
 direct live edits safe.
 
+## The ticket and the vault
+
+Work on this repo is tracked in Plane, project `AMBXST`, on Jay's self-hosted board
+at `http://100.115.232.74:8090`. The board is the authority on what is being built,
+so an agent reads it before proposing work and writes to it as work moves. Drive it
+through `~/.config/arscontexta/scripts/plane/plane`; the `plane` skill carries the
+full procedure and its step order wraps this document rather than replacing it.
+
+Three bindings between that board and this procedure:
+
+- **Open the ticket before the worktree.** `plane show AMBXST-<n>` first — the
+  comment thread usually holds more current state than the description. Move it with
+  `plane move AMBXST-<n> "In Progress"` when real editing starts, and comment findings
+  as they appear so a discovery outlives one session's context.
+- **Close on proof, gated on the live-use gate below.** `plane move AMBXST-<n> Done
+  --proof "..."` states what was verified and how, and the proof cites the checks in
+  the Verification loop plus the live-use result. Verification that did not happen
+  leaves the item open. An item parked because Jay must act belongs in `Blocked` with
+  a comment naming exactly what is needed.
+- **Durable claims leave the repo.** What the work taught — an ordering for diagnosing
+  a fault, a constraint this codebase imposes, a wrong-but-expensive hypothesis — is
+  captured to `~/.config/arscontexta/inbox/` for that vault's `distill`
+  pipeline, never straight into its `notes/`. Terms this repo overloads belong in
+  `CONTEXT.md` here instead, and a hard-to-reverse decision in `docs/adr/`. The ticket
+  records that the work happened; the vault records what it taught.
+
 ## Before starting any feature
 
 Agents must inspect state rather than assuming `main` is ready:
@@ -148,4 +174,6 @@ Every implementation closeout must state:
 - commits created and whether they were pushed;
 - checks run and their results;
 - whether the production checkout or shell was changed;
-- remaining live-use, merge, cleanup, or upstream-sync work.
+- remaining live-use, merge, cleanup, or upstream-sync work;
+- the Plane item worked, its current state, and the proof text if it was closed;
+- what was captured to the vault inbox, or that nothing was durable enough to keep.

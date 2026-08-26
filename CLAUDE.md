@@ -9,6 +9,12 @@ upstream's instructions describe the maintainer's machine rather than ours.
 Follow it for branch creation, worktrees, testing, production gates, merges, and
 handoffs. It is provider-neutral and overrides older examples elsewhere.
 
+Work here is tracked in Plane, project `AMBXST`. Read the ticket before the
+worktree, close only on proof, and send what the work taught to the vault inbox at
+`~/.config/arscontexta/inbox/`. The bindings are in
+`docs/DEVELOPMENT-WORKFLOW.md` under "The ticket and the vault"; the `plane` skill
+carries the rest.
+
 Do not edit the upstream-generated body of `AGENTS.md` or any
 `modules/**/AGENTS.md`. The short fork-override header at the top of root
 `AGENTS.md` is intentionally maintained here for providers that do not read
